@@ -1,0 +1,38 @@
+{
+  "name": "@awaithumans/temporal",
+  "version": "0.0.1",
+  "description": "Temporal adapter for awaithumans — signal-based human tasks in workflows",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "awaithumans": "workspace:*",
+    "@temporalio/client": "^1.11.0",
+    "@temporalio/workflow": "^1.11.0"
+  },
+  "devDependencies": {
+    "awaithumans": "workspace:*",
+    "@temporalio/client": "^1.11.0",
+    "@temporalio/workflow": "^1.11.0",
+    "vitest": "^2.1.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awaithumans/awaithumans",
+    "directory": "packages/adapters/temporal"
+  }
+}

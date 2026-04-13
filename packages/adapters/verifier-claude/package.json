@@ -1,0 +1,37 @@
+{
+  "name": "@awaithumans/verifier-claude",
+  "version": "0.0.1",
+  "description": "Claude-powered AI verifier for awaithumans task results",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0"
+  },
+  "peerDependencies": {
+    "awaithumans": "workspace:*"
+  },
+  "devDependencies": {
+    "awaithumans": "workspace:*",
+    "vitest": "^2.1.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awaithumans/awaithumans",
+    "directory": "packages/adapters/verifier-claude"
+  }
+}

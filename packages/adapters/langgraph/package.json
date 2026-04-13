@@ -1,0 +1,36 @@
+{
+  "name": "@awaithumans/langgraph",
+  "version": "0.0.1",
+  "description": "LangGraph adapter for awaithumans — human-in-the-loop graph nodes",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "awaithumans": "workspace:*",
+    "@langchain/langgraph": "^0.2.0"
+  },
+  "devDependencies": {
+    "awaithumans": "workspace:*",
+    "@langchain/langgraph": "^0.2.0",
+    "vitest": "^2.1.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awaithumans/awaithumans",
+    "directory": "packages/adapters/langgraph"
+  }
+}

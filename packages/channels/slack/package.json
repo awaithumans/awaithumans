@@ -1,0 +1,38 @@
+{
+  "name": "@awaithumans/channel-slack",
+  "version": "0.0.1",
+  "description": "Slack notification channel for awaithumans",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.1.0",
+    "@slack/web-api": "^7.7.0"
+  },
+  "peerDependencies": {
+    "awaithumans": "workspace:*"
+  },
+  "devDependencies": {
+    "awaithumans": "workspace:*",
+    "vitest": "^2.1.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awaithumans/awaithumans",
+    "directory": "packages/channels/slack"
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.turbo/
+.next/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+*.db
+*.sqlite
+coverage/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/

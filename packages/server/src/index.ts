@@ -1,0 +1,1 @@
+// Server entrypoint — Hono app
