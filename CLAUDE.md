@@ -116,13 +116,13 @@ awaithumans/
 These are HARD rules. Violating them is a build error.
 
 ```
-core          → depends on NOTHING (zero runtime dependencies except zod)
-server        → depends on core
-dashboard     → depends on NOTHING from other packages (talks to server via HTTP API)
-cli           → depends on core, server (embeds server for `dev` command)
-adapters/*    → depends on core ONLY (never on server, dashboard, or other adapters)
-channels/*    → depends on core ONLY (never on server, dashboard, or other channels)
-python-sdk    → depends on NOTHING (standalone HTTP client, talks to server via API)
+typescript-sdk → depends on NOTHING (zero runtime dependencies except zod)
+server         → depends on typescript-sdk
+dashboard      → depends on NOTHING from other packages (talks to server via HTTP API)
+cli            → depends on typescript-sdk, server (embeds server for `dev` command)
+adapters/*     → depends on typescript-sdk ONLY (never on server, dashboard, or other adapters)
+channels/*     → depends on typescript-sdk ONLY (never on server, dashboard, or other channels)
+python-sdk     → depends on NOTHING (standalone HTTP client, talks to server via API)
 examples/*    → can depend on anything (they demonstrate usage)
 ```
 
@@ -215,7 +215,7 @@ throw new AwaitHumansError({
 throw new Error("TIMEOUT_EXCEEDED"); // No context, no fix, no docs link
 ```
 
-All error classes live in `packages/core/src/errors.ts`. Every error has:
+All error classes live in `packages/typescript-sdk/src/errors.ts`. Every error has:
 - `code`: machine-readable string (`TIMEOUT_EXCEEDED`, `SCHEMA_VALIDATION_FAILED`, etc.)
 - `message`: human-readable what-happened
 - `hint`: probable cause + how to fix
@@ -226,7 +226,7 @@ All error classes live in `packages/core/src/errors.ts`. Every error has:
 - **Vitest** for all TypeScript tests. Not Jest.
 - **pytest** for Python tests.
 - Tests live next to the code: `foo.ts` → `foo.test.ts`.
-- Use `createTestClient()` from `packages/core` for integration tests —
+- Use `createTestClient()` from `packages/typescript-sdk` for integration tests —
   it runs an in-memory server, no Docker needed.
 - Every public function has at least one test.
 - Every error code has a test that triggers it.
@@ -266,12 +266,12 @@ flows through one of these. There is no fifth bucket.
 
 1. Create a new directory: `packages/adapters/my-adapter/` or `packages/channels/my-channel/`
 2. Add a `package.json` with `"name": "@awaithumans/my-adapter"`
-3. Implement the relevant interface (see `packages/core/src/types.ts`)
+3. Implement the relevant interface (see `packages/typescript-sdk/src/types.ts`)
 4. Add tests (use `createTestClient()` for integration tests)
 5. Add to `pnpm-workspace.yaml`
 6. Add an entry in the root README under "Community Adapters"
 
-An adapter depends on `packages/core` ONLY. Never import from `server`, `dashboard`,
+An adapter depends on `packages/typescript-sdk` ONLY. Never import from `server`, `dashboard`,
 or other adapters.
 
 ### How to Add a New Durable Adapter (e.g., a new workflow engine)
@@ -305,7 +305,7 @@ the idempotency key).
 - **Don't add dependencies without justification.** Every new dependency is a supply chain risk
   and a bundle size increase. If the standard library or an existing dep can do it, use that.
 - **Don't use `any`.** Use `unknown` and narrow with Zod or type guards.
-- **Don't write platform-specific code** (Node-only APIs) in `packages/core`. Core must work
+- **Don't write platform-specific code** (Node-only APIs) in `packages/typescript-sdk`. Core must work
   in Node, Bun, Deno, and edge runtimes.
 - **Don't put business logic in route handlers.** Routes validate input and call services.
   Services contain logic. This keeps routes thin and testable.

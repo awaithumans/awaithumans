@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 /**
  * Generate a deterministic idempotency key from task + payload.
  *
@@ -8,10 +6,18 @@ import { createHash } from "node:crypto";
  *
  * Durable adapters override this with the engine's execution identity
  * (e.g., Temporal workflowId + activityId + attempt).
+ *
+ * Uses Web Crypto API (not node:crypto) for cross-platform compatibility
+ * with Node, Bun, Deno, and edge runtimes.
  */
-export function generateIdempotencyKey(task: string, payload: unknown): string {
+export async function generateIdempotencyKey(task: string, payload: unknown): Promise<string> {
 	const canonical = canonicalStringify({ task, payload });
-	return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+	const encoded = new TextEncoder().encode(canonical);
+	const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+	const hashArray = new Uint8Array(hashBuffer);
+	return Array.from(hashArray.slice(0, 16))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
 }
 
 /**
@@ -28,9 +34,10 @@ function canonicalStringify(value: unknown): string {
 	}
 
 	if (typeof value === "object") {
-		const sorted = Object.keys(value as Record<string, unknown>)
+		const obj = value as Record<string, unknown>;
+		const sorted = Object.keys(obj)
 			.sort()
-			.map((key) => `${JSON.stringify(key)}:${canonicalStringify((value as Record<string, unknown>)[key])}`)
+			.map((key) => `${JSON.stringify(key)}:${canonicalStringify(obj[key])}`)
 			.join(",");
 		return `{${sorted}}`;
 	}

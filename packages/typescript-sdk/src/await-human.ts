@@ -37,22 +37,32 @@ export async function awaitHuman<TPayload, TResponse>(
 
 	// ── Generate idempotency key ────────────────────────────────────────
 	const idempotencyKey =
-		options.idempotencyKey ?? generateIdempotencyKey(options.task, options.payload);
+		options.idempotencyKey ?? (await generateIdempotencyKey(options.task, options.payload));
 
 	// ── Convert schemas to JSON Schema for the wire ─────────────────────
 	const payloadJsonSchema = zodToJsonSchema(options.payloadSchema);
 	const responseJsonSchema = zodToJsonSchema(options.responseSchema);
 
+	// ── Resolve server URL ──────────────────────────────────────────────
+	const serverUrl = process.env.AWAITHUMANS_URL ?? "http://localhost:3000";
+
 	// ── Create task on the server ───────────────────────────────────────
-	// TODO: implement HTTP client to server
-	// POST /api/tasks { task, payload, payloadSchema, responseSchema, timeoutMs, assignTo, notify, idempotencyKey, redactPayload }
+	// TODO: POST ${serverUrl}/api/tasks
+	// Body: { task, payload, payloadSchema: payloadJsonSchema, responseSchema: responseJsonSchema,
+	//         timeoutMs, assignTo, notify, idempotencyKey, redactPayload }
+	// Returns: { taskId }
 
 	// ── Long-poll until completion or timeout ───────────────────────────
-	// TODO: implement long-poll loop with reconnection every ~25s
-	// GET /api/tasks/:id/poll
+	// TODO: GET ${serverUrl}/api/tasks/${taskId}/poll
+	// Reconnect every ~25s to stay under gateway timeouts.
+	// On completion: validate response against responseSchema, return typed result.
+	// On timeout: throw TimeoutError.
+	// On verification_exhausted: throw VerificationExhaustedError.
 
-	// ── Validate response against schema ────────────────────────────────
-	// TODO: parse and validate the response, return typed result
-
-	throw new Error("Not yet implemented — core SDK is being built.");
+	// ── Placeholder until server is built ───────────────────────────────
+	void idempotencyKey;
+	void payloadJsonSchema;
+	void responseJsonSchema;
+	void serverUrl;
+	throw new Error("Not yet implemented — awaiting server package build.");
 }

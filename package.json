@@ -10,6 +10,8 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "test": "turbo run test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "typecheck": "turbo run typecheck",

@@ -3,6 +3,8 @@
   "version": "0.0.1",
   "description": "The human layer for AI agents. Your agents already await promises. Now they can await humans.",
   "type": "module",
+  "sideEffects": false,
+  "files": ["dist"],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -34,7 +36,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/awaithumans/awaithumans",
-    "directory": "packages/core"
+    "directory": "packages/typescript-sdk"
   },
   "keywords": [
     "human-in-the-loop",
