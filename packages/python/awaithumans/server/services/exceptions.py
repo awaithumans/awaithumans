@@ -1,0 +1,62 @@
+"""Service-layer exceptions.
+
+All service exceptions inherit from ServiceError, which carries a status_code
+and error_code. The single exception handler in core/exceptions.py uses these
+to build the HTTP response — no per-exception handler functions needed.
+"""
+
+from __future__ import annotations
+
+from awaithumans.types import TaskStatus
+
+
+class ServiceError(Exception):
+    """Base exception for all service-layer errors.
+
+    Carries status_code and error_code so the exception handler can build
+    the HTTP response without a per-exception handler function.
+    """
+
+    status_code: int = 500
+    error_code: str = "INTERNAL_ERROR"
+    docs_path: str = "internal-error"
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+    @property
+    def docs_url(self) -> str:
+        return f"https://awaithumans.dev/docs/troubleshooting#{self.docs_path}"
+
+
+class TaskNotFoundError(ServiceError):
+    status_code = 404
+    error_code = "TASK_NOT_FOUND"
+    docs_path = "task-not-found"
+
+    def __init__(self, task_id: str) -> None:
+        self.task_id = task_id
+        super().__init__(f"Task '{task_id}' not found.")
+
+
+class TaskAlreadyTerminalError(ServiceError):
+    status_code = 409
+    error_code = "TASK_ALREADY_TERMINAL"
+    docs_path = "task-already-terminal"
+
+    def __init__(self, task_id: str, status: TaskStatus) -> None:
+        self.task_id = task_id
+        self.status = status
+        super().__init__(f"Task '{task_id}' is already in terminal status '{status.value}'.")
+
+
+class TaskAlreadyExistsError(ServiceError):
+    status_code = 409
+    error_code = "TASK_ALREADY_EXISTS"
+    docs_path = "task-already-exists"
+
+    def __init__(self, task_id: str, idempotency_key: str) -> None:
+        self.task_id = task_id
+        self.idempotency_key = idempotency_key
+        super().__init__(f"Task with idempotency key '{idempotency_key}' already exists (id={task_id}).")

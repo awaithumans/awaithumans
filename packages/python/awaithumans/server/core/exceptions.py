@@ -1,49 +1,40 @@
-"""Centralized exception handlers for the FastAPI app.
+"""Centralized exception handler for the FastAPI app.
 
-Register these in app.py so all error responses are consistent.
+One handler for all ServiceError subclasses — no per-exception functions.
+The ServiceError base class carries status_code, error_code, and docs_url,
+so the handler just reads them off the exception.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from awaithumans.server.services.task_service import (
-    TaskAlreadyTerminalError,
-    TaskNotFoundError,
-)
+from awaithumans.server.services.exceptions import ServiceError
 
 logger = logging.getLogger("awaithumans.server.exceptions")
 
 
-async def task_not_found_handler(request: Request, exc: TaskNotFoundError) -> JSONResponse:
-    return JSONResponse(
-        status_code=404,
-        content={
-            "error": "TASK_NOT_FOUND",
-            "message": str(exc),
-            "docs": "https://awaithumans.dev/docs/troubleshooting#task-not-found",
-        },
-    )
+async def service_error_handler(request: Request, exc: ServiceError) -> JSONResponse:
+    """Handle all ServiceError subclasses with a single function.
 
-
-async def task_already_terminal_handler(
-    request: Request, exc: TaskAlreadyTerminalError
-) -> JSONResponse:
+    Reads status_code, error_code, message, and docs_url from the exception.
+    No need to register a separate handler for each exception type.
+    """
     return JSONResponse(
-        status_code=409,
+        status_code=exc.status_code,
         content={
-            "error": "TASK_ALREADY_TERMINAL",
-            "message": str(exc),
-            "docs": "https://awaithumans.dev/docs/troubleshooting#task-already-terminal",
+            "error": exc.error_code,
+            "message": exc.message,
+            "docs": exc.docs_url,
         },
     )
 
 
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all for unhandled exceptions. Logs the full traceback."""
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
@@ -55,8 +46,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
     )
 
 
-exception_handlers: dict[type[Exception], Any] = {
-    TaskNotFoundError: task_not_found_handler,
-    TaskAlreadyTerminalError: task_already_terminal_handler,
+exception_handlers: dict[type[Exception], object] = {
+    ServiceError: service_error_handler,
     Exception: generic_exception_handler,
 }

@@ -1,13 +1,16 @@
 """Task API routes — CRUD, long-poll, completion.
 
 Route handlers only. All request/response models live in server/schemas.py.
+Service exceptions (TaskNotFoundError, etc.) propagate to the centralized
+handler in core/exceptions.py — no try/except in routes.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.db.connection import get_session
@@ -20,8 +23,6 @@ from awaithumans.server.schemas import (
     TaskResponse,
 )
 from awaithumans.server.services.task_service import (
-    TaskAlreadyTerminalError,
-    TaskNotFoundError,
     cancel_task,
     complete_task,
     create_task,
@@ -31,6 +32,7 @@ from awaithumans.server.services.task_service import (
 )
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+logger = logging.getLogger("awaithumans.server.routes.tasks")
 
 TERMINAL_STATUSES_SET = set(TERMINAL_STATUSES)
 
@@ -97,10 +99,7 @@ async def get_task_route(
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
     """Get a single task by ID."""
-    try:
-        task = await get_task(session, task_id)
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    task = await get_task(session, task_id)
     return _task_to_response(task)
 
 
@@ -112,24 +111,16 @@ async def complete_task_route(
 ) -> TaskResponse:
     """Complete a task with the human's response.
 
-    First-writer-wins: if the task is already terminal (e.g., timed out),
-    returns 409 Conflict.
+    First-writer-wins: if the task is already terminal, returns 409 Conflict
+    (handled by the centralized ServiceError handler).
     """
-    try:
-        task = await complete_task(
-            session,
-            task_id=task_id,
-            response=body.response,
-            completed_by_email=body.completed_by_email,
-            completed_via_channel=body.completed_via_channel,
-        )
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-    except TaskAlreadyTerminalError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Task '{task_id}' is already in terminal status '{e.status.value}'.",
-        )
+    task = await complete_task(
+        session,
+        task_id=task_id,
+        response=body.response,
+        completed_by_email=body.completed_by_email,
+        completed_via_channel=body.completed_via_channel,
+    )
     return _task_to_response(task)
 
 
@@ -139,15 +130,7 @@ async def cancel_task_route(
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
     """Cancel a task."""
-    try:
-        task = await cancel_task(session, task_id)
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-    except TaskAlreadyTerminalError as e:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Task '{task_id}' is already in terminal status '{e.status.value}'.",
-        )
+    task = await cancel_task(session, task_id)
     return _task_to_response(task)
 
 
@@ -172,10 +155,7 @@ async def poll_task_route(
 
     # Check current state immediately
     async with factory() as session:
-        try:
-            task = await get_task(session, task_id)
-        except TaskNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+        task = await get_task(session, task_id)
 
         if task.status in TERMINAL_STATUSES_SET:
             return PollResponse(
@@ -187,6 +167,7 @@ async def poll_task_route(
 
     # Long-poll: check every 1 second with a fresh session each time
     elapsed = 0
+    last_status = task.status.value
     while elapsed < timeout:
         await asyncio.sleep(1)
         elapsed += 1
@@ -218,10 +199,6 @@ async def get_audit_trail_route(
     session: AsyncSession = Depends(get_session),
 ) -> list[AuditEntryResponse]:
     """Get the full audit trail for a task."""
-    try:
-        await get_task(session, task_id)  # Verify task exists
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-
+    await get_task(session, task_id)  # Verify task exists (raises TaskNotFoundError if not)
     entries = await get_audit_trail(session, task_id)
     return [AuditEntryResponse.model_validate(e) for e in entries]

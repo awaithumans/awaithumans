@@ -1,4 +1,8 @@
-"""Task lifecycle service — core business logic."""
+"""Task lifecycle service — core business logic.
+
+Pure business logic. No HTTP, no routes, no framework concerns.
+Raises domain exceptions from services/exceptions.py.
+"""
 
 from __future__ import annotations
 
@@ -14,31 +18,10 @@ from awaithumans.server.db.models import (
     TaskStatus,
     TERMINAL_STATUSES,
 )
-
-
-class TaskAlreadyExistsError(Exception):
-    """Raised when a task with the same idempotency key already exists and is non-terminal."""
-
-    def __init__(self, existing_task: Task) -> None:
-        self.existing_task = existing_task
-        super().__init__(f"Task with idempotency key '{existing_task.idempotency_key}' already exists.")
-
-
-class TaskNotFoundError(Exception):
-    """Raised when a task is not found."""
-
-    def __init__(self, task_id: str) -> None:
-        self.task_id = task_id
-        super().__init__(f"Task '{task_id}' not found.")
-
-
-class TaskAlreadyTerminalError(Exception):
-    """Raised when trying to modify a task that is already in a terminal state."""
-
-    def __init__(self, task_id: str, status: TaskStatus) -> None:
-        self.task_id = task_id
-        self.status = status
-        super().__init__(f"Task '{task_id}' is already in terminal status '{status.value}'.")
+from awaithumans.server.services.exceptions import (
+    TaskAlreadyTerminalError,
+    TaskNotFoundError,
+)
 
 
 async def create_task(
