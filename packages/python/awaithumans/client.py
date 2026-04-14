@@ -89,9 +89,9 @@ async def await_human(
 def await_human_sync(
     *,
     task: str,
-    payload_schema: type[BaseModel],
+    payload_schema: type[T],
     payload: BaseModel,
-    response_schema: type[BaseModel],
+    response_schema: type[T],
     timeout_seconds: int,
     assign_to: object | None = None,
     notify: list[str] | None = None,
@@ -99,7 +99,7 @@ def await_human_sync(
     idempotency_key: str | None = None,
     redact_payload: bool = False,
     server_url: str | None = None,
-) -> BaseModel:
+) -> T:
     """
     Delegate a task to a human and block until the result (sync).
 

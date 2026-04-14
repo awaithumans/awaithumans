@@ -33,12 +33,14 @@ from awaithumans.types import (
     VerifierConfig,
     VerifierResult,
 )
+from __future__ import annotations
+
 from awaithumans.errors import (
     AwaitHumansError,
     MarketplaceNotAvailableError,
     SchemaValidationError,
     TaskAlreadyTerminalError,
-    TimeoutError,
+    TaskTimeoutError,
     TimeoutRangeError,
     VerificationExhaustedError,
 )
@@ -58,7 +60,7 @@ __all__ = [
     "MarketplaceNotAvailableError",
     "SchemaValidationError",
     "TaskAlreadyTerminalError",
-    "TimeoutError",
+    "TaskTimeoutError",
     "TimeoutRangeError",
     "VerificationExhaustedError",
 ]

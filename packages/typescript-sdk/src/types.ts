@@ -28,14 +28,17 @@ export interface AwaitHumanOptions<TPayload, TResponse> {
 	/** Notification channels. E.g., ["slack:#ops", "email:sara@co.com"]. */
 	notify?: string[];
 
-	/** AI verifier for quality checking + NL parsing. Optional — no verifier = human answer trusted. */
-	verifier?: Verifier;
+	/** AI verifier config — sent to the server for execution. Optional — no verifier = human answer trusted. */
+	verifier?: VerifierConfig;
 
 	/** Explicit idempotency key. Defaults to content hash (direct mode) or engine identity (durable adapters). */
 	idempotencyKey?: string;
 
 	/** If true, audit log hides the payload body. */
 	redactPayload?: boolean;
+
+	/** Server URL override. Defaults to AWAITHUMANS_URL env var or http://localhost:3001. */
+	serverUrl?: string;
 }
 
 // ─── Routing ────────────────────────────────────────────────────────────
@@ -79,8 +82,24 @@ export interface HumanIdentity {
 	accessLevel?: string;
 }
 
-// ─── Verifier Interface ─────────────────────────────────────────────────
+// ─── Verifier ───────────────────────────────────────────────────────────
 
+/**
+ * Verifier configuration — sent to the server, which executes it.
+ * The SDK does NOT run verification locally. This is a config blob.
+ */
+export interface VerifierConfig {
+	provider: string;
+	model?: string;
+	instructions: string;
+	maxAttempts: number;
+	apiKeyEnv?: string;
+}
+
+/**
+ * Server-side verifier interface. Exported for reference / adapter authors.
+ * The Python server implements this, not the TS SDK.
+ */
 export interface Verifier {
 	verify(context: VerificationContext): Promise<VerifierResult>;
 	maxAttempts: number;

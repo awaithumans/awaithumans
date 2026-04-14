@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime
-from typing import Any, Callable, Literal, Union
+from typing import Any, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ─── Core Primitive Options ──────────────────────────────────────────────
@@ -30,8 +30,7 @@ class AwaitHumanOptions(BaseModel):
     idempotency_key: str | None = Field(default=None, description="Explicit idempotency key.")
     redact_payload: bool = Field(default=False, description="If true, audit log hides payload.")
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # ─── Routing ─────────────────────────────────────────────────────────────

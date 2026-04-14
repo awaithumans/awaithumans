@@ -27,7 +27,7 @@ export class AwaitHumansError extends Error {
 	}
 }
 
-export class TimeoutError extends AwaitHumansError {
+export class TaskTimeoutError extends AwaitHumansError {
 	constructor(task: string, timeoutMs: number) {
 		super({
 			code: "TIMEOUT_EXCEEDED",

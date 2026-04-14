@@ -43,8 +43,12 @@ export async function awaitHuman<TPayload, TResponse>(
 	const payloadJsonSchema = zodToJsonSchema(options.payloadSchema);
 	const responseJsonSchema = zodToJsonSchema(options.responseSchema);
 
-	// ── Resolve server URL ──────────────────────────────────────────────
-	const serverUrl = process.env.AWAITHUMANS_URL ?? "http://localhost:3000";
+	// ── Resolve server URL (cross-platform, no node:* dependency) ───────
+	const envUrl =
+		typeof globalThis.process !== "undefined"
+			? globalThis.process.env?.AWAITHUMANS_URL
+			: undefined;
+	const serverUrl = options.serverUrl ?? envUrl ?? "http://localhost:3001";
 
 	// ── Create task on the server ───────────────────────────────────────
 	// TODO: POST ${serverUrl}/api/tasks

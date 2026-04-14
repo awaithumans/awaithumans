@@ -1,15 +1,26 @@
 export { awaitHuman } from "./await-human";
 
+// ─── SDK types (used by developers in their agent code) ─────────────
 export type {
 	AwaitHumanOptions,
 	AssignTo,
+	HumanIdentity,
+	TaskStatus,
+	TaskRecord,
+	VerifierConfig,
+	VerificationContext,
+	VerifierResult,
+} from "./types";
+
+export { TERMINAL_STATUSES } from "./types";
+
+// ─── Server-side interfaces (exported for reference / adapter authors only) ──
+// These interfaces are implemented by the Python server, not the TS SDK.
+// They are exported so adapter authors and documentation can reference them.
+export type {
 	Router,
 	RouteContext,
 	Assignment,
-	HumanIdentity,
-	Verifier,
-	VerificationContext,
-	VerifierResult,
 	Channel,
 	ChannelContext,
 	ChannelNotifyResult,
@@ -17,17 +28,13 @@ export type {
 	ChannelHandleResult,
 	TaskTypeHandler,
 	RenderFormat,
-	TaskStatus,
-	TaskRecord,
 } from "./types";
-
-export { TERMINAL_STATUSES } from "./types";
 
 export { awaitHumanInputSchema } from "./schemas";
 
 export {
 	AwaitHumansError,
-	TimeoutError,
+	TaskTimeoutError,
 	SchemaValidationError,
 	TimeoutRangeError,
 	TaskAlreadyTerminalError,

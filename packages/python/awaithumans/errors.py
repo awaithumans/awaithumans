@@ -17,7 +17,7 @@ class AwaitHumansError(Exception):
         super().__init__(full_message)
 
 
-class TimeoutError(AwaitHumansError):
+class TaskTimeoutError(AwaitHumansError):
     def __init__(self, task: str, timeout_seconds: int) -> None:
         super().__init__(
             code="TIMEOUT_EXCEEDED",
