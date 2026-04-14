@@ -1,5 +1,4 @@
 packages:
-  - "packages/*"
-  - "packages/adapters/*"
-  - "packages/channels/*"
+  - "packages/typescript-sdk"
+  - "packages/dashboard"
   - "examples/*"

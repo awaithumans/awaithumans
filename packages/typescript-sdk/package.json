@@ -15,7 +15,25 @@
     "./testing": {
       "import": "./dist/testing.js",
       "types": "./dist/testing.d.ts"
+    },
+    "./temporal": {
+      "import": "./dist/adapters/temporal/index.js",
+      "types": "./dist/adapters/temporal/index.d.ts"
+    },
+    "./langgraph": {
+      "import": "./dist/adapters/langgraph/index.js",
+      "types": "./dist/adapters/langgraph/index.d.ts"
     }
+  },
+  "peerDependencies": {
+    "@temporalio/client": "^1.0.0",
+    "@temporalio/workflow": "^1.0.0",
+    "@langchain/langgraph": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@temporalio/client": { "optional": true },
+    "@temporalio/workflow": { "optional": true },
+    "@langchain/langgraph": { "optional": true }
   },
   "scripts": {
     "build": "tsc",
