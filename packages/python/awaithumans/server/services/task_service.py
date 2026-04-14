@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.db.models import (
@@ -66,6 +67,7 @@ async def create_task(
         return existing
 
     # Create the task
+    now = datetime.now(timezone.utc)
     new_task = Task(
         task=task,
         payload=payload,
@@ -79,6 +81,9 @@ async def create_task(
         redact_payload=redact_payload,
         callback_url=callback_url,
         status=TaskStatus.CREATED,
+        created_at=now,
+        updated_at=now,
+        timeout_at=now + timedelta(seconds=timeout_seconds),
     )
     session.add(new_task)
 
@@ -92,7 +97,18 @@ async def create_task(
     )
     session.add(audit)
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Race condition: another request inserted with the same idempotency key
+        # between our SELECT and INSERT. Roll back and return the existing task.
+        await session.rollback()
+        existing = await _find_active_task_by_idempotency_key(session, idempotency_key)
+        if existing is not None:
+            return existing
+        # The existing task went terminal between our attempts — re-raise
+        raise
+
     await session.refresh(new_task)
     return new_task
 
@@ -148,7 +164,7 @@ async def complete_task(
     result = await session.execute(
         update(Task)
         .where(Task.id == task_id)
-        .where(Task.status.notin_([s.value for s in TERMINAL_STATUSES]))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
         .values(
             status=TaskStatus.COMPLETED,
             response=response,
@@ -194,7 +210,7 @@ async def timeout_task(session: AsyncSession, task_id: str) -> Task:
     result = await session.execute(
         update(Task)
         .where(Task.id == task_id)
-        .where(Task.status.notin_([s.value for s in TERMINAL_STATUSES]))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
         .values(
             status=TaskStatus.TIMED_OUT,
             timed_out_at=now,
@@ -230,15 +246,20 @@ async def cancel_task(session: AsyncSession, task_id: str) -> Task:
 
     now = datetime.now(timezone.utc)
 
-    await session.execute(
+    result = await session.execute(
         update(Task)
         .where(Task.id == task_id)
-        .where(Task.status.notin_([s.value for s in TERMINAL_STATUSES]))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
         .values(
             status=TaskStatus.CANCELLED,
             updated_at=now,
         )
     )
+
+    if result.rowcount == 0:
+        # Race condition: task was completed/timed out between our check and update
+        await session.refresh(task)
+        raise TaskAlreadyTerminalError(task_id, task.status)
 
     audit = AuditEntry(
         task_id=task_id,
@@ -271,6 +292,6 @@ async def _find_active_task_by_idempotency_key(
     result = await session.execute(
         select(Task)
         .where(Task.idempotency_key == idempotency_key)
-        .where(Task.status.notin_([s.value for s in TERMINAL_STATUSES]))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
     )
     return result.scalar_one_or_none()

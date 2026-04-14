@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -69,7 +70,7 @@ def get_async_session_factory():
     return _async_session_factory
 
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency — yields an async database session."""
     factory = get_async_session_factory()
     async with factory() as session:

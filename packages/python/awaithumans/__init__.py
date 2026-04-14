@@ -19,6 +19,7 @@ Usage (sync):
 
     result = await_human_sync(task=..., ...)
 """
+from __future__ import annotations
 
 __version__ = "0.1.0"
 
@@ -33,8 +34,6 @@ from awaithumans.types import (
     VerifierConfig,
     VerifierResult,
 )
-from __future__ import annotations
-
 from awaithumans.errors import (
     AwaitHumansError,
     MarketplaceNotAvailableError,

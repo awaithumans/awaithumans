@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import enum
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 from sqlmodel import JSON, Column, Field, SQLModel
+
+from awaithumans.types import TaskStatus, TERMINAL_STATUSES
 
 
 def _utc_now() -> datetime:
@@ -18,35 +19,13 @@ def _new_id() -> str:
     return uuid4().hex
 
 
-class TaskStatus(str, enum.Enum):
-    CREATED = "created"
-    NOTIFIED = "notified"
-    ASSIGNED = "assigned"
-    IN_PROGRESS = "in_progress"
-    SUBMITTED = "submitted"
-    VERIFIED = "verified"
-    COMPLETED = "completed"
-    REJECTED = "rejected"
-    TIMED_OUT = "timed_out"
-    CANCELLED = "cancelled"
-    VERIFICATION_EXHAUSTED = "verification_exhausted"
-
-
-TERMINAL_STATUSES = frozenset({
-    TaskStatus.COMPLETED,
-    TaskStatus.TIMED_OUT,
-    TaskStatus.CANCELLED,
-    TaskStatus.VERIFICATION_EXHAUSTED,
-})
-
-
 class Task(SQLModel, table=True):
     """Core task record — one row per awaitHuman() call."""
 
     __tablename__ = "tasks"
 
     id: str = Field(default_factory=_new_id, primary_key=True)
-    idempotency_key: str = Field(index=True)
+    idempotency_key: str = Field(index=True, unique=True)
 
     # Task description
     task: str = Field(description="Human-readable task description.")
@@ -81,6 +60,7 @@ class Task(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_utc_now)
     completed_at: datetime | None = Field(default=None)
     timed_out_at: datetime | None = Field(default=None)
+    timeout_at: datetime | None = Field(default=None, index=True, description="Pre-computed: created_at + timeout_seconds. Used by timeout scheduler.")
 
     # Webhook callback
     callback_url: str | None = Field(default=None)

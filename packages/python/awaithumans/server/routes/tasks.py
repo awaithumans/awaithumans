@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,7 +11,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.db.connection import get_session
-from awaithumans.server.db.models import TaskStatus
+from awaithumans.server.db.models import Task, TaskStatus, TERMINAL_STATUSES
+
+TERMINAL_STATUSES_SET = set(TERMINAL_STATUSES)
 from awaithumans.server.services.task_service import (
     TaskAlreadyTerminalError,
     TaskNotFoundError,
@@ -50,7 +52,7 @@ class TaskResponse(BaseModel):
     payload: dict[str, Any] | None = None
     payload_schema: dict[str, Any]
     response_schema: dict[str, Any]
-    status: str
+    status: TaskStatus
     assign_to: dict[str, Any] | None = None
     assigned_to_email: str | None = None
     response: dict[str, Any] | None = None
@@ -99,7 +101,7 @@ class PollResponse(BaseModel):
 # ─── Helper ──────────────────────────────────────────────────────────────
 
 
-def _task_to_response(task: Any, *, redact: bool = False) -> TaskResponse:
+def _task_to_response(task: Task, *, redact: bool = False) -> TaskResponse:
     """Convert a Task model to a TaskResponse, optionally redacting payload."""
     data = TaskResponse.model_validate(task)
     if redact and task.redact_payload:
@@ -135,17 +137,16 @@ async def create_task_route(
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks_route(
-    status: str | None = Query(None, description="Filter by status"),
+    status: TaskStatus | None = Query(None, description="Filter by status"),
     assigned_to: str | None = Query(None, description="Filter by assigned email"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[TaskResponse]:
     """List tasks with optional filters."""
-    status_enum = TaskStatus(status) if status else None
     tasks = await list_tasks(
         session,
-        status=status_enum,
+        status=status,
         assigned_to_email=assigned_to,
         limit=limit,
         offset=offset,
@@ -217,42 +218,29 @@ async def cancel_task_route(
 async def poll_task_route(
     task_id: str,
     timeout: int = Query(25, ge=1, le=30, description="Long-poll timeout in seconds"),
-    session: AsyncSession = Depends(get_session),
 ) -> PollResponse:
     """Long-poll for task completion.
 
-    Holds the connection open for up to `timeout` seconds (default 25, max 30).
+    Holds the HTTP connection open for up to `timeout` seconds (default 25, max 30).
     Returns immediately if the task is already in a terminal state.
     If the task is still pending after the timeout, returns the current status
     so the client can reconnect.
+
+    Note: does NOT hold a DB session open during the wait — acquires a fresh
+    short-lived session for each 1-second check to avoid exhausting the pool.
     """
+    from awaithumans.server.db.connection import get_async_session_factory
+
+    factory = get_async_session_factory()
+
     # Check current state immediately
-    try:
-        task = await get_task(session, task_id)
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    async with factory() as session:
+        try:
+            task = await get_task(session, task_id)
+        except TaskNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
 
-    if task.status in {TaskStatus.COMPLETED, TaskStatus.TIMED_OUT,
-                       TaskStatus.CANCELLED, TaskStatus.VERIFICATION_EXHAUSTED}:
-        return PollResponse(
-            status=task.status.value,
-            response=task.response,
-            completed_at=task.completed_at,
-            timed_out_at=task.timed_out_at,
-        )
-
-    # Long-poll: check every 1 second until timeout or terminal state
-    elapsed = 0
-    while elapsed < timeout:
-        await asyncio.sleep(1)
-        elapsed += 1
-
-        # Re-fetch from DB to see if status changed
-        await session.expire(task)
-        task = await get_task(session, task_id)
-
-        if task.status in {TaskStatus.COMPLETED, TaskStatus.TIMED_OUT,
-                           TaskStatus.CANCELLED, TaskStatus.VERIFICATION_EXHAUSTED}:
+        if task.status in TERMINAL_STATUSES_SET:
             return PollResponse(
                 status=task.status.value,
                 response=task.response,
@@ -260,9 +248,27 @@ async def poll_task_route(
                 timed_out_at=task.timed_out_at,
             )
 
+    # Long-poll: check every 1 second with a fresh session each time
+    elapsed = 0
+    while elapsed < timeout:
+        await asyncio.sleep(1)
+        elapsed += 1
+
+        async with factory() as session:
+            task = await get_task(session, task_id)
+
+            if task.status in TERMINAL_STATUSES_SET:
+                return PollResponse(
+                    status=task.status.value,
+                    response=task.response,
+                    completed_at=task.completed_at,
+                    timed_out_at=task.timed_out_at,
+                )
+            last_status = task.status.value
+
     # Timeout — return current status so client can reconnect
     return PollResponse(
-        status=task.status.value,
+        status=last_status,
         response=None,
         completed_at=None,
         timed_out_at=None,
