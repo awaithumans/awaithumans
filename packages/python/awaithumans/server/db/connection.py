@@ -1,64 +1,39 @@
-"""Database connection management."""
+"""Database connection management.
+
+Uses the centralized settings from server/core/config.py.
+"""
 
 from __future__ import annotations
 
-import os
+import logging
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
 from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from awaithumans.server.core.config import settings
 
-def get_database_url() -> str:
-    """Resolve the database URL from environment or default to SQLite."""
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        # Convert postgres:// to postgresql+asyncpg:// for async
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif url.startswith("postgresql://"):
-            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return url
+logger = logging.getLogger("awaithumans.server.db")
 
-    # Default: SQLite for development
-    db_path = os.environ.get("AWAITHUMANS_DB_PATH", ".awaithumans/dev.db")
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    return f"sqlite+aiosqlite:///{db_path}"
-
-
-def get_sync_database_url() -> str:
-    """Resolve the sync database URL (for migrations and CLI commands)."""
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
-        return url
-
-    db_path = os.environ.get("AWAITHUMANS_DB_PATH", ".awaithumans/dev.db")
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    return f"sqlite:///{db_path}"
-
-
-# Async engine for the FastAPI server
+# Async engine (lazily initialized)
 _async_engine = None
+
+# Async session factory (lazily initialized)
+_async_session_factory = None
 
 
 def get_async_engine():
     """Get or create the async database engine."""
     global _async_engine
     if _async_engine is None:
-        url = get_database_url()
+        url = settings.database_url_async
         connect_args = {}
         if "sqlite" in url:
             connect_args["check_same_thread"] = False
         _async_engine = create_async_engine(url, connect_args=connect_args, echo=False)
+        logger.info("Database engine created (url=%s)", url.split("@")[-1] if "@" in url else url)
     return _async_engine
-
-
-# Async session factory
-_async_session_factory = None
 
 
 def get_async_session_factory():
@@ -82,6 +57,7 @@ async def init_db() -> None:
     engine = get_async_engine()
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+    logger.info("Database tables created")
 
 
 async def close_db() -> None:
@@ -91,3 +67,4 @@ async def close_db() -> None:
         await _async_engine.dispose()
         _async_engine = None
         _async_session_factory = None
+        logger.info("Database engine closed")
