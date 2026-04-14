@@ -1,7 +1,7 @@
 {
   "name": "@awaithumans/dashboard",
   "version": "0.0.1",
-  "description": "Self-hosted HITL review dashboard — Next.js 15 + React 19",
+  "description": "Self-hosted HITL review dashboard — Next.js 16 + React 19",
   "type": "module",
   "private": true,
   "scripts": {
@@ -13,7 +13,7 @@
     "clean": "rm -rf .next dist"
   },
   "dependencies": {
-    "next": "^15.1.0",
+    "next": "^16.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.0.0",

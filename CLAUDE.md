@@ -26,7 +26,7 @@ The project has three packages:
    verification, AND the Python SDK. Published as `awaithumans` on PyPI.
    This is the brain of the system.
 
-2. **Dashboard** (`packages/dashboard/`) — Next.js 15 web UI. Pre-built to
+2. **Dashboard** (`packages/dashboard/`) — Next.js 16 web UI. Pre-built to
    static files and bundled into the Python package for production. Separate
    dev server for development.
 
@@ -92,7 +92,7 @@ awaithumans/
 │   │   ├── pyproject.toml            # One package, multiple extras: [server], [temporal], [langgraph]
 │   │   └── tests/
 │   │
-│   ├── dashboard/                    # Next.js 15 web UI (standalone React app)
+│   ├── dashboard/                    # Next.js 16 web UI (standalone React app)
 │   │   ├── app/                      # App Router pages
 │   │   ├── components/               # shadcn/ui components (brand palette: #0A0A0A / #F5F5F5 / #00E676)
 │   │   ├── lib/                      # API client, hooks, utilities
@@ -245,7 +245,7 @@ The TypeScript SDK and dashboard follow these rules:
 
 ### Dashboard Specifics
 
-- Next.js 15 App Router + React 19 + Tailwind + shadcn/ui.
+- Next.js 16 App Router + React 19 + Tailwind + shadcn/ui.
 - Brand palette: background `#0A0A0A`, foreground `#F5F5F5`, accent `#00E676`.
 - TypeScript types are auto-generated from the Python API's OpenAPI spec.
 - The dashboard talks to the server via HTTP API ONLY — never imports Python.
