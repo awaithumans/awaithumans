@@ -1,0 +1,139 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { fetchTasks, type Task, type TaskStatus } from "@/lib/api";
+import { cn, formatRelativeTime, statusBadgeColor } from "@/lib/utils";
+
+const STATUS_FILTERS: { label: string; value: TaskStatus | "all" }[] = [
+	{ label: "All", value: "all" },
+	{ label: "Pending", value: "created" },
+	{ label: "Assigned", value: "assigned" },
+	{ label: "Completed", value: "completed" },
+	{ label: "Timed Out", value: "timed_out" },
+	{ label: "Cancelled", value: "cancelled" },
+];
+
+export default function TaskQueuePage() {
+	const [tasks, setTasks] = useState<Task[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
+
+	const loadTasks = async () => {
+		try {
+			setError(null);
+			const params = statusFilter === "all" ? {} : { status: statusFilter };
+			const data = await fetchTasks(params);
+			setTasks(data);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to load tasks");
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		loadTasks();
+		// Poll every 5 seconds for updates
+		const interval = setInterval(loadTasks, 5000);
+		return () => clearInterval(interval);
+	}, [statusFilter]);
+
+	return (
+		<div>
+			<div className="flex items-center justify-between mb-6">
+				<div>
+					<h1 className="text-2xl font-bold">Tasks</h1>
+					<p className="text-white/40 text-sm mt-1">
+						{tasks.length} task{tasks.length !== 1 ? "s" : ""}
+					</p>
+				</div>
+				<div className="flex gap-2">
+					{STATUS_FILTERS.map((f) => (
+						<button
+							key={f.value}
+							type="button"
+							onClick={() => setStatusFilter(f.value)}
+							className={cn(
+								"px-3 py-1.5 text-sm rounded-md border transition-colors",
+								statusFilter === f.value
+									? "bg-[#00E676]/10 text-[#00E676] border-[#00E676]/30"
+									: "bg-white/5 text-white/50 border-white/10 hover:text-white/80",
+							)}
+						>
+							{f.label}
+						</button>
+					))}
+				</div>
+			</div>
+
+			{error && (
+				<div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-4 text-red-400 text-sm">
+					{error}
+				</div>
+			)}
+
+			{loading ? (
+				<div className="text-white/40 text-sm">Loading tasks...</div>
+			) : tasks.length === 0 ? (
+				<div className="text-center py-20">
+					<p className="text-white/40 text-lg">No tasks yet</p>
+					<p className="text-white/20 text-sm mt-2">
+						Tasks will appear here when an agent calls await_human()
+					</p>
+				</div>
+			) : (
+				<div className="border border-white/10 rounded-lg overflow-hidden">
+					<table className="w-full">
+						<thead>
+							<tr className="border-b border-white/10 text-left text-white/40 text-xs uppercase tracking-wider">
+								<th className="px-4 py-3">Task</th>
+								<th className="px-4 py-3">Status</th>
+								<th className="px-4 py-3">Assigned To</th>
+								<th className="px-4 py-3">Created</th>
+								<th className="px-4 py-3">Timeout</th>
+							</tr>
+						</thead>
+						<tbody>
+							{tasks.map((task) => (
+								<tr
+									key={task.id}
+									className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
+									onClick={() => {
+										window.location.href = `/tasks/${task.id}`;
+									}}
+								>
+									<td className="px-4 py-3">
+										<div className="font-medium text-sm">{task.task}</div>
+										<div className="text-white/30 text-xs font-mono mt-0.5">
+											{task.id.slice(0, 12)}...
+										</div>
+									</td>
+									<td className="px-4 py-3">
+										<span
+											className={cn(
+												"inline-flex px-2 py-0.5 text-xs rounded-full border",
+												statusBadgeColor(task.status),
+											)}
+										>
+											{task.status}
+										</span>
+									</td>
+									<td className="px-4 py-3 text-sm text-white/60">
+										{task.assigned_to_email ?? task.assign_to ? "Routed" : "—"}
+									</td>
+									<td className="px-4 py-3 text-sm text-white/40">
+										{formatRelativeTime(task.created_at)}
+									</td>
+									<td className="px-4 py-3 text-sm text-white/40">
+										{Math.round(task.timeout_seconds / 60)}m
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			)}
+		</div>
+	);
+}
