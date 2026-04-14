@@ -22,14 +22,15 @@ to resume the agent when the human is done.
 ```
 awaithumans/
 ├── packages/
-│   ├── core/                     # The SDK. Exports awaitHuman(), types, schemas, test client.
+│   ├── typescript-sdk/            # The TS SDK. Exports awaitHuman(), types, schemas, test client.
 │   │   └── src/                  #   This is what `npm install awaithumans` gives you.
-│   │       ├── index.ts          #   Public API — named exports only.
+│   │       ├── index.ts          #   Public API — named re-exports only. No logic here.
 │   │       ├── types.ts          #   All shared TypeScript types and interfaces.
 │   │       ├── schemas.ts        #   Zod schema helpers and JSON Schema utilities.
 │   │       ├── await-human.ts    #   The awaitHuman() function (direct mode).
-│   │       ├── idempotency.ts    #   Canonical hashing + idempotency key generation.
+│   │       ├── idempotency.ts    #   Canonical hashing + idempotency key generation (Web Crypto API).
 │   │       ├── errors.ts         #   All error classes. Every error has a code + docs URL.
+│   │       ├── reserved.ts       #   awaitAgent() + awaitAny() stubs (Phase 4 placeholders).
 │   │       └── testing.ts        #   createTestClient() — in-memory server for tests.
 │   │
 │   ├── server/                   # The HTTP server. Hono + Drizzle + SQLite/Postgres.
