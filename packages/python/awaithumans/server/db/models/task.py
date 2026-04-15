@@ -1,22 +1,14 @@
-"""Database models — SQLModel schema for tasks and audit trail."""
+"""Task model — one row per awaitHuman() call."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from sqlmodel import JSON, Column, Field, SQLModel
 
-from awaithumans.types import TaskStatus, TERMINAL_STATUSES
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _new_id() -> str:
-    return uuid4().hex
+from awaithumans.types import TaskStatus
+from awaithumans.server.db.models.base import new_id, utc_now
 
 
 class Task(SQLModel, table=True):
@@ -24,7 +16,7 @@ class Task(SQLModel, table=True):
 
     __tablename__ = "tasks"
 
-    id: str = Field(default_factory=_new_id, primary_key=True)
+    id: str = Field(default_factory=new_id, primary_key=True)
     idempotency_key: str = Field(index=True, unique=True)
 
     # Task description
@@ -56,11 +48,15 @@ class Task(SQLModel, table=True):
     redact_payload: bool = Field(default=False)
 
     # Timestamps
-    created_at: datetime = Field(default_factory=_utc_now)
-    updated_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     completed_at: datetime | None = Field(default=None)
     timed_out_at: datetime | None = Field(default=None)
-    timeout_at: datetime | None = Field(default=None, index=True, description="Pre-computed: created_at + timeout_seconds. Used by timeout scheduler.")
+    timeout_at: datetime | None = Field(
+        default=None,
+        index=True,
+        description="Pre-computed: created_at + timeout_seconds. Used by timeout scheduler.",
+    )
 
     # Webhook callback
     callback_url: str | None = Field(default=None)
@@ -68,28 +64,3 @@ class Task(SQLModel, table=True):
     # Metadata
     completed_by_email: str | None = Field(default=None)
     completed_via_channel: str | None = Field(default=None)
-
-
-class AuditEntry(SQLModel, table=True):
-    """Audit trail — one row per state transition."""
-
-    __tablename__ = "audit_entries"
-
-    id: str = Field(default_factory=_new_id, primary_key=True)
-    task_id: str = Field(index=True)
-
-    # What happened
-    from_status: str | None = Field(default=None)
-    to_status: str
-    action: str = Field(description="E.g., 'created', 'notified', 'completed', 'timed_out'")
-
-    # Who did it
-    actor_type: str = Field(description="'system', 'human', or 'agent'")
-    actor_email: str | None = Field(default=None)
-
-    # Context
-    channel: str | None = Field(default=None, description="E.g., 'slack', 'email', 'dashboard'")
-    metadata: dict[str, Any] | None = Field(sa_column=Column(JSON), default=None)
-
-    # When
-    created_at: datetime = Field(default_factory=_utc_now)
