@@ -29,7 +29,7 @@ class AuditEntry(SQLModel, table=True):
 
     # Context
     channel: str | None = Field(default=None, description="E.g., 'slack', 'email', 'dashboard'")
-    metadata: dict[str, Any] | None = Field(sa_column=Column(JSON), default=None)
+    extra_data: dict[str, Any] | None = Field(sa_column=Column(JSON), default=None)
 
     # When
     created_at: datetime = Field(default_factory=utc_now)

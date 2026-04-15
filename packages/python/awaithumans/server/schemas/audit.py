@@ -17,7 +17,7 @@ class AuditEntryResponse(BaseModel):
     actor_type: str
     actor_email: str | None = None
     channel: str | None = None
-    metadata: dict[str, Any] | None = None
+    extra_data: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

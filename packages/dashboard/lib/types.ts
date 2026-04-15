@@ -49,7 +49,7 @@ export interface AuditEntry {
 	actor_type: string;
 	actor_email: string | null;
 	channel: string | null;
-	metadata: Record<string, unknown> | null;
+	extra_data: Record<string, unknown> | null;
 	created_at: string;
 }
 

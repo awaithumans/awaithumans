@@ -168,7 +168,7 @@ async def complete_task(
         actor_type="human",
         actor_email=completed_by_email,
         channel=completed_via_channel,
-        metadata={"response_keys": list(response.keys())} if response else None,
+        extra_data={"response_keys": list(response.keys())} if response else None,
     )
     session.add(audit)
     await session.commit()
@@ -207,7 +207,7 @@ async def timeout_task(session: AsyncSession, task_id: str) -> Task:
         to_status=TaskStatus.TIMED_OUT.value,
         action="timed_out",
         actor_type="system",
-        metadata={"timeout_seconds": task.timeout_seconds},
+        extra_data={"timeout_seconds": task.timeout_seconds},
     )
     session.add(audit)
     await session.commit()
