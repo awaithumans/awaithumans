@@ -10,5 +10,7 @@ export const MIN_TIMEOUT_MS = 60_000;
 /** Maximum timeout in milliseconds (30 days). */
 export const MAX_TIMEOUT_MS = 2_592_000_000;
 
-/** Docs base URL for error messages. */
-export const DOCS_BASE_URL = "https://awaithumans.dev/docs/troubleshooting";
+/** Docs base URLs for error messages. */
+export const DOCS_BASE_URL = "https://awaithumans.dev/docs";
+export const DOCS_TROUBLESHOOTING_URL = `${DOCS_BASE_URL}/troubleshooting`;
+export const DOCS_ROADMAP_URL = `${DOCS_BASE_URL}/roadmap`;

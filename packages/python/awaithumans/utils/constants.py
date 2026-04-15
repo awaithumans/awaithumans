@@ -11,7 +11,9 @@ from awaithumans.types import TaskStatus
 # ─── Project Identity ────────────────────────────────────────────────────
 
 SERVICE_NAME = "awaithumans"
-DOCS_BASE_URL = "https://awaithumans.dev/docs/troubleshooting"
+DOCS_BASE_URL = "https://awaithumans.dev/docs"
+DOCS_TROUBLESHOOTING_URL = f"{DOCS_BASE_URL}/troubleshooting"
+DOCS_ROADMAP_URL = f"{DOCS_BASE_URL}/roadmap"
 
 # ─── Timeout ─────────────────────────────────────────────────────────────
 

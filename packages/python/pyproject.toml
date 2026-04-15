@@ -51,6 +51,12 @@ langgraph = [
 verifier-claude = [
     "anthropic>=0.40.0",
 ]
+verifier-openai = [
+    "openai>=1.50.0",
+]
+verifier-gemini = [
+    "google-generativeai>=0.8.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",

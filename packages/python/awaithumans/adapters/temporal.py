@@ -1,7 +1,7 @@
 """Temporal adapter — signal-based durable HITL.
 
 Usage:
-    from awaithumans.temporal import await_human
+    from awaithumans.adapters.temporal import await_human
 
     # Inside a Temporal workflow:
     result = await await_human(

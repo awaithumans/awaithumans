@@ -1,7 +1,7 @@
 """LangGraph adapter — interrupt/resume durable HITL.
 
 Usage:
-    from awaithumans.langgraph import await_human
+    from awaithumans.adapters.langgraph import await_human
 
     # Inside a LangGraph node:
     result = await await_human(
