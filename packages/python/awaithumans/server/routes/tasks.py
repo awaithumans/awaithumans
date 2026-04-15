@@ -14,7 +14,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.db.connection import get_session
-from awaithumans.server.db.models import Task, TaskStatus, TERMINAL_STATUSES
+from awaithumans.server.db.models import Task, TaskStatus
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 from awaithumans.server.schemas import (
     AuditEntryResponse,
     CompleteTaskRequest,
@@ -33,8 +34,6 @@ from awaithumans.server.services.task_service import (
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 logger = logging.getLogger("awaithumans.server.routes.tasks")
-
-TERMINAL_STATUSES_SET = set(TERMINAL_STATUSES)
 
 
 # ─── Helper ──────────────────────────────────────────────────────────────

@@ -12,16 +12,12 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from awaithumans.server.db.models import (
-    AuditEntry,
-    Task,
-    TaskStatus,
-    TERMINAL_STATUSES,
-)
+from awaithumans.server.db.models import AuditEntry, Task, TaskStatus
 from awaithumans.server.services.exceptions import (
     TaskAlreadyTerminalError,
     TaskNotFoundError,
 )
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 
 async def create_task(
@@ -138,7 +134,7 @@ async def complete_task(
     """
     task = await get_task(session, task_id)
 
-    if task.status in TERMINAL_STATUSES:
+    if task.status in TERMINAL_STATUSES_SET:
         raise TaskAlreadyTerminalError(task_id, task.status)
 
     now = datetime.now(timezone.utc)
@@ -147,7 +143,7 @@ async def complete_task(
     result = await session.execute(
         update(Task)
         .where(Task.id == task_id)
-        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
         .values(
             status=TaskStatus.COMPLETED,
             response=response,
@@ -185,7 +181,7 @@ async def timeout_task(session: AsyncSession, task_id: str) -> Task:
     """Mark a task as timed out. Called by the timeout scheduler."""
     task = await get_task(session, task_id)
 
-    if task.status in TERMINAL_STATUSES:
+    if task.status in TERMINAL_STATUSES_SET:
         return task  # Already terminal, no-op
 
     now = datetime.now(timezone.utc)
@@ -193,7 +189,7 @@ async def timeout_task(session: AsyncSession, task_id: str) -> Task:
     result = await session.execute(
         update(Task)
         .where(Task.id == task_id)
-        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
         .values(
             status=TaskStatus.TIMED_OUT,
             timed_out_at=now,
@@ -224,7 +220,7 @@ async def cancel_task(session: AsyncSession, task_id: str) -> Task:
     """Cancel a task. Called by the agent or admin."""
     task = await get_task(session, task_id)
 
-    if task.status in TERMINAL_STATUSES:
+    if task.status in TERMINAL_STATUSES_SET:
         raise TaskAlreadyTerminalError(task_id, task.status)
 
     now = datetime.now(timezone.utc)
@@ -232,7 +228,7 @@ async def cancel_task(session: AsyncSession, task_id: str) -> Task:
     result = await session.execute(
         update(Task)
         .where(Task.id == task_id)
-        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
         .values(
             status=TaskStatus.CANCELLED,
             updated_at=now,
@@ -275,6 +271,6 @@ async def _find_active_task_by_idempotency_key(
     result = await session.execute(
         select(Task)
         .where(Task.idempotency_key == idempotency_key)
-        .where(Task.status.notin_(list(TERMINAL_STATUSES)))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
     )
     return result.scalar_one_or_none()

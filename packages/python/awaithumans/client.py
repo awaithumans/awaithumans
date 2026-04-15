@@ -21,17 +21,15 @@ from awaithumans.errors import (
     VerificationExhaustedError,
 )
 from awaithumans.types import MarketplaceAssignment, VerifierConfig
+from awaithumans.utils.constants import (
+    MAX_TIMEOUT_SECONDS,
+    MIN_TIMEOUT_SECONDS,
+    POLL_INTERVAL_SECONDS_SECONDS,
+)
 
 logger = logging.getLogger("awaithumans.client")
 
 T = TypeVar("T", bound=BaseModel)
-
-MIN_TIMEOUT_SECONDS = 60
-MAX_TIMEOUT_SECONDS = 2_592_000  # 30 days
-
-# Long-poll reconnection interval (seconds).
-# Must stay under typical gateway timeouts (60s). 25s is safe.
-POLL_INTERVAL = 25
 
 
 async def await_human(
@@ -130,15 +128,15 @@ async def _poll_until_terminal(
 ) -> T:
     """Long-poll the server until the task reaches a terminal state.
 
-    Reconnects every POLL_INTERVAL seconds to stay under gateway timeouts.
+    Reconnects every POLL_INTERVAL_SECONDS seconds to stay under gateway timeouts.
     The server's poll endpoint holds the connection for up to 25 seconds
     per request.
     """
-    async with httpx.AsyncClient(timeout=POLL_INTERVAL + 10) as client:
+    async with httpx.AsyncClient(timeout=POLL_INTERVAL_SECONDS + 10) as client:
         while True:
             resp = await client.get(
                 f"{base_url}/api/tasks/{task_id}/poll",
-                params={"timeout": POLL_INTERVAL},
+                params={"timeout": POLL_INTERVAL_SECONDS},
             )
 
             if resp.status_code == 404:

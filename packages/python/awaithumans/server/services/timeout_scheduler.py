@@ -10,23 +10,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.db.connection import get_async_session_factory
-from awaithumans.server.db.models import Task, TERMINAL_STATUSES
+from awaithumans.server.db.models import Task
 from awaithumans.server.services.task_service import timeout_task
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET, TIMEOUT_TIMEOUT_CHECK_INTERVAL_SECONDS_SECONDS
 
 logger = logging.getLogger("awaithumans.timeout_scheduler")
-
-# How often to check for expired tasks (seconds)
-CHECK_INTERVAL = 5
 
 
 async def run_timeout_scheduler() -> None:
     """Run the timeout scheduler loop.
 
-    Checks every CHECK_INTERVAL seconds for tasks whose timeout_at has passed
+    Checks every TIMEOUT_CHECK_INTERVAL_SECONDS seconds for tasks whose timeout_at has passed
     and are still in a non-terminal state. Marks them as timed_out using
     first-writer-wins semantics.
     """
-    logger.info("Timeout scheduler started (check interval: %ds)", CHECK_INTERVAL)
+    logger.info("Timeout scheduler started (check interval: %ds)", TIMEOUT_CHECK_INTERVAL_SECONDS)
 
     while True:
         try:
@@ -34,7 +32,7 @@ async def run_timeout_scheduler() -> None:
         except Exception:
             logger.exception("Error in timeout scheduler")
 
-        await asyncio.sleep(CHECK_INTERVAL)
+        await asyncio.sleep(TIMEOUT_CHECK_INTERVAL_SECONDS)
 
 
 async def _check_and_timeout_expired_tasks() -> None:
@@ -46,7 +44,7 @@ async def _check_and_timeout_expired_tasks() -> None:
         # Efficient query: uses the timeout_at index, only fetches IDs
         result = await session.execute(
             select(Task.id)
-            .where(Task.status.notin_(list(TERMINAL_STATUSES)))
+            .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
             .where(Task.timeout_at <= now)
         )
         expired_ids = [row[0] for row in result.all()]
