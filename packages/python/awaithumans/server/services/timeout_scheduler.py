@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from awaithumans.server.db.connection import get_async_session_factory
 from awaithumans.server.db.models import Task
 from awaithumans.server.services.task_service import timeout_task
-from awaithumans.utils.constants import TERMINAL_STATUSES_SET, TIMEOUT_TIMEOUT_CHECK_INTERVAL_SECONDS_SECONDS
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET, TIMEOUT_CHECK_INTERVAL_SECONDS
 
 logger = logging.getLogger("awaithumans.timeout_scheduler")
 
