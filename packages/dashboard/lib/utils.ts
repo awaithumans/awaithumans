@@ -20,26 +20,6 @@ export function formatRelativeTime(dateString: string): string {
 	return `${diffDays}d ago`;
 }
 
-export function statusColor(status: string): string {
-	switch (status) {
-		case "completed":
-			return "text-[#00E676]";
-		case "timed_out":
-		case "cancelled":
-		case "verification_exhausted":
-			return "text-red-400";
-		case "created":
-		case "notified":
-			return "text-yellow-400";
-		case "assigned":
-		case "in_progress":
-		case "submitted":
-			return "text-blue-400";
-		default:
-			return "text-[#F5F5F5]";
-	}
-}
-
 export function statusBadgeColor(status: string): string {
 	switch (status) {
 		case "completed":

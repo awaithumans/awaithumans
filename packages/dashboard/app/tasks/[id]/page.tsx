@@ -10,7 +10,10 @@ import {
 	type Task,
 	type AuditEntry,
 } from "@/lib/api";
-import { cn, formatRelativeTime, statusBadgeColor } from "@/lib/utils";
+import { cn, formatRelativeTime } from "@/lib/utils";
+import { TERMINAL_STATUSES } from "@/lib/constants";
+import { StatusBadge } from "@/components/status-badge";
+import { ErrorBanner } from "@/components/error-banner";
 
 export default function TaskDetailPage() {
 	const params = useParams();
@@ -85,7 +88,7 @@ export default function TaskDetailPage() {
 	};
 
 	const isTerminal = task?.status
-		? ["completed", "timed_out", "cancelled", "verification_exhausted"].includes(task.status)
+		? TERMINAL_STATUSES.includes(task.status)
 		: false;
 
 	if (loading) {
@@ -110,14 +113,7 @@ export default function TaskDetailPage() {
 					</button>
 					<h1 className="text-2xl font-bold">{task.task}</h1>
 					<div className="flex items-center gap-3 mt-2">
-						<span
-							className={cn(
-								"inline-flex px-2 py-0.5 text-xs rounded-full border",
-								statusBadgeColor(task.status),
-							)}
-						>
-							{task.status}
-						</span>
+						<StatusBadge status={task.status} />
 						<span className="text-white/30 text-xs font-mono">{task.id}</span>
 					</div>
 				</div>
@@ -132,11 +128,7 @@ export default function TaskDetailPage() {
 				)}
 			</div>
 
-			{error && (
-				<div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6 text-red-400 text-sm">
-					{error}
-				</div>
-			)}
+			{error && <ErrorBanner message={error} />}
 
 			<div className="grid grid-cols-3 gap-6">
 				{/* Left: Payload + Response Form */}

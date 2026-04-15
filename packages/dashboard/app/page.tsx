@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchTasks, type Task, type TaskStatus } from "@/lib/api";
-import { cn, formatRelativeTime, statusBadgeColor } from "@/lib/utils";
+import { cn, formatRelativeTime } from "@/lib/utils";
+import { TASK_LIST_POLL_INTERVAL_MS, TASK_ID_TRUNCATE_LENGTH } from "@/lib/constants";
+import { StatusBadge } from "@/components/status-badge";
+import { ErrorBanner } from "@/components/error-banner";
 
 const STATUS_FILTERS: { label: string; value: TaskStatus | "all" }[] = [
 	{ label: "All", value: "all" },
@@ -14,6 +18,7 @@ const STATUS_FILTERS: { label: string; value: TaskStatus | "all" }[] = [
 ];
 
 export default function TaskQueuePage() {
+	const router = useRouter();
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -35,7 +40,7 @@ export default function TaskQueuePage() {
 	useEffect(() => {
 		loadTasks();
 		// Poll every 5 seconds for updates
-		const interval = setInterval(loadTasks, 5000);
+		const interval = setInterval(loadTasks, TASK_LIST_POLL_INTERVAL_MS);
 		return () => clearInterval(interval);
 	}, [statusFilter]);
 
@@ -67,11 +72,7 @@ export default function TaskQueuePage() {
 				</div>
 			</div>
 
-			{error && (
-				<div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-4 text-red-400 text-sm">
-					{error}
-				</div>
-			)}
+			{error && <ErrorBanner message={error} />}
 
 			{loading ? (
 				<div className="text-white/40 text-sm">Loading tasks...</div>
@@ -100,24 +101,17 @@ export default function TaskQueuePage() {
 									key={task.id}
 									className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
 									onClick={() => {
-										window.location.href = `/tasks/${task.id}`;
+										router.push(`/tasks/${task.id}`);
 									}}
 								>
 									<td className="px-4 py-3">
 										<div className="font-medium text-sm">{task.task}</div>
 										<div className="text-white/30 text-xs font-mono mt-0.5">
-											{task.id.slice(0, 12)}...
+											{task.id.slice(0, TASK_ID_TRUNCATE_LENGTH)}...
 										</div>
 									</td>
 									<td className="px-4 py-3">
-										<span
-											className={cn(
-												"inline-flex px-2 py-0.5 text-xs rounded-full border",
-												statusBadgeColor(task.status),
-											)}
-										>
-											{task.status}
-										</span>
+										<StatusBadge status={task.status} />
 									</td>
 									<td className="px-4 py-3 text-sm text-white/60">
 										{task.assigned_to_email ?? task.assign_to ? "Routed" : "—"}

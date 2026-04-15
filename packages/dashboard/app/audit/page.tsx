@@ -1,21 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchTasks, type Task } from "@/lib/api";
-import { cn, formatRelativeTime, statusBadgeColor } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
+import { AUDIT_PAGE_DEFAULT_LIMIT, TASK_ID_TRUNCATE_LENGTH, TERMINAL_STATUSES } from "@/lib/constants";
+import { StatusBadge } from "@/components/status-badge";
 
 export default function AuditLogPage() {
+	const router = useRouter();
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
-		fetchTasks({ limit: 100 })
+		fetchTasks({ limit: AUDIT_PAGE_DEFAULT_LIMIT })
 			.then(setTasks)
 			.finally(() => setLoading(false));
 	}, []);
 
 	const completedTasks = tasks.filter(
-		(t) => t.status === "completed" || t.status === "timed_out" || t.status === "cancelled",
+		(t) => TERMINAL_STATUSES.includes(t.status),
 	);
 
 	return (
@@ -65,24 +69,17 @@ export default function AuditLogPage() {
 										key={task.id}
 										className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
 										onClick={() => {
-											window.location.href = `/tasks/${task.id}`;
+											router.push(`/tasks/${task.id}`);
 										}}
 									>
 										<td className="px-4 py-3">
 											<div className="text-sm font-medium">{task.task}</div>
 											<div className="text-white/30 text-xs font-mono mt-0.5">
-												{task.id.slice(0, 12)}...
+												{task.id.slice(0, TASK_ID_TRUNCATE_LENGTH)}...
 											</div>
 										</td>
 										<td className="px-4 py-3">
-											<span
-												className={cn(
-													"inline-flex px-2 py-0.5 text-xs rounded-full border",
-													statusBadgeColor(task.status),
-												)}
-											>
-												{task.status}
-											</span>
+											<StatusBadge status={task.status} />
 										</td>
 										<td className="px-4 py-3 text-sm text-white/60">
 											{task.completed_by_email ?? "—"}
