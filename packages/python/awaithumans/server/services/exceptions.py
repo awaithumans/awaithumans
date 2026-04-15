@@ -8,6 +8,7 @@ to build the HTTP response — no per-exception handler functions needed.
 from __future__ import annotations
 
 from awaithumans.types import TaskStatus
+from awaithumans.utils.constants import DOCS_TROUBLESHOOTING_URL
 
 
 class ServiceError(Exception):
@@ -27,7 +28,7 @@ class ServiceError(Exception):
 
     @property
     def docs_url(self) -> str:
-        return f"https://awaithumans.dev/docs/troubleshooting#{self.docs_path}"
+        return f"{DOCS_TROUBLESHOOTING_URL}#{self.docs_path}"
 
 
 class TaskNotFoundError(ServiceError):

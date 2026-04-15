@@ -22,9 +22,10 @@ from awaithumans.errors import (
 )
 from awaithumans.types import MarketplaceAssignment, VerifierConfig
 from awaithumans.utils.constants import (
+    DOCS_TROUBLESHOOTING_URL,
     MAX_TIMEOUT_SECONDS,
     MIN_TIMEOUT_SECONDS,
-    POLL_INTERVAL_SECONDS_SECONDS,
+    POLL_INTERVAL_SECONDS,
 )
 
 logger = logging.getLogger("awaithumans.client")
@@ -107,7 +108,7 @@ async def await_human(
                 code="TASK_CREATE_FAILED",
                 message=f"Failed to create task on the server (HTTP {resp.status_code}).",
                 hint=f"Server response: {resp.text[:500]}",
-                docs_url="https://awaithumans.dev/docs/troubleshooting#task-create-failed",
+                docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-create-failed",
             )
 
         task_data = resp.json()
@@ -144,7 +145,7 @@ async def _poll_until_terminal(
                     code="TASK_NOT_FOUND",
                     message=f"Task '{task_id}' not found on the server.",
                     hint="The task may have been deleted or the server was restarted with a fresh database.",
-                    docs_url="https://awaithumans.dev/docs/troubleshooting#task-not-found",
+                    docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-not-found",
                 )
 
             if resp.status_code != 200:
@@ -152,7 +153,7 @@ async def _poll_until_terminal(
                     code="POLL_FAILED",
                     message=f"Failed to poll task '{task_id}' (HTTP {resp.status_code}).",
                     hint=f"Server response: {resp.text[:500]}",
-                    docs_url="https://awaithumans.dev/docs/troubleshooting#poll-failed",
+                    docs_url=f"{DOCS_TROUBLESHOOTING_URL}#poll-failed",
                 )
 
             poll_data = resp.json()
@@ -175,7 +176,7 @@ async def _poll_until_terminal(
                     code="TASK_CANCELLED",
                     message=f"Task '{task_description}' was cancelled.",
                     hint="The task was cancelled by an admin or another agent.",
-                    docs_url="https://awaithumans.dev/docs/troubleshooting#task-cancelled",
+                    docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-cancelled",
                 )
 
             if status == "verification_exhausted":

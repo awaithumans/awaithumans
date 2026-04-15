@@ -42,3 +42,7 @@ class VerifierConfig(BaseModel):
         default=None,
         description="Env var name for the API key. Server reads this at runtime.",
     )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="Provider-specific config (e.g., Azure endpoint_env, api_version).",
+    )

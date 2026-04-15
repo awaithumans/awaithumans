@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import Request
+
+from awaithumans.utils.constants import DOCS_TROUBLESHOOTING_URL
 from fastapi.responses import JSONResponse
 
 from awaithumans.server.services.exceptions import ServiceError
@@ -41,7 +43,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
         content={
             "error": "INTERNAL_ERROR",
             "message": "An unexpected error occurred.",
-            "docs": "https://awaithumans.dev/docs/troubleshooting#internal-error",
+            "docs": f"{DOCS_TROUBLESHOOTING_URL}#internal-error",
         },
     )
 
