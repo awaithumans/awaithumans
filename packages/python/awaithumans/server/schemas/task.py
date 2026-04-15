@@ -1,8 +1,4 @@
-"""API request/response schemas — Pydantic models for the HTTP API.
-
-All request and response models live here, NOT in route files.
-Route files import from this module.
-"""
+"""Task API request/response schemas."""
 
 from __future__ import annotations
 
@@ -12,9 +8,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from awaithumans.types import TaskStatus
-
-
-# ─── Task Requests ───────────────────────────────────────────────────────
 
 
 class CreateTaskRequest(BaseModel):
@@ -35,9 +28,6 @@ class CompleteTaskRequest(BaseModel):
     response: dict[str, Any]
     completed_by_email: str | None = None
     completed_via_channel: str | None = None
-
-
-# ─── Task Responses ──────────────────────────────────────────────────────
 
 
 class TaskResponse(BaseModel):
@@ -70,29 +60,3 @@ class PollResponse(BaseModel):
     response: dict[str, Any] | None = None
     completed_at: datetime | None = None
     timed_out_at: datetime | None = None
-
-
-# ─── Audit Responses ─────────────────────────────────────────────────────
-
-
-class AuditEntryResponse(BaseModel):
-    id: str
-    task_id: str
-    from_status: str | None = None
-    to_status: str
-    action: str
-    actor_type: str
-    actor_email: str | None = None
-    channel: str | None = None
-    metadata: dict[str, Any] | None = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-# ─── Health ──────────────────────────────────────────────────────────────
-
-
-class HealthResponse(BaseModel):
-    status: str = "ok"
-    version: str
