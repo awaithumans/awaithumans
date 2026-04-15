@@ -40,3 +40,9 @@ TERMINAL_STATUSES_SET = frozenset({
 # ─── Payload ─────────────────────────────────────────────────────────────
 
 MAX_PAYLOAD_SIZE_BYTES = 5 * 1024 * 1024   # 5 MB hard limit
+
+# ─── Port Discovery ──────────────────────────────────────────────────────
+
+# Where the server writes its port + URL so SDKs and the dashboard can auto-discover it.
+# Located in the user's home directory so it's stable across cwd changes.
+DISCOVERY_FILE_NAME = ".awaithumans-dev.json"

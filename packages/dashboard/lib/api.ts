@@ -3,6 +3,9 @@
  *
  * The dashboard talks to the Python FastAPI server via HTTP.
  * All type definitions live in lib/types.ts, not here.
+ *
+ * Server URL is discovered via /api/discover on first use, so the dashboard
+ * auto-finds the Python server regardless of which port it bound to.
  */
 
 import type {
@@ -16,12 +19,33 @@ import type {
 // Re-export types so pages can import from "@/lib/api" for convenience
 export type { AuditEntry, CompleteTaskRequest, HealthResponse, Task, TaskStatus };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+// ─── API base URL discovery ─────────────────────────────────────────────
+
+let cachedApiBase: string | null = null;
+
+async function resolveApiBase(): Promise<string> {
+	if (cachedApiBase) return cachedApiBase;
+
+	try {
+		const res = await fetch("/api/discover");
+		if (res.ok) {
+			const data = (await res.json()) as { url: string; source: string };
+			cachedApiBase = data.url.replace(/\/$/, "");
+			return cachedApiBase;
+		}
+	} catch {
+		// Discovery route unreachable — fall through to default
+	}
+
+	cachedApiBase = "http://localhost:3001";
+	return cachedApiBase;
+}
 
 // ─── API Functions ──────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-	const res = await fetch(`${API_BASE}${path}`, {
+	const base = await resolveApiBase();
+	const res = await fetch(`${base}${path}`, {
 		...options,
 		headers: {
 			"Content-Type": "application/json",

@@ -27,6 +27,7 @@ from awaithumans.utils.constants import (
     MIN_TIMEOUT_SECONDS,
     POLL_INTERVAL_SECONDS,
 )
+from awaithumans.utils.discovery import resolve_server_url
 
 logger = logging.getLogger("awaithumans.client")
 
@@ -73,7 +74,7 @@ async def await_human(
     key = idempotency_key or _generate_idempotency_key(task, payload)
 
     # ── Resolve server URL ───────────────────────────────────────────
-    base_url = (server_url or os.environ.get("AWAITHUMANS_URL", "http://localhost:3001")).rstrip("/")
+    base_url = resolve_server_url(explicit_url=server_url)
 
     # ── Serialize assign_to for the wire ─────────────────────────────
     assign_to_dict = None

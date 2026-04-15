@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import socket
 
 import typer
+
+from awaithumans.utils.discovery import delete_discovery, write_discovery
 
 logger = logging.getLogger("awaithumans.cli")
 
@@ -64,6 +67,10 @@ def dev(
     os.environ.setdefault("AWAITHUMANS_HOST", host)
     os.environ.setdefault("AWAITHUMANS_PORT", str(actual_port))
 
+    # Write discovery file so SDKs and the dashboard can auto-find us
+    write_discovery(host=host, port=actual_port)
+    atexit.register(delete_discovery)
+
     logger.info("Starting awaithumans server on http://%s:%d", host, actual_port)
     logger.info("Dashboard at http://%s:%d", host, actual_port)
     logger.info("SQLite database at %s", db_path)
@@ -72,4 +79,7 @@ def dev(
     from awaithumans.server.app import create_app
 
     application = create_app(serve_dashboard=True)
-    uvicorn.run(application, host=host, port=actual_port, log_level=log_level.lower())
+    try:
+        uvicorn.run(application, host=host, port=actual_port, log_level=log_level.lower())
+    finally:
+        delete_discovery()

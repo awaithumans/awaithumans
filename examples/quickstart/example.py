@@ -36,9 +36,11 @@ class RefundDecision(BaseModel):
 # ── Run the agent ────────────────────────────────────────────────────────
 
 async def main() -> None:
+    import os
+    server_url = os.environ.get("AWAITHUMANS_URL", "http://localhost:3001")
     print("Creating a task for human review...")
-    print("Open http://localhost:3001/api/tasks to see the task.")
-    print("Complete it via: POST http://localhost:3001/api/tasks/{id}/complete")
+    print(f"Open {server_url}/api/tasks to see the task.")
+    print(f"Complete it via the dashboard or: POST {server_url}/api/tasks/{{id}}/complete")
     print()
 
     result = await await_human(
