@@ -1,10 +1,8 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { MIN_TIMEOUT_MS, MAX_TIMEOUT_MS } from "./constants";
 import { MarketplaceNotAvailableError, SchemaValidationError, TimeoutRangeError } from "./errors";
 import type { AwaitHumanOptions } from "./types";
 import { generateIdempotencyKey } from "./idempotency";
-
-const MIN_TIMEOUT_MS = 60_000; // 1 minute
-const MAX_TIMEOUT_MS = 2_592_000_000; // 30 days
 
 /**
  * Delegate a task to a human and await the result.

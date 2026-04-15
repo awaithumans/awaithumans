@@ -1,12 +1,17 @@
 """Project-wide constants.
 
-All magic numbers and configuration defaults live here.
+All magic numbers, configuration defaults, and shared values live here.
 Import from here, not from individual modules.
 """
 
 from __future__ import annotations
 
 from awaithumans.types import TaskStatus
+
+# ─── Project Identity ────────────────────────────────────────────────────
+
+SERVICE_NAME = "awaithumans"
+DOCS_BASE_URL = "https://awaithumans.dev/docs/troubleshooting"
 
 # ─── Timeout ─────────────────────────────────────────────────────────────
 

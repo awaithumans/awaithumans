@@ -22,9 +22,9 @@ import sys
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
-request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+from awaithumans.utils.constants import SERVICE_NAME
 
-SERVICE_NAME = "awaithumans"
+request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
 
 class AwaitHumansFormatter(logging.Formatter):

@@ -2,9 +2,12 @@
 
 Import models from here, not from individual files:
     from awaithumans.server.db.models import Task, AuditEntry
+
+For constants (TERMINAL_STATUSES_SET, etc.), import from utils.constants.
+For TaskStatus enum, import from awaithumans.types.
 """
 
-from awaithumans.types import TaskStatus, TERMINAL_STATUSES
+from awaithumans.types import TaskStatus
 from awaithumans.server.db.models.audit import AuditEntry
 from awaithumans.server.db.models.task import Task
 
@@ -12,5 +15,4 @@ __all__ = [
     "AuditEntry",
     "Task",
     "TaskStatus",
-    "TERMINAL_STATUSES",
 ]
