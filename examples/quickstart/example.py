@@ -12,10 +12,16 @@ Then run:
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from pydantic import BaseModel, Field
 
 from awaithumans import await_human
+from awaithumans.utils.discovery import resolve_server_url
+
+
+# Enable INFO logging so we see task IDs as they're created.
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 # ── Define your schemas ──────────────────────────────────────────────────
@@ -36,12 +42,11 @@ class RefundDecision(BaseModel):
 # ── Run the agent ────────────────────────────────────────────────────────
 
 async def main() -> None:
-    import os
-    server_url = os.environ.get("AWAITHUMANS_URL", "http://localhost:3001")
-    print("Creating a task for human review...")
-    print(f"Open {server_url}/api/tasks to see the task.")
-    print(f"Complete it via the dashboard or: POST {server_url}/api/tasks/{{id}}/complete")
+    server_url = resolve_server_url()
+    print(f"→ Using server: {server_url}")
+    print("  (auto-discovered via ~/.awaithumans-dev.json)")
     print()
+    print("Creating a task for human review...")
 
     result = await await_human(
         task="Approve this refund?",
@@ -53,12 +58,13 @@ async def main() -> None:
         ),
         response_schema=RefundDecision,
         timeout_seconds=300,  # 5 minutes
-        notify=["slack:#ops"],  # optional — requires Slack configured
+        notify=["slack:#ops"],
     )
 
-    print(f"Human decided: approved={result.approved}")
+    print()
+    print(f"→ Human decided: approved={result.approved}")
     if result.reviewer_note:
-        print(f"Reviewer note: {result.reviewer_note}")
+        print(f"  Reviewer note: {result.reviewer_note}")
 
 
 if __name__ == "__main__":

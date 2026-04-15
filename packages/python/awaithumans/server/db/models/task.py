@@ -5,10 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import Index, text
 from sqlmodel import JSON, Column, Field, SQLModel
 
 from awaithumans.types import TaskStatus
 from awaithumans.server.db.models.base import new_id, utc_now
+
+# Partial unique index — only ACTIVE tasks have unique idempotency keys.
+# After a task reaches a terminal state, another task with the same key can
+# be created. This lets developers retry failed/timed-out tasks with the
+# same content without hitting a duplicate-key error.
+_TERMINAL_STATUS_VALUES = "('completed', 'timed_out', 'cancelled', 'verification_exhausted')"
+_ACTIVE_IDEMPOTENCY_WHERE = f"status NOT IN {_TERMINAL_STATUS_VALUES}"
 
 
 class Task(SQLModel, table=True):
@@ -17,7 +25,7 @@ class Task(SQLModel, table=True):
     __tablename__ = "tasks"
 
     id: str = Field(default_factory=new_id, primary_key=True)
-    idempotency_key: str = Field(index=True, unique=True)
+    idempotency_key: str = Field(index=True)
 
     # Task description
     task: str = Field(description="Human-readable task description.")
@@ -64,3 +72,13 @@ class Task(SQLModel, table=True):
     # Metadata
     completed_by_email: str | None = Field(default=None)
     completed_via_channel: str | None = Field(default=None)
+
+    __table_args__ = (
+        Index(
+            "ix_tasks_active_idempotency_key",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text(_ACTIVE_IDEMPOTENCY_WHERE),
+            postgresql_where=text(_ACTIVE_IDEMPOTENCY_WHERE),
+        ),
+    )

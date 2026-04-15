@@ -114,7 +114,9 @@ async def await_human(
 
         task_data = resp.json()
         task_id = task_data["id"]
-        logger.info("Task created: %s (idempotency_key=%s)", task_id, key)
+        logger.info("Task created: %s", task_id)
+        logger.info("  View at the dashboard or: %s/api/tasks/%s", base_url, task_id)
+        logger.info("  Waiting for human...")
 
     # ── Long-poll until completion or timeout ────────────────────────
     result = await _poll_until_terminal(base_url, task_id, task, timeout_seconds, response_schema)
