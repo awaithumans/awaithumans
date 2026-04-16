@@ -46,3 +46,36 @@ MAX_PAYLOAD_SIZE_BYTES = 5 * 1024 * 1024   # 5 MB hard limit
 # Where the server writes its port + URL so SDKs and the dashboard can auto-discover it.
 # Located in the user's home directory so it's stable across cwd changes.
 DISCOVERY_FILE_NAME = ".awaithumans-dev.json"
+
+# ─── Slack Channel ───────────────────────────────────────────────────────
+
+# Slack rejects requests whose timestamp is more than this many seconds old
+# (prevents replay attacks).
+SLACK_SIGNATURE_MAX_AGE_SECONDS = 300  # 5 minutes
+
+# Block Kit action_id for the "Review" button in the initial notification.
+SLACK_ACTION_OPEN_REVIEW = "awaithumans.open_review"
+
+# Block Kit callback_id for the review modal (matches on view_submission).
+SLACK_MODAL_CALLBACK_ID = "awaithumans.review_modal"
+
+# Prefix on Block Kit block_ids so we can recognize our own blocks and
+# extract the field name deterministically.
+SLACK_BLOCK_ID_PREFIX = "awaithumans:"
+
+# notify= string prefix for Slack destinations. Examples:
+#   "slack:#approvals"  → channel
+#   "slack:@U123ABC"    → user (Slack user ID, starts with U or W)
+SLACK_NOTIFY_PREFIX = "slack:"
+
+# OAuth state is a signed, time-bounded nonce. Expires if the user takes
+# more than this long to complete the install consent.
+SLACK_OAUTH_STATE_MAX_AGE_SECONDS = 600  # 10 minutes
+
+# Bot scopes we request during OAuth install. Kept in sync with
+# channels/slack/app_manifest.yaml. Used as the default value for
+# SLACK_OAUTH_SCOPES when the env var isn't overridden.
+SLACK_DEFAULT_OAUTH_SCOPES = (
+    "chat:write,im:write,channels:read,groups:read,"
+    "users:read,files:write,files:read"
+)

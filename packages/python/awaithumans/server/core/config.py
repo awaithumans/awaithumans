@@ -36,8 +36,31 @@ class Settings(BaseSettings):
 
     # ── Notifications ────────────────────────────────────────────────
     SLACK_WEBHOOK: str | None = None
+    # Static bot token for SINGLE-WORKSPACE self-hosted setups. Leave
+    # unset and use CLIENT_ID/CLIENT_SECRET below for multi-workspace.
     SLACK_BOT_TOKEN: str | None = None
+    SLACK_SIGNING_SECRET: str | None = None
+    # OAuth credentials for MULTI-WORKSPACE distribution. When all three
+    # (CLIENT_ID, CLIENT_SECRET, INSTALL_TOKEN) are set, the OAuth install
+    # flow is enabled at /api/channels/slack/oauth/start.
+    SLACK_CLIENT_ID: str | None = None
+    SLACK_CLIENT_SECRET: str | None = None
+    # Operator-only shared secret required to initiate an install.
+    # Without this, any visitor who knows PUBLIC_URL could install their
+    # own workspace into the server and receive notifications. Generate
+    # a high-entropy value (e.g. `openssl rand -hex 32`) and share it
+    # only with authorized admins. REQUIRED when OAuth is enabled.
+    SLACK_INSTALL_TOKEN: str | None = None
+    # Scopes requested during OAuth install. Override only if you need a
+    # tighter or broader scope set than the default manifest.
+    SLACK_OAUTH_SCOPES: str | None = None
     RESEND_KEY: str | None = None
+
+    # ── Public URLs ──────────────────────────────────────────────────
+    # Used when building link-out URLs in Slack/email so humans can
+    # click through to the dashboard. In production, this is the
+    # HTTPS URL of the server (which also serves the dashboard).
+    PUBLIC_URL: str = "http://localhost:3001"
 
     # ── Verification ─────────────────────────────────────────────────
     ANTHROPIC_API_KEY: str | None = None
