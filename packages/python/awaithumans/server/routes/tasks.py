@@ -13,6 +13,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from awaithumans.server.channels.email import notify_task as notify_task_email
 from awaithumans.server.channels.slack import notify_task as notify_task_slack
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.db.models import Task, TaskStatus
@@ -84,6 +85,15 @@ async def create_task_route(
             notify_task_slack,
             task_id=task.id,
             task_title=task.task,
+            notify=body.notify,
+            form_definition=task.form_definition,
+        )
+        background_tasks.add_task(
+            notify_task_email,
+            task_id=task.id,
+            task_title=task.task,
+            task_payload=None if task.redact_payload else task.payload,
+            redact_payload=task.redact_payload,
             notify=body.notify,
             form_definition=task.form_definition,
         )

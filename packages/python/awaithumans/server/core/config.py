@@ -34,6 +34,28 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "*"  # Comma-separated list, or "*" for all
 
+    # ── Email channel ────────────────────────────────────────────────
+    # Server-wide default identity for email notifications. Per-task
+    # `notify=["email+acme-prod:alice@..."]` overrides this.
+    EMAIL_TRANSPORT: str | None = None      # "resend" | "smtp" | "logging" | "noop"
+    EMAIL_FROM: str | None = None           # "notifications@acme.com"
+    EMAIL_FROM_NAME: str | None = None      # "Acme Tasks"
+    EMAIL_REPLY_TO: str | None = None
+    # Resend transport.
+    RESEND_KEY: str | None = None
+    # SMTP transport.
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = False   # Implicit TLS (port 465). Rare.
+    SMTP_START_TLS: bool = True  # STARTTLS on port 587. Most common.
+
+    # Admin API token gates identity-management endpoints
+    # (POST/DELETE /api/channels/email/identities, etc.).
+    # Without this set, admin endpoints return 503.
+    ADMIN_API_TOKEN: str | None = None
+
     # ── Notifications ────────────────────────────────────────────────
     SLACK_WEBHOOK: str | None = None
     # Static bot token for SINGLE-WORKSPACE self-hosted setups. Leave
@@ -54,7 +76,6 @@ class Settings(BaseSettings):
     # Scopes requested during OAuth install. Override only if you need a
     # tighter or broader scope set than the default manifest.
     SLACK_OAUTH_SCOPES: str | None = None
-    RESEND_KEY: str | None = None
 
     # ── Public URLs ──────────────────────────────────────────────────
     # Used when building link-out URLs in Slack/email so humans can

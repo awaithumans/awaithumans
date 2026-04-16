@@ -21,7 +21,7 @@ from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
 from awaithumans.server.db.connection import close_db, init_db
-from awaithumans.server.routes import health, slack, tasks
+from awaithumans.server.routes import email, health, slack, tasks
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
 
 logger = logging.getLogger("awaithumans.server")
@@ -106,6 +106,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(tasks.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(slack.router, prefix="/api")
+    app.include_router(email.router, prefix="/api")
 
     # ── Dashboard static files ───────────────────────────────────────
     if serve_dashboard:
