@@ -297,6 +297,93 @@ docker compose up                          # works everywhere
 
 ---
 
+## Code Review Checklist
+
+When reviewing code (or writing code that will be reviewed), check every
+item. These are lessons from real issues caught during development.
+
+### 1. Models and types are in the right place
+
+- [ ] **No Pydantic models defined in route files.** Request/response schemas
+  belong in `server/schemas/{domain}.py`. Route files contain only handlers.
+- [ ] **No Pydantic models defined in service files.** Service exceptions
+  belong in `services/exceptions.py`. Business logic files contain only functions.
+- [ ] **No TypeScript interfaces defined in API client files.** Types belong
+  in dedicated `types.ts` or `types/` files. API clients contain only fetch functions.
+- [ ] **Database models are in `db/models/{domain}.py`**, one file per domain entity.
+- [ ] **SDK types are in `types/{domain}.py`**, one file per concern (task, routing, verification).
+- [ ] **New domain = new file in each relevant folder** (models/, schemas/, routes/, services/).
+
+### 2. Constants are centralized
+
+- [ ] **No magic numbers in business logic or routes.** All constants live in
+  `utils/constants.py` (Python) or `constants.ts` (TypeScript).
+- [ ] **No hardcoded URLs.** Use `DOCS_TROUBLESHOOTING_URL`, `DOCS_ROADMAP_URL`, etc.
+  Even docs URLs in error classes must come from constants.
+- [ ] **No hardcoded timeouts, intervals, or limits.** Use named constants:
+  `MIN_TIMEOUT_SECONDS`, `POLL_INTERVAL_SECONDS`, `MAX_PAYLOAD_SIZE_BYTES`, etc.
+- [ ] **Status sets (TERMINAL_STATUSES_SET) are in constants**, not redefined in
+  each file that needs them.
+
+### 3. Exceptions follow the pattern
+
+- [ ] **Service exceptions inherit from `ServiceError`** and carry `status_code`,
+  `error_code`, and `docs_path`. No per-exception handler functions needed.
+- [ ] **SDK errors inherit from `AwaitHumansError`** and follow the
+  what → why → fix → docs pattern.
+- [ ] **Routes have zero try/except.** Let exceptions propagate to the
+  centralized handler in `core/exceptions.py`.
+- [ ] **Adding a new error = one class.** Zero handler code, zero route changes.
+
+### 4. File organization
+
+- [ ] **One file = one responsibility.** If a file has two unrelated things, split it.
+- [ ] **Keep files under 300 lines.** If larger, it's doing too much.
+- [ ] **Folders have `__init__.py` that re-exports.** Restructuring a flat file
+  into a folder must not break any imports — the `__init__.py` re-exports everything.
+- [ ] **CLI commands are one file per command** in `cli/commands/`.
+  `main.py` only registers them.
+- [ ] **Adapters are one file per engine** in `adapters/`.
+- [ ] **Verifiers are one file per provider** in `verifiers/`.
+
+### 5. Logging, not printing
+
+- [ ] **No `print()` statements.** Use `logging.getLogger("awaithumans.{module}")`.
+- [ ] **No `typer.echo()` for server messages.** Use logger. `typer.echo()` is only
+  for CLI output the user explicitly requested (like `awaithumans version`).
+- [ ] **Log levels are correct.** INFO for startup/shutdown/key events, DEBUG for
+  polling/reconnection, WARNING for recoverable issues, ERROR for failures.
+
+### 6. No scattered configuration
+
+- [ ] **All config reads from `server/core/config.py` Settings.** No raw
+  `os.environ.get()` in route files, service files, or models.
+- [ ] **Middleware is registered in `app.py`**, not scattered across files.
+- [ ] **CORS origins come from the `AWAITHUMANS_CORS_ORIGINS` env var**, not hardcoded.
+
+### 7. Cross-language consistency
+
+- [ ] **Python and TypeScript error codes match.** If Python has `TASK_NOT_FOUND`,
+  TypeScript must too.
+- [ ] **Both SDKs default to the same server port** (3001).
+- [ ] **Task statuses are identical** between Python `TaskStatus` enum and TypeScript
+  `TaskStatus` type.
+- [ ] **TypeScript SDK uses `globalThis.process` not `process.env`** for
+  cross-platform compatibility.
+
+### 8. Database correctness
+
+- [ ] **Idempotency keys have a unique constraint.** The create function handles
+  `IntegrityError` with rollback and re-fetch.
+- [ ] **First-writer-wins uses atomic UPDATE with WHERE clause** and checks `rowcount`.
+  Not SELECT-then-UPDATE (TOCTOU race).
+- [ ] **Long-poll does NOT hold a DB session open.** Acquire a fresh short-lived
+  session per check to avoid connection pool exhaustion.
+- [ ] **Timeout scheduler queries use indexed columns** (`timeout_at`), not
+  full-table scans with Python-side filtering.
+
+---
+
 ## What NOT to Do
 
 - **Don't add a fifth adapter bucket.** Channels, verifiers, routers, task-type handlers. That's it.
@@ -306,3 +393,8 @@ docker compose up                          # works everywhere
 - **Don't use `node:*` imports in the TypeScript SDK.** Must work on all runtimes.
 - **Don't write SQLite-only or Postgres-only database code.** Both must pass the same tests.
 - **Don't add server dependencies to `pip install awaithumans`.** Server deps live behind `[server]` extra.
+- **Don't define models in route files.** Schemas go in `schemas/`, models in `db/models/`.
+- **Don't hardcode URLs, timeouts, or magic numbers.** Use `utils/constants.py`.
+- **Don't use `print()`.** Use `logging.getLogger()`.
+- **Don't write per-exception handler functions.** Use the `ServiceError` base class pattern.
+- **Don't hold DB sessions open during long operations.** Acquire and release per check.

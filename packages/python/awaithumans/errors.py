@@ -3,7 +3,7 @@
 Every error follows the what → why → fix → docs pattern.
 """
 
-DOCS_BASE = "https://awaithumans.dev/docs/troubleshooting"
+from awaithumans.utils.constants import DOCS_ROADMAP_URL, DOCS_TROUBLESHOOTING_URL
 
 
 class AwaitHumansError(Exception):
@@ -28,7 +28,7 @@ class TaskTimeoutError(AwaitHumansError):
                 "  2. Did the assigned human receive the notification?\n"
                 "  3. Consider increasing timeout_seconds if humans need more time."
             ),
-            docs_url=f"{DOCS_BASE}#timeout",
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#timeout",
         )
 
 
@@ -46,7 +46,7 @@ class TimeoutRangeError(AwaitHumansError):
                 "  Maximum: 2,592,000 seconds (30 days)\n"
                 "For sub-minute timeouts, use a coroutine or a queue, not HITL."
             ),
-            docs_url=f"{DOCS_BASE}#timeout-range",
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#timeout-range",
         )
 
 
@@ -60,7 +60,7 @@ class SchemaValidationError(AwaitHumansError):
                 f"Check that your {field} conforms to the {field}_schema you provided.\n"
                 "All payloads and responses must be JSON-serializable."
             ),
-            docs_url=f"{DOCS_BASE}#schema-validation",
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#schema-validation",
         )
 
 
@@ -74,7 +74,7 @@ class TaskAlreadyTerminalError(AwaitHumansError):
                 "could be processed. This can happen in race conditions between the "
                 "timeout and a human submission."
             ),
-            docs_url=f"{DOCS_BASE}#task-already-terminal",
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-already-terminal",
         )
 
 
@@ -88,7 +88,7 @@ class VerificationExhaustedError(AwaitHumansError):
                 "Check your verifier instructions — they may be too strict.\n"
                 "Consider increasing max_attempts or adjusting the verification criteria."
             ),
-            docs_url=f"{DOCS_BASE}#verification-exhausted",
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#verification-exhausted",
         )
 
 
@@ -101,5 +101,5 @@ class MarketplaceNotAvailableError(AwaitHumansError):
                 "The marketplace is coming in a future release. For now, assign tasks "
                 "to specific humans, pools, or roles."
             ),
-            docs_url="https://awaithumans.dev/docs/roadmap#marketplace",
+            docs_url=f"{DOCS_ROADMAP_URL}#marketplace",
         )

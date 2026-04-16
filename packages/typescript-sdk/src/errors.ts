@@ -1,3 +1,5 @@
+import { DOCS_ROADMAP_URL, DOCS_TROUBLESHOOTING_URL } from "./constants";
+
 export interface AwaitHumansErrorOptions {
 	code: string;
 	message: string;
@@ -38,7 +40,7 @@ export class TaskTimeoutError extends AwaitHumansError {
 				"  2. Did the assigned human receive the notification?",
 				"  3. Consider increasing timeoutMs if humans need more time.",
 			].join("\n"),
-			docsUrl: "https://awaithumans.dev/docs/troubleshooting#timeout",
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#timeout`,
 		});
 	}
 }
@@ -54,7 +56,7 @@ export class SchemaValidationError extends AwaitHumansError {
 				`Check that your ${field} conforms to the ${field}Schema you provided.`,
 				"All payloads and responses must be JSON-serializable.",
 			].join("\n"),
-			docsUrl: "https://awaithumans.dev/docs/troubleshooting#schema-validation",
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#schema-validation`,
 		});
 	}
 }
@@ -70,7 +72,7 @@ export class TimeoutRangeError extends AwaitHumansError {
 				"  Maximum: 2,592,000,000 ms (30 days)",
 				"For sub-minute timeouts, use a promise or a queue, not HITL.",
 			].join("\n"),
-			docsUrl: "https://awaithumans.dev/docs/troubleshooting#timeout-range",
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#timeout-range`,
 		});
 	}
 }
@@ -81,7 +83,7 @@ export class TaskAlreadyTerminalError extends AwaitHumansError {
 			code: "TASK_ALREADY_TERMINAL",
 			message: `Task "${taskId}" is already in terminal status "${status}".`,
 			hint: "The task was completed, timed out, or cancelled before this action could be processed. This can happen in race conditions between the timeout and a human submission.",
-			docsUrl: "https://awaithumans.dev/docs/troubleshooting#task-already-terminal",
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#task-already-terminal`,
 		});
 	}
 }
@@ -96,7 +98,7 @@ export class VerificationExhaustedError extends AwaitHumansError {
 				"Check your verifier instructions — they may be too strict.",
 				"Consider increasing maxAttempts or adjusting the verification criteria.",
 			].join("\n"),
-			docsUrl: "https://awaithumans.dev/docs/troubleshooting#verification-exhausted",
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#verification-exhausted`,
 		});
 	}
 }
@@ -108,7 +110,7 @@ export class MarketplaceNotAvailableError extends AwaitHumansError {
 			code: "MARKETPLACE_NOT_AVAILABLE",
 			message: 'The workforce marketplace (assignTo: { marketplace: true }) is not yet available.',
 			hint: "The marketplace is coming in a future release. For now, assign tasks to specific humans, pools, or roles.",
-			docsUrl: "https://awaithumans.dev/docs/roadmap#marketplace",
+			docsUrl: `${DOCS_ROADMAP_URL}#marketplace`,
 		});
 	}
 }

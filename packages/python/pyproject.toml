@@ -33,6 +33,7 @@ dependencies = [
 server = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
+    "pydantic-settings>=2.0.0",
     "sqlmodel>=0.0.22",
     "alembic>=1.14.0",
     "aiosqlite>=0.20.0",
@@ -49,6 +50,15 @@ langgraph = [
 ]
 verifier-claude = [
     "anthropic>=0.40.0",
+]
+verifier-openai = [
+    "openai>=1.50.0",
+]
+verifier-gemini = [
+    "google-generativeai>=0.8.0",
+]
+verifier-azure = [
+    "openai>=1.50.0",
 ]
 dev = [
     "pytest>=8.0.0",
