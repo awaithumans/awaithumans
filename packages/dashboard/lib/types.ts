@@ -1,8 +1,12 @@
 /**
  * Dashboard types — mirrors the Python API server's response models.
  *
- * All type definitions live here, NOT in api.ts or route files.
+ * Core type definitions live here. Form primitive types live in form-types.ts
+ * (one file, twenty-seven field shapes) and are re-exported below.
  */
+
+export * from "@/lib/form-types";
+import type { FormDefinition } from "@/lib/form-types";
 
 export interface Task {
 	id: string;
@@ -11,6 +15,7 @@ export interface Task {
 	payload: Record<string, unknown> | null;
 	payload_schema: Record<string, unknown>;
 	response_schema: Record<string, unknown>;
+	form_definition: FormDefinition | null;
 	status: TaskStatus;
 	assign_to: Record<string, unknown> | null;
 	assigned_to_email: string | null;

@@ -62,6 +62,7 @@ async def create_task_route(
         payload=body.payload,
         payload_schema=body.payload_schema,
         response_schema=body.response_schema,
+        form_definition=body.form_definition,
         timeout_seconds=body.timeout_seconds,
         idempotency_key=body.idempotency_key,
         assign_to=body.assign_to,
