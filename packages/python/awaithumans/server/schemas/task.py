@@ -15,6 +15,7 @@ class CreateTaskRequest(BaseModel):
     payload: dict[str, Any]
     payload_schema: dict[str, Any]
     response_schema: dict[str, Any]
+    form_definition: dict[str, Any] | None = None
     timeout_seconds: int = Field(ge=60, le=2_592_000)
     idempotency_key: str
     assign_to: dict[str, Any] | None = None
@@ -37,6 +38,7 @@ class TaskResponse(BaseModel):
     payload: dict[str, Any] | None = None
     payload_schema: dict[str, Any]
     response_schema: dict[str, Any]
+    form_definition: dict[str, Any] | None = None
     status: TaskStatus
     assign_to: dict[str, Any] | None = None
     assigned_to_email: str | None = None

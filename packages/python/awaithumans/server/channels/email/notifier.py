@@ -1,0 +1,182 @@
+"""Email task notification — the public entry point from task creation.
+
+Parses the task's `notify` list for email routes, resolves the sender
+identity (a DB row, or the env-configured default), picks the transport,
+renders the email, and sends. Same BackgroundTask pattern as Slack:
+
+- Acquire a fresh DB session (caller's is already released).
+- Parse `notify` via the shared routing parser.
+- For each route, resolve identity → transport → message → send.
+- All errors logged, nothing raised — a send failure never rolls back
+  the task the user just created.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from awaithumans.forms import FormDefinition
+from awaithumans.server.channels.email.renderer import build_notification_email
+from awaithumans.server.channels.email.transport import (
+    EmailTransport,
+    EmailTransportError,
+    resolve_transport,
+)
+from awaithumans.server.channels.email.transport.factory import (
+    resolve_default_transport,
+    resolve_identity_transport,
+)
+from awaithumans.server.channels.routing import ChannelRoute, routes_for_channel
+from awaithumans.server.core.config import settings
+from awaithumans.server.db.connection import get_async_session_factory
+from awaithumans.server.db.models import EmailSenderIdentity
+from awaithumans.server.services.email_identity_service import get_identity
+
+logger = logging.getLogger("awaithumans.server.channels.email.notifier")
+
+
+async def notify_task(
+    *,
+    task_id: str,
+    task_title: str,
+    task_payload: dict[str, Any] | None,
+    redact_payload: bool,
+    notify: list[str] | None,
+    form_definition: dict[str, Any] | None,
+) -> None:
+    """Send the notification email to each email: route on the task."""
+    routes = routes_for_channel(notify, "email")
+    if not routes:
+        return
+
+    factory = get_async_session_factory()
+    form = _parse_form(form_definition)
+
+    async with factory() as session:
+        for route in routes:
+            try:
+                await _deliver_one(
+                    session,
+                    route,
+                    task_id=task_id,
+                    task_title=task_title,
+                    task_payload=task_payload,
+                    redact_payload=redact_payload,
+                    form=form,
+                )
+            except EmailTransportError as exc:
+                logger.error(
+                    "Email send failed for task %s → %s: %s",
+                    task_id,
+                    route.target,
+                    exc,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "Unexpected email notifier error for task %s → %s: %s",
+                    task_id,
+                    route.target,
+                    exc,
+                )
+
+
+async def _deliver_one(
+    session: Any,
+    route: ChannelRoute,
+    *,
+    task_id: str,
+    task_title: str,
+    task_payload: dict[str, Any] | None,
+    redact_payload: bool,
+    form: FormDefinition | None,
+) -> None:
+    identity = await _resolve_identity(session, route.identity)
+    transport = await _resolve_transport_for(identity)
+    if transport is None:
+        logger.warning(
+            "Email route %s → no usable transport (identity=%s, default=%s); skipping.",
+            route.target,
+            route.identity,
+            settings.EMAIL_TRANSPORT,
+        )
+        return
+
+    from_email, from_name, reply_to = _resolve_from(identity)
+    if not from_email:
+        logger.warning(
+            "Email route %s → no From: address configured (set EMAIL_FROM "
+            "or create an identity); skipping.",
+            route.target,
+        )
+        return
+
+    message = build_notification_email(
+        to=route.target,
+        task_id=task_id,
+        task_title=task_title,
+        task_payload=task_payload,
+        redact_payload=redact_payload,
+        form=form,
+        from_email=from_email,
+        from_name=from_name,
+        reply_to=reply_to,
+        public_url=settings.PUBLIC_URL,
+    )
+    result = await transport.send(message)
+    logger.info(
+        "Email sent for task %s → %s (transport=%s, id=%s)",
+        task_id,
+        route.target,
+        result.transport,
+        result.message_id,
+    )
+
+
+async def _resolve_identity(
+    session: Any, identity_id: str | None
+) -> EmailSenderIdentity | None:
+    if identity_id is None:
+        return None
+    row = await get_identity(session, identity_id)
+    if row is None:
+        logger.warning(
+            "Email identity '%s' not found; falling back to env default.",
+            identity_id,
+        )
+    return row
+
+
+async def _resolve_transport_for(
+    identity: EmailSenderIdentity | None,
+) -> EmailTransport | None:
+    if identity is not None:
+        return resolve_identity_transport(identity)
+    return resolve_default_transport()
+
+
+def _resolve_from(
+    identity: EmailSenderIdentity | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Return (from_email, from_name, reply_to)."""
+    if identity is not None:
+        return identity.from_email, identity.from_name, identity.reply_to
+    return (
+        settings.EMAIL_FROM,
+        settings.EMAIL_FROM_NAME,
+        settings.EMAIL_REPLY_TO,
+    )
+
+
+def _parse_form(form_definition: dict[str, Any] | None) -> FormDefinition | None:
+    if not form_definition:
+        return None
+    try:
+        return FormDefinition.model_validate(form_definition)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Invalid form_definition on task: %s", exc)
+        return None
+
+
+# Re-exported for tests and callers that want the low-level transport directly.
+__all__ = ["notify_task", "resolve_transport"]

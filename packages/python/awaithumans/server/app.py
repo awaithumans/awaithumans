@@ -21,7 +21,7 @@ from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
 from awaithumans.server.db.connection import close_db, init_db
-from awaithumans.server.routes import health, tasks
+from awaithumans.server.routes import email, health, slack, tasks
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
 
 logger = logging.getLogger("awaithumans.server")
@@ -57,6 +57,29 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     # ── Logging ──────────────────────────────────────────────────────
     setup_logging(settings.LOG_LEVEL)
 
+    # ── Production safety checks ─────────────────────────────────────
+    # HTTPS is required in production because the server handles Slack OAuth
+    # tokens and bearer credentials that must not transit in cleartext.
+    if settings.is_production and not settings.PUBLIC_URL.startswith("https://"):
+        logger.error(
+            "SECURITY: ENVIRONMENT=production but PUBLIC_URL is not HTTPS "
+            "(value=%s). Tokens and OAuth state will transit in cleartext. "
+            "Set PUBLIC_URL to an https:// URL.",
+            settings.PUBLIC_URL,
+        )
+
+    # OAuth stores bot tokens in the DB. Those tokens are encrypted at rest
+    # via server/core/encryption.py, which needs PAYLOAD_KEY. Without the
+    # key we'd either silently fall back to plaintext (unsafe) or crash on
+    # first install (surprising). Fail fast at boot instead.
+    if settings.SLACK_CLIENT_ID and not settings.PAYLOAD_KEY:
+        raise RuntimeError(
+            "Slack OAuth is enabled (SLACK_CLIENT_ID is set) but PAYLOAD_KEY "
+            "is not. Tokens cannot be encrypted at rest without it. Generate "
+            "one with: python -c 'import secrets; print(secrets.token_urlsafe(32))' "
+            "and set AWAITHUMANS_PAYLOAD_KEY."
+        )
+
     # ── App ──────────────────────────────────────────────────────────
     app = FastAPI(
         title="awaithumans",
@@ -82,6 +105,8 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     # ── Routes ───────────────────────────────────────────────────────
     app.include_router(tasks.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
+    app.include_router(slack.router, prefix="/api")
+    app.include_router(email.router, prefix="/api")
 
     # ── Dashboard static files ───────────────────────────────────────
     if serve_dashboard:

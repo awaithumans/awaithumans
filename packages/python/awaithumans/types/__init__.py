@@ -4,6 +4,12 @@ Import from here, not from individual files:
     from awaithumans.types import TaskStatus, AwaitHumanOptions, VerifierConfig
 """
 
+from awaithumans.types.form import (
+    FORM_DEFINITION_VERSION,
+    FormDefinition,
+    FormField,
+    FormFieldBase,
+)
 from awaithumans.types.routing import (
     AssignTo,
     HumanIdentity,
@@ -27,6 +33,10 @@ from awaithumans.types.verification import (
 __all__ = [
     "AssignTo",
     "AwaitHumanOptions",
+    "FORM_DEFINITION_VERSION",
+    "FormDefinition",
+    "FormField",
+    "FormFieldBase",
     "HumanIdentity",
     "MarketplaceAssignment",
     "PoolAssignment",

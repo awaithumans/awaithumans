@@ -10,9 +10,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from awaithumans.server.channels.email import notify_task as notify_task_email
+from awaithumans.server.channels.slack import notify_task as notify_task_slack
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.db.models import Task, TaskStatus
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
@@ -53,15 +55,22 @@ def _task_to_response(task: Task, *, redact: bool = False) -> TaskResponse:
 @router.post("", response_model=TaskResponse, status_code=201)
 async def create_task_route(
     body: CreateTaskRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
-    """Create a new HITL task (or return existing if idempotency key matches)."""
+    """Create a new HITL task (or return existing if idempotency key matches).
+
+    Channel notifications fire in a FastAPI BackgroundTask *after* the
+    response is sent, so a slow Slack API call never blocks task creation
+    and a Slack outage never fails a successful task write.
+    """
     task = await create_task(
         session,
         task=body.task,
         payload=body.payload,
         payload_schema=body.payload_schema,
         response_schema=body.response_schema,
+        form_definition=body.form_definition,
         timeout_seconds=body.timeout_seconds,
         idempotency_key=body.idempotency_key,
         assign_to=body.assign_to,
@@ -70,6 +79,25 @@ async def create_task_route(
         redact_payload=body.redact_payload,
         callback_url=body.callback_url,
     )
+
+    if body.notify:
+        background_tasks.add_task(
+            notify_task_slack,
+            task_id=task.id,
+            task_title=task.task,
+            notify=body.notify,
+            form_definition=task.form_definition,
+        )
+        background_tasks.add_task(
+            notify_task_email,
+            task_id=task.id,
+            task_title=task.task,
+            task_payload=None if task.redact_payload else task.payload,
+            redact_payload=task.redact_payload,
+            notify=body.notify,
+            form_definition=task.form_definition,
+        )
+
     return _task_to_response(task)
 
 

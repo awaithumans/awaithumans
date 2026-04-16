@@ -14,6 +14,11 @@ import { cn, formatRelativeTime } from "@/lib/utils";
 import { TERMINAL_STATUSES } from "@/lib/constants";
 import { StatusBadge } from "@/components/status-badge";
 import { ErrorBanner } from "@/components/error-banner";
+import {
+	FormRenderer,
+	initialValueFor,
+	type FormValue,
+} from "@/components/form-renderer";
 
 export default function TaskDetailPage() {
 	const params = useParams();
@@ -25,7 +30,7 @@ export default function TaskDetailPage() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
-	const [formData, setFormData] = useState<Record<string, unknown>>({});
+	const [formData, setFormData] = useState<FormValue>({});
 
 	useEffect(() => {
 		loadTask();
@@ -41,18 +46,8 @@ export default function TaskDetailPage() {
 			setTask(taskData);
 			setAudit(auditData);
 
-			// Initialize form data from response schema
-			if (taskData.response_schema?.properties) {
-				const initial: Record<string, unknown> = {};
-				for (const [key, schema] of Object.entries(
-					taskData.response_schema.properties as Record<string, Record<string, unknown>>,
-				)) {
-					if (schema.type === "boolean") initial[key] = false;
-					else if (schema.type === "string") initial[key] = "";
-					else if (schema.type === "number" || schema.type === "integer") initial[key] = 0;
-					else initial[key] = null;
-				}
-				setFormData(initial);
+			if (taskData.form_definition) {
+				setFormData(initialValueFor(taskData.form_definition));
 			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to load task");
@@ -170,117 +165,25 @@ export default function TaskDetailPage() {
 					</div>
 
 					{/* Response Form (if not terminal) */}
-					{!isTerminal && task.response_schema?.properties && (
+					{!isTerminal && task.form_definition && (
 						<div className="border border-[#00E676]/20 rounded-lg p-5 bg-[#00E676]/5">
 							<h2 className="text-sm font-semibold text-[#00E676] uppercase tracking-wider mb-4">
 								Your Response
 							</h2>
-							<div className="space-y-4">
-								{Object.entries(
-									task.response_schema.properties as Record<
-										string,
-										Record<string, unknown>
-									>,
-								).map(([key, schema]) => (
-									<div key={key}>
-										<label
-											htmlFor={key}
-											className="block text-sm text-white/60 mb-1.5"
-										>
-											{(schema.description as string) || key}
-										</label>
-										{schema.type === "boolean" ? (
-											<div className="flex gap-3">
-												<button
-													type="button"
-													onClick={() =>
-														setFormData((prev) => ({ ...prev, [key]: true }))
-													}
-													className={cn(
-														"px-4 py-2 text-sm rounded-md border transition-colors",
-														formData[key] === true
-															? "bg-[#00E676]/20 text-[#00E676] border-[#00E676]/40"
-															: "bg-white/5 text-white/50 border-white/10 hover:text-white",
-													)}
-												>
-													Yes
-												</button>
-												<button
-													type="button"
-													onClick={() =>
-														setFormData((prev) => ({ ...prev, [key]: false }))
-													}
-													className={cn(
-														"px-4 py-2 text-sm rounded-md border transition-colors",
-														formData[key] === false
-															? "bg-red-400/20 text-red-400 border-red-400/40"
-															: "bg-white/5 text-white/50 border-white/10 hover:text-white",
-													)}
-												>
-													No
-												</button>
-											</div>
-										) : schema.enum ? (
-											<select
-												id={key}
-												value={String(formData[key] ?? "")}
-												onChange={(e) =>
-													setFormData((prev) => ({
-														...prev,
-														[key]: e.target.value,
-													}))
-												}
-												className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#00E676]/40"
-											>
-												<option value="">Select...</option>
-												{(schema.enum as string[]).map((opt) => (
-													<option key={opt} value={opt}>
-														{opt}
-													</option>
-												))}
-											</select>
-										) : schema.type === "number" || schema.type === "integer" ? (
-											<input
-												id={key}
-												type="number"
-												value={String(formData[key] ?? "")}
-												onChange={(e) =>
-													setFormData((prev) => ({
-														...prev,
-														[key]: Number(e.target.value),
-													}))
-												}
-												className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#00E676]/40"
-											/>
-										) : (
-											<input
-												id={key}
-												type="text"
-												value={String(formData[key] ?? "")}
-												onChange={(e) =>
-													setFormData((prev) => ({
-														...prev,
-														[key]: e.target.value || null,
-													}))
-												}
-												placeholder={
-													(schema.description as string) || `Enter ${key}`
-												}
-												className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-[#00E676]/40"
-											/>
-										)}
-									</div>
-								))}
-
-								<button
-									type="button"
-									onClick={handleSubmit}
-									disabled={submitting}
-									className="mt-4 px-6 py-2.5 bg-[#00E676] text-black font-semibold text-sm rounded-md hover:bg-[#00E676]/90 disabled:opacity-50 transition-colors"
-								>
-									{submitting ? "Submitting..." : "Submit Response"}
-								</button>
-							</div>
+							<FormRenderer
+								form={task.form_definition}
+								value={formData}
+								onChange={setFormData}
+								disabled={submitting}
+							/>
+							<button
+								type="button"
+								onClick={handleSubmit}
+								disabled={submitting}
+								className="mt-6 px-6 py-2.5 bg-[#00E676] text-black font-semibold text-sm rounded-md hover:bg-[#00E676]/90 disabled:opacity-50 transition-colors"
+							>
+								{submitting ? "Submitting..." : "Submit Response"}
+							</button>
 						</div>
 					)}
 

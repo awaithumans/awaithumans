@@ -20,6 +20,7 @@ from awaithumans.errors import (
     TimeoutRangeError,
     VerificationExhaustedError,
 )
+from awaithumans.forms import extract_form
 from awaithumans.types import MarketplaceAssignment, VerifierConfig
 from awaithumans.utils.constants import (
     DOCS_TROUBLESHOOTING_URL,
@@ -88,6 +89,11 @@ async def await_human(
         else:
             assign_to_dict = {"value": str(assign_to)}
 
+    # ── Extract form definition from response schema ────────────────
+    # Primitives attached via Annotated win; unannotated fields fall back
+    # to type-based inference. Safe for any Pydantic BaseModel.
+    form_definition = extract_form(response_schema).model_dump(mode="json")
+
     # ── Create task on the server ────────────────────────────────────
     async with httpx.AsyncClient(timeout=30) as client:
         create_body = {
@@ -95,6 +101,7 @@ async def await_human(
             "payload": payload.model_dump(mode="json"),
             "payload_schema": payload_schema.model_json_schema(),
             "response_schema": response_schema.model_json_schema(),
+            "form_definition": form_definition,
             "timeout_seconds": timeout_seconds,
             "idempotency_key": key,
             "assign_to": assign_to_dict,

@@ -1,0 +1,294 @@
+import type { ReactNode } from "react";
+import type {
+	SubformField,
+	TableColumn,
+	TableField,
+} from "@/lib/form-types";
+import { FieldWrapper } from "./field-wrapper";
+
+const cellClass =
+	"bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#00E676]/40 w-full";
+
+// ─── Table ───────────────────────────────────────────────────────────
+
+type TableRow = Record<string, unknown>;
+
+export function TableRenderer({
+	field,
+	value,
+	onChange,
+	disabled,
+}: {
+	field: TableField;
+	value: unknown;
+	onChange: (v: unknown) => void;
+	disabled?: boolean;
+}) {
+	const rows: TableRow[] = Array.isArray(value)
+		? (value as TableRow[])
+		: Array.from({ length: field.initial_rows }).map(() =>
+				defaultRow(field.columns),
+			);
+
+	const setCell = (rowIdx: number, col: TableColumn, raw: unknown) => {
+		const next = rows.map((r, i) =>
+			i === rowIdx ? { ...r, [col.name]: coerceCell(col, raw) } : r,
+		);
+		onChange(next);
+	};
+
+	const addRow = () => onChange([...rows, defaultRow(field.columns)]);
+	const removeRow = (idx: number) =>
+		onChange(rows.filter((_, i) => i !== idx));
+
+	const canAdd =
+		field.allow_add_row &&
+		!disabled &&
+		(field.max_rows === null || rows.length < field.max_rows);
+	const canRemove =
+		field.allow_remove_row &&
+		!disabled &&
+		(field.min_rows === null || rows.length > (field.min_rows ?? 0));
+
+	return (
+		<FieldWrapper field={field}>
+			<div className="border border-white/10 rounded-md overflow-hidden">
+				<table className="w-full">
+					<thead className="bg-white/5 text-xs text-white/60">
+						<tr>
+							{field.columns.map((col) => (
+								<th key={col.name} className="text-left px-2 py-1.5">
+									{col.label}
+									{col.required && (
+										<span className="text-red-400 ml-0.5">*</span>
+									)}
+								</th>
+							))}
+							{canRemove && <th className="w-8" />}
+						</tr>
+					</thead>
+					<tbody>
+						{rows.map((row, i) => (
+							<tr key={i} className="border-t border-white/5">
+								{field.columns.map((col) => (
+									<td key={col.name} className="p-1">
+										<TableCell
+											col={col}
+											value={row[col.name]}
+											onChange={(v) => setCell(i, col, v)}
+											disabled={disabled}
+										/>
+									</td>
+								))}
+								{canRemove && (
+									<td className="p-1 text-center">
+										<button
+											type="button"
+											onClick={() => removeRow(i)}
+											disabled={disabled}
+											aria-label="Remove row"
+											className="text-red-400/70 hover:text-red-400 w-6 h-6"
+										>
+											×
+										</button>
+									</td>
+								)}
+							</tr>
+						))}
+					</tbody>
+				</table>
+				{canAdd && (
+					<button
+						type="button"
+						onClick={addRow}
+						className="w-full px-3 py-1.5 text-xs text-[#00E676] hover:bg-[#00E676]/10 transition-colors border-t border-white/5"
+					>
+						+ Add row
+					</button>
+				)}
+			</div>
+		</FieldWrapper>
+	);
+}
+
+function defaultRow(columns: TableColumn[]): TableRow {
+	const row: TableRow = {};
+	for (const col of columns) row[col.name] = col.default ?? null;
+	return row;
+}
+
+function coerceCell(col: TableColumn, raw: unknown): unknown {
+	if (col.kind === "switch") return Boolean(raw);
+	if (col.kind === "number" || col.kind === "currency") {
+		if (raw === "" || raw === null || raw === undefined) return null;
+		const n = Number(raw);
+		return Number.isFinite(n) ? n : null;
+	}
+	return raw ?? null;
+}
+
+function TableCell({
+	col,
+	value,
+	onChange,
+	disabled,
+}: {
+	col: TableColumn;
+	value: unknown;
+	onChange: (v: unknown) => void;
+	disabled?: boolean;
+}) {
+	if (col.kind === "switch") {
+		return (
+			<input
+				type="checkbox"
+				checked={Boolean(value)}
+				onChange={(e) => onChange(e.target.checked)}
+				disabled={disabled}
+				className="accent-[#00E676] w-4 h-4"
+			/>
+		);
+	}
+	if (col.kind === "single_select" && col.options) {
+		return (
+			<select
+				value={typeof value === "string" ? value : ""}
+				onChange={(e) => onChange(e.target.value || null)}
+				disabled={disabled}
+				className={cellClass}
+			>
+				<option value="">—</option>
+				{col.options.map((o) => (
+					<option key={o.value} value={o.value}>
+						{o.label}
+					</option>
+				))}
+			</select>
+		);
+	}
+	if (col.kind === "date") {
+		return (
+			<input
+				type="date"
+				value={typeof value === "string" ? value : ""}
+				onChange={(e) => onChange(e.target.value || null)}
+				disabled={disabled}
+				className={cellClass}
+			/>
+		);
+	}
+	if (col.kind === "datetime") {
+		return (
+			<input
+				type="datetime-local"
+				value={typeof value === "string" ? value.slice(0, 16) : ""}
+				onChange={(e) => onChange(e.target.value || null)}
+				disabled={disabled}
+				className={cellClass}
+			/>
+		);
+	}
+	if (col.kind === "long_text") {
+		return (
+			<textarea
+				rows={2}
+				value={typeof value === "string" ? value : ""}
+				onChange={(e) => onChange(e.target.value || null)}
+				disabled={disabled}
+				placeholder={col.placeholder ?? undefined}
+				className={cellClass}
+			/>
+		);
+	}
+	const isNumber = col.kind === "number" || col.kind === "currency";
+	return (
+		<input
+			type={isNumber ? "number" : "text"}
+			value={
+				value === null || value === undefined ? "" : String(value as string)
+			}
+			onChange={(e) => onChange(e.target.value)}
+			min={col.min_value ?? undefined}
+			max={col.max_value ?? undefined}
+			disabled={disabled}
+			placeholder={col.placeholder ?? undefined}
+			className={cellClass}
+		/>
+	);
+}
+
+// ─── Subform ─────────────────────────────────────────────────────────
+
+type SubformEntry = Record<string, unknown>;
+
+export function SubformRenderer({
+	field,
+	value,
+	onChange,
+	disabled,
+	renderChildren,
+}: {
+	field: SubformField;
+	value: unknown;
+	onChange: (v: unknown) => void;
+	disabled?: boolean;
+	renderChildren: (
+		entryValue: SubformEntry,
+		setEntry: (v: SubformEntry) => void,
+	) => ReactNode;
+}) {
+	const entries: SubformEntry[] = Array.isArray(value)
+		? (value as SubformEntry[])
+		: Array.from({ length: field.initial_count }).map(() => ({}));
+
+	const setEntry = (idx: number, next: SubformEntry) => {
+		onChange(entries.map((e, i) => (i === idx ? next : e)));
+	};
+	const addEntry = () => onChange([...entries, {}]);
+	const removeEntry = (idx: number) =>
+		onChange(entries.filter((_, i) => i !== idx));
+
+	const canAdd =
+		!disabled && (field.max_count === null || entries.length < field.max_count);
+	const canRemove =
+		!disabled &&
+		(field.min_count === null || entries.length > (field.min_count ?? 0));
+
+	return (
+		<FieldWrapper field={field}>
+			<div className="space-y-3">
+				{entries.map((entry, i) => (
+					<div
+						key={i}
+						className="border border-white/10 rounded-md p-3 space-y-3 bg-white/5"
+					>
+						<div className="flex items-center justify-between">
+							<span className="text-xs text-white/40 uppercase tracking-wider">
+								#{i + 1}
+							</span>
+							{canRemove && (
+								<button
+									type="button"
+									onClick={() => removeEntry(i)}
+									className="text-red-400/70 hover:text-red-400 text-xs"
+								>
+									{field.remove_label}
+								</button>
+							)}
+						</div>
+						{renderChildren(entry, (v) => setEntry(i, v))}
+					</div>
+				))}
+				{canAdd && (
+					<button
+						type="button"
+						onClick={addEntry}
+						className="text-sm text-[#00E676] hover:underline"
+					>
+						+ {field.add_label}
+					</button>
+				)}
+			</div>
+		</FieldWrapper>
+	);
+}

@@ -41,6 +41,8 @@ server = [
     "slack-sdk>=3.33.0",
     "resend>=2.0.0",
     "typer>=0.13.0",
+    "cryptography>=43.0.0",
+    "aiosmtplib>=3.0.0",
 ]
 temporal = [
     "temporalio>=1.7.0",

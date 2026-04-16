@@ -1,0 +1,57 @@
+# awaithumans Slack app manifest.
+#
+# One-paste setup: go to https://api.slack.com/apps → "Create New App" →
+# "From an app manifest" → pick your workspace → paste the YAML below.
+#
+# Before pasting, replace PUBLIC_URL below with the publicly-reachable URL
+# of your awaithumans server (e.g. https://hitl.example.com, or an ngrok
+# URL in development). Slack must be able to POST to:
+#     {PUBLIC_URL}/api/channels/slack/interactions
+#
+# After the app is created:
+#   1. Install it to your workspace (Settings → Install App).
+#   2. Copy the Bot User OAuth Token (xoxb-...) → AWAITHUMANS_SLACK_BOT_TOKEN.
+#   3. Copy the Signing Secret (Basic Information → App Credentials)
+#      → AWAITHUMANS_SLACK_SIGNING_SECRET.
+#   4. Set AWAITHUMANS_PUBLIC_URL to your server's public URL.
+#   5. Restart the server.
+
+display_information:
+  name: awaithumans
+  description: Human-in-the-loop reviews for AI agent workflows.
+  background_color: "#0A0A0A"
+
+features:
+  bot_user:
+    display_name: awaithumans
+    always_online: true
+
+oauth_config:
+  # Where Slack sends users after they approve the install. Needed ONLY
+  # for multi-workspace distribution (anyone can click "Add to Slack").
+  # Single-workspace self-hosted setups (pasting a bot token into .env)
+  # can ignore this section.
+  redirect_urls:
+    - "{{PUBLIC_URL}}/api/channels/slack/oauth/callback"
+  scopes:
+    bot:
+      # Post messages to channels the bot is invited to.
+      - chat:write
+      # DM users with task notifications.
+      - im:write
+      # Read channel info for routing (optional, can narrow later).
+      - channels:read
+      - groups:read
+      - users:read
+      # Upload files from file_input modal fields.
+      - files:write
+      - files:read
+
+settings:
+  interactivity:
+    is_enabled: true
+    # REPLACE {{PUBLIC_URL}} with your public server URL before pasting.
+    request_url: "{{PUBLIC_URL}}/api/channels/slack/interactions"
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

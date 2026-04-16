@@ -32,6 +32,11 @@ class Task(SQLModel, table=True):
     payload: dict[str, Any] = Field(sa_column=Column(JSON), default_factory=dict)
     payload_schema: dict[str, Any] = Field(sa_column=Column(JSON), default_factory=dict)
     response_schema: dict[str, Any] = Field(sa_column=Column(JSON), default_factory=dict)
+    form_definition: dict[str, Any] | None = Field(
+        sa_column=Column(JSON),
+        default=None,
+        description="Form primitive tree extracted from response_schema. Rendered per channel.",
+    )
 
     # State
     status: TaskStatus = Field(default=TaskStatus.CREATED)
