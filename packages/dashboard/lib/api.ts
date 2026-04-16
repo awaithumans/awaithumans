@@ -21,16 +21,26 @@ export type { AuditEntry, CompleteTaskRequest, HealthResponse, Task, TaskStatus 
 
 // ─── API base URL discovery ─────────────────────────────────────────────
 
+const CACHE_TTL_MS = 30_000;
 let cachedApiBase: string | null = null;
+let cachedAt: number = 0;
 
-async function resolveApiBase(): Promise<string> {
-	if (cachedApiBase) return cachedApiBase;
+function invalidateCache() {
+	cachedApiBase = null;
+	cachedAt = 0;
+}
+
+async function resolveApiBase(forceRefresh = false): Promise<string> {
+	if (!forceRefresh && cachedApiBase && Date.now() - cachedAt < CACHE_TTL_MS) {
+		return cachedApiBase;
+	}
 
 	try {
 		const res = await fetch("/api/discover");
 		if (res.ok) {
 			const data = (await res.json()) as { url: string; source: string };
 			cachedApiBase = data.url.replace(/\/$/, "");
+			cachedAt = Date.now();
 			return cachedApiBase;
 		}
 	} catch {
@@ -38,20 +48,33 @@ async function resolveApiBase(): Promise<string> {
 	}
 
 	cachedApiBase = "http://localhost:3001";
+	cachedAt = Date.now();
 	return cachedApiBase;
 }
 
 // ─── API Functions ──────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-	const base = await resolveApiBase();
-	const res = await fetch(`${base}${path}`, {
-		...options,
-		headers: {
-			"Content-Type": "application/json",
-			...options?.headers,
-		},
-	});
+	let base = await resolveApiBase();
+
+	const doFetch = (url: string) =>
+		fetch(`${url}${path}`, {
+			...options,
+			headers: {
+				"Content-Type": "application/json",
+				...options?.headers,
+			},
+		});
+
+	let res: Response;
+	try {
+		res = await doFetch(base);
+	} catch (err) {
+		// Network error (server gone, port closed) — invalidate cache, rediscover, retry once
+		invalidateCache();
+		base = await resolveApiBase(true);
+		res = await doFetch(base);
+	}
 
 	if (!res.ok) {
 		const body = await res.text();

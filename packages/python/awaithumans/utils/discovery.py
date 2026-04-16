@@ -4,10 +4,12 @@ Enables zero-config port coordination between the server, SDK, and dashboard.
 
 Flow:
     1. Server writes its actual bound URL to ~/.awaithumans-dev.json on startup.
-    2. SDK reads that file on every call, so it finds the server regardless
-       of which port the server auto-selected.
+    2. SDK reads that file on every call, verifies the server process is
+       still alive (via PID), and uses its URL.
     3. Dashboard reads it via a small API route at build/runtime.
     4. Server deletes the file on graceful shutdown.
+    5. If the server crashes and leaves a stale file, readers detect the
+       dead PID and ignore the file.
 
 Location:
     ~/.awaithumans-dev.json (user home, stable across cwd changes)
@@ -42,6 +44,22 @@ def get_discovery_file_path() -> Path:
     return Path.home() / DISCOVERY_FILE_NAME
 
 
+def _is_process_alive(pid: int) -> bool:
+    """Check if a process with the given PID is still running.
+
+    Uses os.kill(pid, 0) which sends the null signal — doesn't actually
+    kill, just checks if the process exists and we have permission to signal it.
+    """
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but we can't signal it — treat as alive
+        return True
+
+
 def write_discovery(*, host: str, port: int) -> None:
     """Write the server's bound URL to the discovery file.
 
@@ -65,18 +83,37 @@ def write_discovery(*, host: str, port: int) -> None:
 
 
 def read_discovery() -> dict | None:
-    """Read the discovery file. Returns None if it doesn't exist or is invalid."""
+    """Read the discovery file. Returns None if it doesn't exist, is invalid,
+    or points to a dead PID (stale file from a crashed server).
+    """
     path = get_discovery_file_path()
     if not path.exists():
         return None
     try:
         data = json.loads(path.read_text())
-        # Basic validation
-        if not isinstance(data, dict) or "url" not in data:
-            return None
-        return data
     except (OSError, json.JSONDecodeError):
         return None
+
+    # Basic validation
+    if not isinstance(data, dict) or "url" not in data:
+        return None
+
+    # Verify the server process is still alive. If not, the file is stale.
+    pid = data.get("pid")
+    if pid is not None and not _is_process_alive(int(pid)):
+        logger.info(
+            "Discovery file at %s is stale (PID %d no longer running) — ignoring.",
+            path,
+            pid,
+        )
+        # Clean up the stale file so we don't re-check it next time
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+
+    return data
 
 
 def delete_discovery() -> None:
@@ -94,7 +131,7 @@ def resolve_server_url(*, explicit_url: str | None = None) -> str:
 
     1. Explicit `server_url` argument passed to the SDK call.
     2. `AWAITHUMANS_URL` environment variable.
-    3. Discovery file at ~/.awaithumans-dev.json.
+    3. Discovery file at ~/.awaithumans-dev.json (only if the server PID is alive).
     4. Default: http://localhost:3001.
     """
     if explicit_url:
