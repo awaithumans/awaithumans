@@ -23,7 +23,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
 	{ href: "/", icon: ListChecks, label: "Tasks", activeWhenPrefix: ["/tasks"] },
-	{ href: "/audit", icon: Activity, label: "Audit Log" },
+	{ href: "/audit", icon: Activity, label: "Audit log" },
 	{ href: "/analytics", icon: BarChart3, label: "Analytics" },
 	{ href: "/settings", icon: SettingsIcon, label: "Settings" },
 ];
@@ -32,10 +32,14 @@ export function Sidebar() {
 	const pathname = usePathname();
 
 	return (
-		<aside className="w-60 shrink-0 border-r border-white/10 flex flex-col bg-bg">
+		<aside className="w-60 shrink-0 border-r border-white/[0.07] flex flex-col bg-bg">
 			{/* Logo */}
-			<div className="px-5 py-5 border-b border-white/10">
-				<Link href="/" aria-label="Home">
+			<div className="px-5 py-[22px] border-b border-white/[0.07]">
+				<Link
+					href="/"
+					aria-label="Home"
+					className="block focus:outline-none focus:ring-2 focus:ring-brand/40 rounded-sm"
+				>
 					<Wordmark />
 				</Link>
 			</div>
@@ -52,13 +56,25 @@ export function Sidebar() {
 							key={item.href}
 							href={item.href}
 							className={cn(
-								"flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+								"relative flex items-center gap-3 pl-3 pr-3 py-2 rounded-md text-sm transition-colors",
 								active
-									? "bg-white/5 text-fg"
-									: "text-white/55 hover:text-white hover:bg-white/[0.03]",
+									? "text-fg bg-white/[0.04]"
+									: "text-white/55 hover:text-white hover:bg-white/[0.02]",
 							)}
 						>
-							<Icon size={16} className={active ? "text-brand" : ""} />
+							{active && (
+								<span
+									className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-brand"
+									aria-hidden
+								/>
+							)}
+							<Icon
+								size={16}
+								className={cn(
+									"transition-colors",
+									active ? "text-brand" : "text-white/40",
+								)}
+							/>
 							<span>{item.label}</span>
 						</Link>
 					);
@@ -66,7 +82,7 @@ export function Sidebar() {
 			</nav>
 
 			{/* Footer */}
-			<div className="px-5 py-4 border-t border-white/10 text-xs">
+			<div className="px-5 py-4 border-t border-white/[0.07] text-xs">
 				<div className="flex items-center gap-3 text-white/35 mb-2">
 					<a
 						href={DOCS_BASE_URL}
@@ -86,7 +102,7 @@ export function Sidebar() {
 						GitHub
 					</a>
 				</div>
-				<div className="text-white/25 font-mono">{APP_VERSION}</div>
+				<div className="text-white/25 font-mono text-[11px]">{APP_VERSION}</div>
 			</div>
 		</aside>
 	);

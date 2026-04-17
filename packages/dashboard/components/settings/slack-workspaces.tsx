@@ -3,6 +3,7 @@
 import { ExternalLink, Slack, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { EmptyState } from "@/components/empty-state";
 import {
 	fetchSlackInstallations,
 	fetchSystemStatus,
@@ -78,9 +79,15 @@ export function SlackWorkspaces() {
 			) : installs === null ? (
 				<div className="px-5 py-4 text-white/30 text-xs">Loading…</div>
 			) : installs.length === 0 ? (
-				<div className="px-5 py-6 text-center text-white/35 text-sm">
-					No workspaces yet.
-				</div>
+				<EmptyState
+					icon={Slack}
+					title="No workspaces yet"
+					description={
+						canInstall
+							? "Teams will appear here after they install your Slack app."
+							: "Configure Slack OAuth above to start collecting installs."
+					}
+				/>
 			) : (
 				<ul className="divide-y divide-white/5">
 					{installs.map((i) => (
