@@ -16,12 +16,13 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 
+from awaithumans.server.core.auth import DashboardAuthMiddleware
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
 from awaithumans.server.db.connection import close_db, init_db
-from awaithumans.server.routes import email, health, slack, tasks
+from awaithumans.server.routes import auth, email, health, slack, tasks
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
 
 logger = logging.getLogger("awaithumans.server")
@@ -78,6 +79,17 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
             "and set AWAITHUMANS_PAYLOAD_KEY."
         )
 
+    # Dashboard auth signs cookies with an HKDF-derived key from
+    # PAYLOAD_KEY. Without PAYLOAD_KEY, login() would crash on first
+    # call. Fail fast.
+    if settings.DASHBOARD_PASSWORD and not settings.PAYLOAD_KEY:
+        raise RuntimeError(
+            "DASHBOARD_PASSWORD is set but PAYLOAD_KEY is not. Session "
+            "cookies can't be signed without PAYLOAD_KEY. Generate one "
+            "with: python -c 'import secrets; print(secrets.token_urlsafe(32))' "
+            "and set AWAITHUMANS_PAYLOAD_KEY."
+        )
+
     # ── App ──────────────────────────────────────────────────────────
     app = FastAPI(
         title="awaithumans",
@@ -91,6 +103,9 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
         app.add_exception_handler(exc_class, handler)
 
     # ── Middleware (order matters — last added = first executed) ──────
+    # Auth runs after CORS (so preflight OPTIONS still works) and after
+    # RequestID (so failed-auth responses carry a request ID).
+    app.add_middleware(DashboardAuthMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -101,6 +116,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.add_middleware(RequestIDMiddleware)
 
     # ── Routes ───────────────────────────────────────────────────────
+    app.include_router(auth.router, prefix="/api")
     app.include_router(tasks.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(slack.router, prefix="/api")

@@ -26,9 +26,15 @@ class Settings(BaseSettings):
     DATABASE_URL: str | None = None
     DB_PATH: str = ".awaithumans/dev.db"
 
-    # ── Auth ──────────────────────────────────────────────────────────
+    # ── Dashboard auth ────────────────────────────────────────────────
+    # If DASHBOARD_PASSWORD is unset, the dashboard has NO auth — the
+    # operator is expected to be running behind their own proxy or
+    # firewall. Setting a value turns on password auth: login page on
+    # the dashboard, HMAC-signed httponly session cookie, middleware
+    # that rejects unauthenticated API calls. HKDF-derived from
+    # PAYLOAD_KEY, so PAYLOAD_KEY must be set when auth is on.
     DASHBOARD_USER: str = "admin"
-    DASHBOARD_PASSWORD: str = "admin"
+    DASHBOARD_PASSWORD: str | None = None
 
     # ── CORS ──────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "*"  # Comma-separated list, or "*" for all

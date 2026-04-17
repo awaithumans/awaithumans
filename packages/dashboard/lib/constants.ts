@@ -44,3 +44,9 @@ export const TERMINAL_STATUSES: readonly TaskStatus[] = [
 /** Docs base URLs. */
 export const DOCS_BASE_URL = "https://awaithumans.dev/docs";
 export const DOCS_TROUBLESHOOTING_URL = `${DOCS_BASE_URL}/troubleshooting`;
+
+/** Project links. */
+export const GITHUB_URL = "https://github.com/awaithumans/awaithumans";
+
+/** Shown in the sidebar footer. Bump on each dashboard release. */
+export const APP_VERSION = "v0.1.0 · alpha";

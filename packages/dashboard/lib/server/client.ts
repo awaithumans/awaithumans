@@ -39,12 +39,22 @@ async function resolveApiBase(forceRefresh = false): Promise<string> {
 	return cachedApiBase;
 }
 
+export class UnauthorizedError extends Error {
+	constructor() {
+		super("Unauthorized — please log in.");
+		this.name = "UnauthorizedError";
+	}
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 	let base = await resolveApiBase();
 
 	const doFetch = (url: string) =>
 		fetch(`${url}${path}`, {
 			...options,
+			// Include the session cookie on every call so the Python
+			// server can recognise logged-in requests cross-origin in dev.
+			credentials: "include",
 			headers: {
 				"Content-Type": "application/json",
 				...options?.headers,
@@ -61,9 +71,18 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 		res = await doFetch(base);
 	}
 
+	if (res.status === 401) {
+		throw new UnauthorizedError();
+	}
+
 	if (!res.ok) {
 		const body = await res.text();
 		throw new Error(`API error ${res.status}: ${body}`);
+	}
+
+	// 204 No Content and similar — caller isn't expecting a body.
+	if (res.status === 204 || res.headers.get("content-length") === "0") {
+		return undefined as T;
 	}
 
 	return res.json() as Promise<T>;

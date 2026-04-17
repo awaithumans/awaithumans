@@ -113,3 +113,19 @@ HMAC_SHA256_DIGEST_BYTES = 32
 # `notify=` routing prefix (`email+acme:user@…`). 100 is more than enough
 # for any human-chosen slug and short enough to keep URLs sane.
 EMAIL_IDENTITY_ID_MAX_LENGTH = 100
+
+# ─── Dashboard Auth ──────────────────────────────────────────────────────
+
+# Name of the dashboard session cookie. Set by POST /api/auth/login,
+# cleared by POST /api/auth/logout, verified on every non-public route.
+DASHBOARD_SESSION_COOKIE_NAME = "awaithumans_session"
+
+# 7 days. Short enough that a stolen cookie has a bounded blast radius,
+# long enough that humans don't re-login every day.
+DASHBOARD_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+
+# HKDF parameters for deriving the session-cookie HMAC key from
+# PAYLOAD_KEY. Channel-scoped salt mirrors the magic-link pattern so
+# the same root key never signs two different primitives.
+DASHBOARD_SESSION_HKDF_SALT = b"awaithumans-dashboard-session"
+DASHBOARD_SESSION_HKDF_INFO = b"v1"
