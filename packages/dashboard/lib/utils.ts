@@ -5,20 +5,21 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
+// Anything inside this window reads as "just now" — and critically,
+// so does anything future-dated (clock skew between dashboard + server,
+// or demo seeds whose `now()` arrives before the dashboard renders).
+// A tiny lie beats "-19579s ago".
+const JUST_NOW_THRESHOLD_SECONDS = 10;
+
 /**
  * Short relative-time formatter for task timestamps.
- *
- * Returns "just now" for anything < 10 seconds or future-dated. Future
- * dates happen when the dashboard's clock trails the server's (or when
- * we seed demo data with `now()` values that arrive before the dashboard
- * renders) — showing "-19579s ago" is worse than a tiny lie.
  */
 export function formatRelativeTime(dateString: string): string {
 	const date = new Date(dateString);
 	const diffMs = Date.now() - date.getTime();
 	const diffSeconds = Math.floor(diffMs / 1000);
 
-	if (diffSeconds < 10) return "just now";
+	if (diffSeconds < JUST_NOW_THRESHOLD_SECONDS) return "just now";
 
 	const diffMinutes = Math.floor(diffSeconds / 60);
 	const diffHours = Math.floor(diffMinutes / 60);

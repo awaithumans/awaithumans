@@ -40,7 +40,7 @@ export function TaskVolumeChart({ data }: { data: TaskStatsByDay[] }) {
 					count={total.created}
 				/>
 				<Legend
-					color="rgba(255,255,255,0.45)"
+					color="var(--color-fg-muted)"
 					label="Completed"
 					count={total.completed}
 				/>
@@ -94,7 +94,7 @@ export function TaskVolumeChart({ data }: { data: TaskStatsByDay[] }) {
 								y={CHART_HEIGHT - completedH}
 								width={barWidth}
 								height={completedH}
-								fill="rgba(255,255,255,0.45)"
+								fill="var(--color-fg-muted)"
 								rx="0.5"
 							>
 								<title>{`${formatShortDate(d.date)}: ${d.completed} completed`}</title>
