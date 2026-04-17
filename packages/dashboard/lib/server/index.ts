@@ -30,5 +30,10 @@ export {
 	uninstallSlackWorkspace,
 	type SlackInstallation,
 } from "./slack";
+export {
+	fetchTaskStats,
+	type TaskStats,
+	type TaskStatsByDay,
+} from "./stats";
 export { fetchSystemStatus, type SystemStatus } from "./status";
 export { cancelTask, completeTask, fetchTask, fetchTasks } from "./tasks";
