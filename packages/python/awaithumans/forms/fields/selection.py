@@ -167,6 +167,7 @@ def _normalize_options(
             out.append(SelectOption(value=item, label=item))
         else:
             raise TypeError(
-                f"Options must be SelectOption, (value, label) tuple, or str. Got: {type(item).__name__}"
+                "Options must be SelectOption, (value, label) tuple, or str. "
+                f"Got: {type(item).__name__}"
             )
     return out

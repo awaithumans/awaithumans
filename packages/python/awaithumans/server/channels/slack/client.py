@@ -39,7 +39,7 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger("awaithumans.server.channels.slack.client")
 
 
-def _build_client(token: str) -> "AsyncWebClient | None":
+def _build_client(token: str) -> AsyncWebClient | None:
     try:
         from slack_sdk.web.async_client import AsyncWebClient
     except ImportError:
@@ -50,7 +50,7 @@ def _build_client(token: str) -> "AsyncWebClient | None":
     return AsyncWebClient(token=token)
 
 
-def get_env_client() -> "AsyncWebClient | None":
+def get_env_client() -> AsyncWebClient | None:
     """Return a client built from SLACK_BOT_TOKEN, or None if unset."""
     if not settings.SLACK_BOT_TOKEN:
         return None
@@ -59,7 +59,7 @@ def get_env_client() -> "AsyncWebClient | None":
 
 async def get_client_for_team(
     session: AsyncSession, team_id: str | None
-) -> "AsyncWebClient | None":
+) -> AsyncWebClient | None:
     """Return the client for a specific Slack workspace.
 
     Order: installation for team_id → env token fallback → None.
@@ -75,7 +75,7 @@ async def get_client_for_team(
     return get_env_client()
 
 
-async def get_default_client(session: AsyncSession) -> "AsyncWebClient | None":
+async def get_default_client(session: AsyncSession) -> AsyncWebClient | None:
     """Return a client for outbound use when no team_id is known.
 
     Used by notify_task() where the task's routing strings don't name a

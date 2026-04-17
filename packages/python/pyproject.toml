@@ -2,6 +2,16 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Ship non-Python template files inside the wheel. Without this, the
+# build step drops `.html` and `.txt` files and `importlib.resources`
+# fails at runtime against an installed wheel (dev installs still
+# resolve via the source tree, which hides the bug until release).
+[tool.hatch.build.targets.wheel]
+packages = ["awaithumans"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"awaithumans/server/channels/email/templates/html" = "awaithumans/server/channels/email/templates/html"
+
 [project]
 name = "awaithumans"
 version = "0.1.0"
@@ -84,6 +94,27 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "T20"]
+
+# FastAPI's `Depends(...)` / `Path(...)` / `Query(...)` / `Body(...)` in
+# argument defaults is idiomatic — the whole dependency-injection system
+# relies on it. Suppress B008 for these only.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Path",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+]
+
+# Email template renderers emit inline-styled HTML as fragment strings.
+# Some fragments naturally exceed 100 chars; breaking them mangles the
+# output and doesn't improve readability.
+[tool.ruff.lint.per-file-ignores]
+"awaithumans/server/channels/email/templates/renderers.py" = ["E501"]
 
 [tool.mypy]
 strict = true

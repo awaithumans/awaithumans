@@ -23,7 +23,7 @@ export function formatRelativeTime(dateString: string): string {
 export function statusBadgeColor(status: string): string {
 	switch (status) {
 		case "completed":
-			return "bg-[#00E676]/10 text-[#00E676] border-[#00E676]/20";
+			return "bg-brand/10 text-brand border-brand/20";
 		case "timed_out":
 		case "cancelled":
 		case "verification_exhausted":

@@ -70,7 +70,7 @@ class Subform(FormFieldBase):
     """Repeated group of form fields. Value is list[dict] keyed by field name."""
 
     kind: Literal["subform"] = "subform"
-    fields: list["FormField"] = Field(default_factory=list)
+    fields: list[FormField] = Field(default_factory=list)
     min_count: int | None = None
     max_count: int | None = None
     initial_count: int = 1
@@ -112,7 +112,7 @@ def table(
 
 def subform(
     *,
-    fields: list["FormField"],
+    fields: list[FormField],
     label: str | None = None,
     hint: str | None = None,
     min_count: int | None = None,

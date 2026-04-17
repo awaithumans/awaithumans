@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import AsyncIterator
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
@@ -38,10 +38,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     scheduler_task.cancel()
-    try:
+    with suppress(asyncio.CancelledError):
         await scheduler_task
-    except asyncio.CancelledError:
-        pass
     await close_db()
     logger.info("Server shut down")
 
@@ -96,7 +94,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
-        allow_credentials=True if settings.CORS_ORIGINS != "*" else False,
+        allow_credentials=settings.CORS_ORIGINS != "*",
         allow_methods=["*"],
         allow_headers=["*"],
     )

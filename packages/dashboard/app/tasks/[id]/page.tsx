@@ -9,9 +9,13 @@ import {
 	cancelTask,
 	type Task,
 	type AuditEntry,
-} from "@/lib/api";
+} from "@/lib/server";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import { TERMINAL_STATUSES } from "@/lib/constants";
+import {
+	IDEMPOTENCY_KEY_DISPLAY_LENGTH,
+	SECONDS_PER_MINUTE,
+	TERMINAL_STATUSES,
+} from "@/lib/constants";
 import { StatusBadge } from "@/components/status-badge";
 import { ErrorBanner } from "@/components/error-banner";
 import {
@@ -146,7 +150,7 @@ export default function TaskDetailPage() {
 													href={value}
 													target="_blank"
 													rel="noopener noreferrer"
-													className="text-[#00E676] hover:underline"
+													className="text-brand hover:underline"
 												>
 													{value}
 												</a>
@@ -166,8 +170,8 @@ export default function TaskDetailPage() {
 
 					{/* Response Form (if not terminal) */}
 					{!isTerminal && task.form_definition && (
-						<div className="border border-[#00E676]/20 rounded-lg p-5 bg-[#00E676]/5">
-							<h2 className="text-sm font-semibold text-[#00E676] uppercase tracking-wider mb-4">
+						<div className="border border-brand/20 rounded-lg p-5 bg-brand/5">
+							<h2 className="text-sm font-semibold text-brand uppercase tracking-wider mb-4">
 								Your Response
 							</h2>
 							<FormRenderer
@@ -180,7 +184,7 @@ export default function TaskDetailPage() {
 								type="button"
 								onClick={handleSubmit}
 								disabled={submitting}
-								className="mt-6 px-6 py-2.5 bg-[#00E676] text-black font-semibold text-sm rounded-md hover:bg-[#00E676]/90 disabled:opacity-50 transition-colors"
+								className="mt-6 px-6 py-2.5 bg-brand text-black font-semibold text-sm rounded-md hover:bg-brand/90 disabled:opacity-50 transition-colors"
 							>
 								{submitting ? "Submitting..." : "Submit Response"}
 							</button>
@@ -203,7 +207,7 @@ export default function TaskDetailPage() {
 											{typeof value === "boolean" ? (
 												<span
 													className={
-														value ? "text-[#00E676]" : "text-red-400"
+														value ? "text-brand" : "text-red-400"
 													}
 												>
 													{value ? "Yes" : "No"}
@@ -245,7 +249,7 @@ export default function TaskDetailPage() {
 											className={cn(
 												"w-[15px] h-[15px] rounded-full border-2 mt-0.5 flex-shrink-0",
 												entry.to_status === "completed"
-													? "bg-[#00E676]/20 border-[#00E676]"
+													? "bg-brand/20 border-brand"
 													: entry.to_status === "timed_out" ||
 														  entry.to_status === "cancelled"
 														? "bg-red-400/20 border-red-400"
@@ -274,7 +278,7 @@ export default function TaskDetailPage() {
 					<div className="mt-6 pt-4 border-t border-white/10 space-y-2 text-xs text-white/30">
 						<div>
 							<span className="text-white/50">Timeout:</span>{" "}
-							{Math.round(task.timeout_seconds / 60)} minutes
+							{Math.round(task.timeout_seconds / SECONDS_PER_MINUTE)} minutes
 						</div>
 						<div>
 							<span className="text-white/50">Created:</span>{" "}
@@ -282,7 +286,9 @@ export default function TaskDetailPage() {
 						</div>
 						<div>
 							<span className="text-white/50">Idempotency:</span>{" "}
-							<span className="font-mono">{task.idempotency_key.slice(0, 16)}...</span>
+							<span className="font-mono">
+								{task.idempotency_key.slice(0, IDEMPOTENCY_KEY_DISPLAY_LENGTH)}...
+							</span>
 						</div>
 					</div>
 				</div>

@@ -7,7 +7,7 @@ import type {
 import { FieldWrapper } from "./field-wrapper";
 
 const inputClass =
-	"bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#00E676]/40";
+	"bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/40";
 
 // ─── DatePicker ──────────────────────────────────────────────────────
 

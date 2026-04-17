@@ -10,11 +10,11 @@ from unittest.mock import patch
 import pytest
 
 from awaithumans.server.channels.email.magic_links import (
-    InvalidActionToken,
-    MAGIC_LINK_MAX_AGE_SECONDS,
+    InvalidActionTokenError,
     sign_action_token,
     verify_action_token,
 )
+from awaithumans.utils.constants import MAGIC_LINK_MAX_AGE_SECONDS
 
 
 def test_roundtrip_boolean_value() -> None:
@@ -36,7 +36,7 @@ def test_tampered_signature_rejected() -> None:
     # Flip a char in the middle.
     pos = len(token) // 2
     tampered = token[:pos] + ("A" if token[pos] != "A" else "B") + token[pos + 1 :]
-    with pytest.raises(InvalidActionToken):
+    with pytest.raises(InvalidActionTokenError):
         verify_action_token(tampered)
 
 
@@ -53,7 +53,7 @@ def test_tampered_body_rejected() -> None:
     tampered_token = (
         base64.urlsafe_b64encode(bytes(tampered_blob)).decode().rstrip("=")
     )
-    with pytest.raises(InvalidActionToken, match="signature"):
+    with pytest.raises(InvalidActionTokenError, match="signature"):
         verify_action_token(tampered_token)
 
 
@@ -65,7 +65,7 @@ def test_expired_rejected() -> None:
         "awaithumans.server.channels.email.magic_links.time.time",
         return_value=future,
     ):
-        with pytest.raises(InvalidActionToken, match="expired"):
+        with pytest.raises(InvalidActionTokenError, match="expired"):
             verify_action_token(token)
 
 
@@ -81,16 +81,16 @@ def test_short_ttl_honored() -> None:
         "awaithumans.server.channels.email.magic_links.time.time",
         return_value=future,
     ):
-        with pytest.raises(InvalidActionToken, match="expired"):
+        with pytest.raises(InvalidActionTokenError, match="expired"):
             verify_action_token(token)
 
 
 def test_malformed_inputs_rejected() -> None:
-    with pytest.raises(InvalidActionToken):
+    with pytest.raises(InvalidActionTokenError):
         verify_action_token("")
-    with pytest.raises(InvalidActionToken):
+    with pytest.raises(InvalidActionTokenError):
         verify_action_token("!!!not-base64!!!")
-    with pytest.raises(InvalidActionToken, match="too short"):
+    with pytest.raises(InvalidActionTokenError, match="too short"):
         verify_action_token(base64.urlsafe_b64encode(b"short").decode().rstrip("="))
 
 
@@ -109,5 +109,5 @@ def test_missing_payload_fields_rejected() -> None:
     mac = _hmac.new(_hmac_key(), bad_body, hashlib.sha256).digest()
     blob = mac + bad_body
     token = base64.urlsafe_b64encode(blob).decode().rstrip("=")
-    with pytest.raises(InvalidActionToken, match="missing fields"):
+    with pytest.raises(InvalidActionTokenError, match="missing fields"):
         verify_action_token(token)

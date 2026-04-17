@@ -1,4 +1,8 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import {
+	SIGNATURE_CANVAS_HEIGHT,
+	SIGNATURE_CANVAS_WIDTH,
+} from "@/lib/constants";
 import type {
 	FileUploadField,
 	HtmlBlockField,
@@ -160,7 +164,10 @@ export function SignatureRenderer({
 			if (!ctx) return;
 			const { x, y } = localPoint(e);
 			ctx.lineTo(x, y);
-			ctx.strokeStyle = "#F5F5F5";
+			// Canvas API doesn't understand Tailwind tokens — read the CSS var.
+			ctx.strokeStyle = getComputedStyle(document.documentElement)
+				.getPropertyValue("--color-fg")
+				.trim() || "#f5f5f5";
 			ctx.lineWidth = 2;
 			ctx.lineCap = "round";
 			ctx.stroke();
@@ -188,8 +195,8 @@ export function SignatureRenderer({
 			<div className="space-y-2">
 				<canvas
 					ref={canvasRef}
-					width={600}
-					height={160}
+					width={SIGNATURE_CANVAS_WIDTH}
+					height={SIGNATURE_CANVAS_HEIGHT}
 					onPointerDown={start}
 					onPointerMove={draw}
 					onPointerUp={end}

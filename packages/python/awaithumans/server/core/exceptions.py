@@ -10,11 +10,10 @@ from __future__ import annotations
 import logging
 
 from fastapi import Request
-
-from awaithumans.utils.constants import DOCS_TROUBLESHOOTING_URL
 from fastapi.responses import JSONResponse
 
 from awaithumans.server.services.exceptions import ServiceError
+from awaithumans.utils.constants import DOCS_TROUBLESHOOTING_URL
 
 logger = logging.getLogger("awaithumans.server.exceptions")
 

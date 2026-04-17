@@ -24,6 +24,15 @@ from __future__ import annotations
 __version__ = "0.1.0"
 
 from awaithumans.client import await_human, await_human_sync
+from awaithumans.errors import (
+    AwaitHumansError,
+    MarketplaceNotAvailableError,
+    SchemaValidationError,
+    TaskAlreadyTerminalError,
+    TaskTimeoutError,
+    TimeoutRangeError,
+    VerificationExhaustedError,
+)
 from awaithumans.types import (
     AssignTo,
     AwaitHumanOptions,
@@ -33,15 +42,6 @@ from awaithumans.types import (
     VerificationContext,
     VerifierConfig,
     VerifierResult,
-)
-from awaithumans.errors import (
-    AwaitHumansError,
-    MarketplaceNotAvailableError,
-    SchemaValidationError,
-    TaskAlreadyTerminalError,
-    TaskTimeoutError,
-    TimeoutRangeError,
-    VerificationExhaustedError,
 )
 
 __all__ = [

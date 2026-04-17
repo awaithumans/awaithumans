@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -107,10 +108,8 @@ def read_discovery() -> dict | None:
             pid,
         )
         # Clean up the stale file so we don't re-check it next time
-        try:
+        with suppress(OSError):
             path.unlink(missing_ok=True)
-        except OSError:
-            pass
         return None
 
     return data

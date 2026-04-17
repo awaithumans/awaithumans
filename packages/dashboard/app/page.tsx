@@ -2,9 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchTasks, type Task, type TaskStatus } from "@/lib/api";
+import { fetchTasks, type Task, type TaskStatus } from "@/lib/server";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import { TASK_LIST_POLL_INTERVAL_MS, TASK_ID_TRUNCATE_LENGTH } from "@/lib/constants";
+import {
+	SECONDS_PER_MINUTE,
+	TASK_ID_TRUNCATE_LENGTH,
+	TASK_LIST_POLL_INTERVAL_MS,
+} from "@/lib/constants";
 import { StatusBadge } from "@/components/status-badge";
 import { ErrorBanner } from "@/components/error-banner";
 
@@ -62,7 +66,7 @@ export default function TaskQueuePage() {
 							className={cn(
 								"px-3 py-1.5 text-sm rounded-md border transition-colors",
 								statusFilter === f.value
-									? "bg-[#00E676]/10 text-[#00E676] border-[#00E676]/30"
+									? "bg-brand/10 text-brand border-brand/30"
 									: "bg-white/5 text-white/50 border-white/10 hover:text-white/80",
 							)}
 						>
@@ -120,7 +124,7 @@ export default function TaskQueuePage() {
 										{formatRelativeTime(task.created_at)}
 									</td>
 									<td className="px-4 py-3 text-sm text-white/40">
-										{Math.round(task.timeout_seconds / 60)}m
+										{Math.round(task.timeout_seconds / SECONDS_PER_MINUTE)}m
 									</td>
 								</tr>
 							))}

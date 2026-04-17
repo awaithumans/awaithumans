@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchTasks, type Task } from "@/lib/api";
+import { fetchTasks, type Task } from "@/lib/server";
 import { formatRelativeTime } from "@/lib/utils";
 import { AUDIT_PAGE_DEFAULT_LIMIT, TASK_ID_TRUNCATE_LENGTH, TERMINAL_STATUSES } from "@/lib/constants";
 import { StatusBadge } from "@/components/status-badge";

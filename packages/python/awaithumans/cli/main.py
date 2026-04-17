@@ -11,7 +11,7 @@ except ImportError:
     raise SystemExit(
         "The awaithumans CLI requires the [server] extra.\n"
         'Install with: pip install "awaithumans[server]"'
-    )
+    ) from None
 
 from awaithumans.cli.commands.add_user import add_user
 from awaithumans.cli.commands.dev import dev

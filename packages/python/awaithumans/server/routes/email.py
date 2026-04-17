@@ -25,11 +25,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.channels.email.magic_links import (
-    InvalidActionToken,
+    InvalidActionTokenError,
     verify_action_token,
 )
 from awaithumans.server.channels.email.templates import (
@@ -42,52 +41,22 @@ from awaithumans.server.channels.email.transport import (
 )
 from awaithumans.server.core.admin_auth import require_admin
 from awaithumans.server.db.connection import get_session
+from awaithumans.server.schemas.email import IdentityCreateRequest, IdentityResponse
 from awaithumans.server.services.email_identity_service import (
     delete_identity,
     get_identity,
-    identity_config,
     list_identities,
     upsert_identity,
 )
 from awaithumans.server.services.exceptions import TaskAlreadyTerminalError
 from awaithumans.server.services.task_service import complete_task, get_task
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 router = APIRouter(prefix="/channels/email", tags=["channels"])
 logger = logging.getLogger("awaithumans.server.routes.email")
 
 
 # ─── Admin: identity CRUD ────────────────────────────────────────────────
-
-
-class IdentityCreateRequest(BaseModel):
-    id: str = Field(min_length=1, max_length=100)
-    display_name: str
-    from_email: str
-    from_name: str | None = None
-    reply_to: str | None = None
-    transport: str                    # "resend" | "smtp" | "logging" | "noop"
-    transport_config: dict[str, Any]  # kind-specific (api_key, host, port, ...)
-
-
-class IdentityResponse(BaseModel):
-    """Public view of an identity — NEVER includes transport_config.
-
-    The decrypted config lives in the DB + service layer only. Even admins
-    can't read it back via the API — if someone needs to rotate a key, they
-    POST a new identity config (upsert). This prevents an attacker who
-    steals the admin token from exfiltrating provider credentials en masse.
-    """
-
-    id: str
-    display_name: str
-    from_email: str
-    from_name: str | None
-    reply_to: str | None
-    transport: str
-    verified: bool
-    verified_at: str | None
-
-    model_config = {"from_attributes": True}
 
 
 def _to_public(row: Any) -> IdentityResponse:
@@ -216,7 +185,7 @@ async def action_confirm(
     """
     try:
         claim = verify_action_token(token)
-    except InvalidActionToken as exc:
+    except InvalidActionTokenError as exc:
         logger.info("Magic-link GET rejected: %s", exc)
         return HTMLResponse(
             status_code=400,
@@ -237,8 +206,6 @@ async def action_confirm(
                 message="The task linked to this email no longer exists."
             ),
         )
-
-    from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
     if task.status in TERMINAL_STATUSES_SET:
         return HTMLResponse(
@@ -264,7 +231,7 @@ async def action_submit(
     """Actually complete the task from a magic-link confirmation."""
     try:
         claim = verify_action_token(token)
-    except InvalidActionToken as exc:
+    except InvalidActionTokenError as exc:
         logger.info("Magic-link POST rejected: %s", exc)
         return HTMLResponse(
             status_code=400,

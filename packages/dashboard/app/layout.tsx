@@ -14,10 +14,10 @@ export default function RootLayout({
 }) {
 	return (
 		<html lang="en" className="dark">
-			<body className="min-h-screen bg-[#0A0A0A] text-[#F5F5F5] font-mono antialiased">
+			<body className="min-h-screen bg-bg text-fg font-mono antialiased">
 				<nav className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
 					<div className="flex items-center gap-3">
-						<span className="text-[#00E676] font-bold text-lg">awaithumans</span>
+						<span className="text-brand font-bold text-lg">awaithumans</span>
 						<span className="text-white/40 text-sm">dashboard</span>
 					</div>
 					<div className="flex items-center gap-6 text-sm">

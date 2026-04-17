@@ -96,7 +96,10 @@ class MarketplaceNotAvailableError(AwaitHumansError):
     def __init__(self) -> None:
         super().__init__(
             code="MARKETPLACE_NOT_AVAILABLE",
-            message='The workforce marketplace (assign_to=MarketplaceAssignment) is not yet available.',
+            message=(
+                "The workforce marketplace (assign_to=MarketplaceAssignment) "
+                "is not yet available."
+            ),
             hint=(
                 "The marketplace is coming in a future release. For now, assign tasks "
                 "to specific humans, pools, or roles."

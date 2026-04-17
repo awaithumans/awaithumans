@@ -31,7 +31,7 @@ export function SliderRenderer({
 			<div className="space-y-2">
 				<div className="flex justify-between text-xs text-white/50">
 					<span>{field.prefix}{field.min}{field.suffix}</span>
-					<span className="text-[#00E676]">
+					<span className="text-brand">
 						{field.prefix}
 						{current}
 						{field.suffix}
@@ -47,7 +47,7 @@ export function SliderRenderer({
 					value={current}
 					onChange={(e) => onChange(Number(e.target.value))}
 					disabled={disabled}
-					className="w-full accent-[#00E676]"
+					className="w-full accent-brand"
 				/>
 			</div>
 		</FieldWrapper>
@@ -83,7 +83,7 @@ export function StarRatingRenderer({
 							aria-label={`${v} star${v === 1 ? "" : "s"}`}
 							className={cn(
 								"w-8 h-8 text-2xl leading-none transition-colors",
-								filled ? "text-[#00E676]" : "text-white/20 hover:text-white/40",
+								filled ? "text-brand" : "text-white/20 hover:text-white/40",
 							)}
 						>
 							★
@@ -124,7 +124,7 @@ export function OpinionScaleRenderer({
 							className={cn(
 								"min-w-[36px] h-9 text-sm rounded-md border transition-colors",
 								current === v
-									? "bg-[#00E676]/20 text-[#00E676] border-[#00E676]/40"
+									? "bg-brand/20 text-brand border-brand/40"
 									: "bg-white/5 text-white/60 border-white/10 hover:text-white",
 							)}
 						>

@@ -92,8 +92,8 @@ async def notify_task(
 
 
 async def _resolve_client(
-    session: "AsyncSession", route: ChannelRoute
-) -> "AsyncWebClient | None":
+    session: AsyncSession, route: ChannelRoute
+) -> AsyncWebClient | None:
     if route.identity:
         # identity-suffixed route: pick exactly that workspace, no fallback.
         return await get_client_for_team(session, route.identity)

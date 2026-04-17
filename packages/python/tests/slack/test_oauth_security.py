@@ -239,7 +239,7 @@ def test_install_token_comparison_is_constant_time() -> None:
 
     assert hmac.compare_digest("abc", "abc") is True
     assert hmac.compare_digest("abc", "abd") is False
-    # The route imports `hmac` at module top — grep verifies that.
-    from awaithumans.server.routes import slack as slack_route
+    # The OAuth route imports `hmac` at module top — grep verifies that.
+    from awaithumans.server.routes.slack import oauth as oauth_route
 
-    assert "hmac" in slack_route.__dict__ or hasattr(slack_route, "hmac")
+    assert "hmac" in oauth_route.__dict__

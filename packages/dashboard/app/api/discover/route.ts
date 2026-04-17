@@ -15,10 +15,11 @@ import { readFile, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { DEFAULT_API_URL } from "@/lib/constants";
+
 export const dynamic = "force-dynamic";
 
 const DISCOVERY_FILE = ".awaithumans-dev.json";
-const DEFAULT_URL = "http://localhost:3001";
 
 interface DiscoveryFile {
 	url: string;
@@ -79,5 +80,5 @@ export async function GET() {
 		return Response.json({ url: discovered.url, source: "discovery" });
 	}
 
-	return Response.json({ url: DEFAULT_URL, source: "default" });
+	return Response.json({ url: DEFAULT_API_URL, source: "default" });
 }

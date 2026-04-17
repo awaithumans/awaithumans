@@ -22,8 +22,6 @@ import sys
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
-from awaithumans.utils.constants import SERVICE_NAME
-
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
 

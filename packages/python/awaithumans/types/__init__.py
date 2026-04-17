@@ -19,10 +19,10 @@ from awaithumans.types.routing import (
     UserAssignment,
 )
 from awaithumans.types.task import (
+    TERMINAL_STATUSES,
     AwaitHumanOptions,
     TaskRecord,
     TaskStatus,
-    TERMINAL_STATUSES,
 )
 from awaithumans.types.verification import (
     VerificationContext,
