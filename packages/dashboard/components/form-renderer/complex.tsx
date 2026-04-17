@@ -7,7 +7,7 @@ import type {
 import { FieldWrapper } from "./field-wrapper";
 
 const cellClass =
-	"bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#00E676]/40 w-full";
+	"bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-brand/40 w-full";
 
 // ─── Table ───────────────────────────────────────────────────────────
 
@@ -101,7 +101,7 @@ export function TableRenderer({
 					<button
 						type="button"
 						onClick={addRow}
-						className="w-full px-3 py-1.5 text-xs text-[#00E676] hover:bg-[#00E676]/10 transition-colors border-t border-white/5"
+						className="w-full px-3 py-1.5 text-xs text-brand hover:bg-brand/10 transition-colors border-t border-white/5"
 					>
 						+ Add row
 					</button>
@@ -145,7 +145,7 @@ function TableCell({
 				checked={Boolean(value)}
 				onChange={(e) => onChange(e.target.checked)}
 				disabled={disabled}
-				className="accent-[#00E676] w-4 h-4"
+				className="accent-brand w-4 h-4"
 			/>
 		);
 	}
@@ -283,7 +283,7 @@ export function SubformRenderer({
 					<button
 						type="button"
 						onClick={addEntry}
-						className="text-sm text-[#00E676] hover:underline"
+						className="text-sm text-brand hover:underline"
 					>
 						+ {field.add_label}
 					</button>

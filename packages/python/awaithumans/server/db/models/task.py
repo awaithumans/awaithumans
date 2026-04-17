@@ -8,8 +8,8 @@ from typing import Any
 from sqlalchemy import Index, text
 from sqlmodel import JSON, Column, Field, SQLModel
 
-from awaithumans.types import TaskStatus
 from awaithumans.server.db.models.base import new_id, utc_now
+from awaithumans.types import TaskStatus
 
 # Partial unique index — only ACTIVE tasks have unique idempotency keys.
 # After a task reaches a terminal state, another task with the same key can

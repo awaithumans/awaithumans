@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime
-from typing import Any, Union
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,7 +47,10 @@ class AwaitHumanOptions(BaseModel):
         description="Timeout in seconds. Min: 60 (1 minute). Max: 2,592,000 (30 days).",
     )
     assign_to: AssignTo | None = Field(default=None, description="Who should handle this task.")
-    notify: list[str] | None = Field(default=None, description='E.g., ["slack:#ops", "email:a@b.com"]')
+    notify: list[str] | None = Field(
+        default=None,
+        description='E.g., ["slack:#ops", "email:a@b.com"]',
+    )
     verifier: VerifierConfig | None = Field(default=None, description="AI verification config.")
     idempotency_key: str | None = Field(default=None, description="Explicit idempotency key.")
     redact_payload: bool = Field(default=False, description="If true, audit log hides payload.")

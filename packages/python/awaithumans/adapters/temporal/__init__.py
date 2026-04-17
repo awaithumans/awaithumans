@@ -29,7 +29,7 @@ async def await_human(**kwargs: object) -> object:
         raise ImportError(
             "The Temporal adapter requires the [temporal] extra.\n"
             'Install with: pip install "awaithumans[temporal]"'
-        )
+        ) from None
 
     # TODO: implement
     # 1. Create task on the awaithumans server (HTTP POST)

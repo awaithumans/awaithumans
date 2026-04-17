@@ -60,4 +60,6 @@ class TaskAlreadyExistsError(ServiceError):
     def __init__(self, task_id: str, idempotency_key: str) -> None:
         self.task_id = task_id
         self.idempotency_key = idempotency_key
-        super().__init__(f"Task with idempotency key '{idempotency_key}' already exists (id={task_id}).")
+        super().__init__(
+            f"Task with idempotency key '{idempotency_key}' already exists (id={task_id})."
+        )

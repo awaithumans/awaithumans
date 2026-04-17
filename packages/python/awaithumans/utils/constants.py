@@ -79,3 +79,37 @@ SLACK_DEFAULT_OAUTH_SCOPES = (
     "chat:write,im:write,channels:read,groups:read,"
     "users:read,files:write,files:read"
 )
+
+# Name of the cookie holding the OAuth state nonce — read from both
+# /oauth/start (set) and /oauth/callback (verify + delete).
+SLACK_OAUTH_STATE_COOKIE_NAME = "awaithumans_slack_oauth_state"
+
+# Block Kit hard limits — text length caps and select-option counts.
+# These are enforced by the Slack API itself; we truncate to stay well
+# inside and fail loudly rather than have Slack silently drop blocks.
+SLACK_HEADER_TEXT_MAX = 150
+SLACK_PLAIN_TEXT_MAX = 3000
+SLACK_SELECT_MAX_OPTIONS = 100
+SLACK_CONTEXT_VALUE_MAX = 200   # payload-context key:value truncation in the modal header
+
+# ─── Email Channel ───────────────────────────────────────────────────────
+
+# Default TTL for magic-link action tokens. 24 hours covers "user comes
+# back tomorrow morning"; 1 hour was too tight in practice.
+MAGIC_LINK_MAX_AGE_SECONDS = 24 * 60 * 60
+
+# HKDF parameters for deriving the magic-link HMAC key from PAYLOAD_KEY.
+# The salt is channel-scoped so the same root key could derive keys for
+# other channels without primitives colliding. `info` is a version tag —
+# bump it on any breaking change to the token format.
+MAGIC_LINK_HKDF_SALT = b"awaithumans-email-magic-links"
+MAGIC_LINK_HKDF_INFO = b"v1"
+
+# HMAC-SHA256 digest length. Used to slice mac || body when verifying
+# magic-link tokens. Named so the slice isn't a magic number.
+HMAC_SHA256_DIGEST_BYTES = 32
+
+# Identity IDs are used in URLs (DELETE /identities/{id}) and in the
+# `notify=` routing prefix (`email+acme:user@…`). 100 is more than enough
+# for any human-chosen slug and short enough to keep URLs sane.
+EMAIL_IDENTITY_ID_MAX_LENGTH = 100

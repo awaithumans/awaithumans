@@ -24,7 +24,7 @@ from awaithumans.forms import (
     time_picker,
 )
 from awaithumans.server.channels.slack.blocks import (
-    UnrenderableInSlack,
+    UnrenderableInSlackError,
     form_to_modal,
     open_review_message_blocks,
 )
@@ -246,7 +246,7 @@ def test_file_upload_emits_file_input() -> None:
 
 def test_signature_raises_unrenderable() -> None:
     form = FormDefinition(fields=[_name(signature(label="Sign"), "sig")])
-    with pytest.raises(UnrenderableInSlack):
+    with pytest.raises(UnrenderableInSlackError):
         form_to_modal(
             form=form,
             task_id="t",
@@ -259,7 +259,7 @@ def test_ranking_raises_unrenderable() -> None:
     form = FormDefinition(
         fields=[_name(ranking(options=["a", "b"], label="Rank"), "rank")]
     )
-    with pytest.raises(UnrenderableInSlack):
+    with pytest.raises(UnrenderableInSlackError):
         form_to_modal(
             form=form,
             task_id="t",

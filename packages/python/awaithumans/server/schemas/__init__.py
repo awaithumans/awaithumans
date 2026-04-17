@@ -5,6 +5,7 @@ Import schemas from here, not from individual files:
 """
 
 from awaithumans.server.schemas.audit import AuditEntryResponse
+from awaithumans.server.schemas.email import IdentityCreateRequest, IdentityResponse
 from awaithumans.server.schemas.health import HealthResponse
 from awaithumans.server.schemas.task import (
     CompleteTaskRequest,
@@ -18,6 +19,8 @@ __all__ = [
     "CompleteTaskRequest",
     "CreateTaskRequest",
     "HealthResponse",
+    "IdentityCreateRequest",
+    "IdentityResponse",
     "PollResponse",
     "TaskResponse",
 ]

@@ -7,7 +7,6 @@ import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.db.connection import get_async_session_factory
 from awaithumans.server.db.models import Task

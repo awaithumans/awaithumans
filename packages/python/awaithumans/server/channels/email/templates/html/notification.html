@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>$task_title</title>
+</head>
+<body style="margin:0;padding:24px;background:$bg_page;font-family:$font_stack;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="560"
+         style="background:$bg_card;border-radius:10px;padding:32px;max-width:560px;">
+    <tr>
+      <td>
+        <p style="color:$text_muted;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;margin:0 0 8px;">
+          Review requested
+        </p>
+        <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:$text_strong;line-height:1.4;">
+          $task_title
+        </h1>
+        $payload_html
+        $buttons_section
+        <p style="margin:20px 0 0;color:$text_muted;font-size:12px;line-height:1.5;">
+          Or <a href="$review_url" style="color:$text_link;">open the full task in the dashboard</a>.
+          You're receiving this because your team asked awaithumans to send review requests here.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

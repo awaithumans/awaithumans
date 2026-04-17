@@ -1,10 +1,11 @@
-import { cn } from "@/lib/utils";
+import { SELECT_RADIO_THRESHOLD } from "@/lib/constants";
 import type {
 	MultiSelectField,
 	PictureChoiceField,
 	SingleSelectField,
 	SwitchField,
 } from "@/lib/form-types";
+import { cn } from "@/lib/utils";
 import { FieldWrapper } from "./field-wrapper";
 
 // ─── Switch ──────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ export function SwitchRenderer({
 					className={cn(
 						"px-4 py-2 text-sm rounded-md border transition-colors",
 						current === true
-							? "bg-[#00E676]/20 text-[#00E676] border-[#00E676]/40"
+							? "bg-brand/20 text-brand border-brand/40"
 							: "bg-white/5 text-white/50 border-white/10 hover:text-white",
 					)}
 				>
@@ -69,8 +70,8 @@ export function SingleSelectRenderer({
 	disabled?: boolean;
 }) {
 	const current = value as string | null | undefined;
-	// Under ~4 options → radio buttons. More → dropdown.
-	if (field.options.length <= 4) {
+	// Short option lists render as radio buttons for UX; longer ones as a dropdown.
+	if (field.options.length <= SELECT_RADIO_THRESHOLD) {
 		return (
 			<FieldWrapper field={field}>
 				<div className="flex flex-wrap gap-2">
@@ -84,7 +85,7 @@ export function SingleSelectRenderer({
 							className={cn(
 								"px-3 py-2 text-sm rounded-md border transition-colors",
 								current === opt.value
-									? "bg-[#00E676]/20 text-[#00E676] border-[#00E676]/40"
+									? "bg-brand/20 text-brand border-brand/40"
 									: "bg-white/5 text-white/60 border-white/10 hover:text-white",
 							)}
 						>
@@ -103,7 +104,7 @@ export function SingleSelectRenderer({
 				value={current ?? ""}
 				onChange={(e) => onChange(e.target.value || null)}
 				disabled={disabled}
-				className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#00E676]/40"
+				className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/40"
 			>
 				<option value="">Select…</option>
 				{field.options.map((opt) => (
@@ -147,7 +148,7 @@ export function MultiSelectRenderer({
 							className={cn(
 								"flex items-start gap-2 px-3 py-2 rounded-md border text-sm cursor-pointer transition-colors",
 								checked
-									? "bg-[#00E676]/10 text-white border-[#00E676]/30"
+									? "bg-brand/10 text-white border-brand/30"
 									: "bg-white/5 text-white/70 border-white/10 hover:text-white",
 							)}
 						>
@@ -156,7 +157,7 @@ export function MultiSelectRenderer({
 								checked={checked}
 								onChange={() => toggle(opt.value)}
 								disabled={disabled}
-								className="mt-1 accent-[#00E676]"
+								className="mt-1 accent-brand"
 							/>
 							<div>
 								<div>{opt.label}</div>
@@ -212,7 +213,7 @@ export function PictureChoiceRenderer({
 							className={cn(
 								"rounded-md border overflow-hidden text-left transition-colors",
 								selected
-									? "border-[#00E676]/60 ring-2 ring-[#00E676]/30"
+									? "border-brand/60 ring-2 ring-brand/30"
 									: "border-white/10 hover:border-white/30",
 							)}
 						>

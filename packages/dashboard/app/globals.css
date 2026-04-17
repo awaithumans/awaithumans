@@ -1,9 +1,21 @@
 @import "tailwindcss";
 
+/*
+ * Brand theme tokens. Exposed to Tailwind v4 via the @theme block, so
+ * utility classes like `bg-brand`, `text-brand`, `text-fg`, `bg-bg` are
+ * generated at build time. Use these instead of literal hex values —
+ * any brand change then lives in exactly one place.
+ */
+@theme {
+	--color-bg: #0a0a0a;
+	--color-fg: #f5f5f5;
+	--color-brand: #00e676;
+}
+
 :root {
-	--background: #0a0a0a;
-	--foreground: #f5f5f5;
-	--accent: #00e676;
+	--background: var(--color-bg);
+	--foreground: var(--color-fg);
+	--accent: var(--color-brand);
 	--muted: rgba(255, 255, 255, 0.4);
 	--border: rgba(255, 255, 255, 0.1);
 }

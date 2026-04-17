@@ -17,8 +17,6 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from awaithumans.forms.definition import FormDefinition
-    from awaithumans.forms.fields.complex import Subform
-    from awaithumans.forms.fields.layout import SectionCollapse
 
 
 Channel = Literal["dashboard", "slack", "email_interactive", "email_plain"]

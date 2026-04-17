@@ -27,46 +27,35 @@ import hmac
 import json
 import logging
 import time
-from dataclasses import dataclass
 from typing import Any
 
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from awaithumans.server.core.encryption import _get_key
+from awaithumans.server.channels.email.types import ActionClaim
+from awaithumans.server.core.encryption import get_key
+from awaithumans.utils.constants import (
+    HMAC_SHA256_DIGEST_BYTES,
+    MAGIC_LINK_HKDF_INFO,
+    MAGIC_LINK_HKDF_SALT,
+    MAGIC_LINK_MAX_AGE_SECONDS,
+)
 
 logger = logging.getLogger("awaithumans.server.channels.email.magic_links")
 
-# 24 hours. Most humans review within minutes, but they may come back
-# the next morning; 1 hour felt too tight.
-MAGIC_LINK_MAX_AGE_SECONDS = 24 * 60 * 60
 
-_SALT = b"awaithumans-email-magic-links"
-_INFO = b"v1"
-
-
-class InvalidActionToken(Exception):
+class InvalidActionTokenError(Exception):
     """Token failed HMAC verification, was tampered, or is expired."""
-
-
-@dataclass(frozen=True)
-class ActionClaim:
-    """The decoded contents of a magic-link token."""
-
-    task_id: str
-    field_name: str
-    value: Any
-    expires_at: int
 
 
 def _hmac_key() -> bytes:
     """Derive a 32-byte HMAC key from PAYLOAD_KEY via HKDF-SHA256."""
     return HKDF(
         algorithm=SHA256(),
-        length=32,
-        salt=_SALT,
-        info=_INFO,
-    ).derive(_get_key())
+        length=HMAC_SHA256_DIGEST_BYTES,
+        salt=MAGIC_LINK_HKDF_SALT,
+        info=MAGIC_LINK_HKDF_INFO,
+    ).derive(get_key())
 
 
 def _canonical(payload: dict[str, Any]) -> bytes:
@@ -96,28 +85,28 @@ def sign_action_token(
 
 
 def verify_action_token(token: str) -> ActionClaim:
-    """Decode + verify a signed token. Raises InvalidActionToken on any failure."""
+    """Decode + verify a signed token. Raises InvalidActionTokenError on any failure."""
     if not token:
-        raise InvalidActionToken("empty token")
+        raise InvalidActionTokenError("empty token")
 
     padded = token + "=" * (-len(token) % 4)
     try:
         blob = base64.urlsafe_b64decode(padded)
     except Exception as exc:
-        raise InvalidActionToken(f"not base64: {exc}") from exc
+        raise InvalidActionTokenError(f"not base64: {exc}") from exc
 
-    if len(blob) < 32 + 2:
-        raise InvalidActionToken("too short")
+    if len(blob) < HMAC_SHA256_DIGEST_BYTES + 2:
+        raise InvalidActionTokenError("too short")
 
-    mac, body = blob[:32], blob[32:]
+    mac, body = blob[:HMAC_SHA256_DIGEST_BYTES], blob[HMAC_SHA256_DIGEST_BYTES:]
     expected = hmac.new(_hmac_key(), body, hashlib.sha256).digest()
     if not hmac.compare_digest(expected, mac):
-        raise InvalidActionToken("signature mismatch")
+        raise InvalidActionTokenError("signature mismatch")
 
     try:
         payload = json.loads(body)
     except Exception as exc:
-        raise InvalidActionToken(f"body not JSON: {exc}") from exc
+        raise InvalidActionTokenError(f"body not JSON: {exc}") from exc
 
     try:
         task_id = str(payload["t"])
@@ -125,10 +114,10 @@ def verify_action_token(token: str) -> ActionClaim:
         value = payload["v"]
         expires_at = int(payload["e"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise InvalidActionToken(f"missing fields: {exc}") from exc
+        raise InvalidActionTokenError(f"missing fields: {exc}") from exc
 
     if time.time() > expires_at:
-        raise InvalidActionToken("expired")
+        raise InvalidActionTokenError("expired")
 
     return ActionClaim(
         task_id=task_id,

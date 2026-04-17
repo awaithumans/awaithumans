@@ -17,7 +17,6 @@ from awaithumans.server.channels.email import notify_task as notify_task_email
 from awaithumans.server.channels.slack import notify_task as notify_task_slack
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.db.models import Task, TaskStatus
-from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 from awaithumans.server.schemas import (
     AuditEntryResponse,
     CompleteTaskRequest,
@@ -33,6 +32,7 @@ from awaithumans.server.services.task_service import (
     get_task,
     list_tasks,
 )
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 logger = logging.getLogger("awaithumans.server.routes.tasks")

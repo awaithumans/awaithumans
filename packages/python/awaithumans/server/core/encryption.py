@@ -49,7 +49,7 @@ class EncryptionKeyError(RuntimeError):
 
 
 @lru_cache(maxsize=1)
-def _get_key() -> bytes:
+def get_key() -> bytes:
     """Resolve and validate the encryption key once per process."""
     raw = settings.PAYLOAD_KEY
     if not raw:
@@ -89,12 +89,12 @@ def _get_key() -> bytes:
 
 def reset_key_cache() -> None:
     """Drop the cached key — used by tests that swap PAYLOAD_KEY."""
-    _get_key.cache_clear()
+    get_key.cache_clear()
 
 
 def encrypt_str(plaintext: str) -> str:
     """AES-GCM encrypt a string → base64(version || nonce || ciphertext || tag)."""
-    aesgcm = AESGCM(_get_key())
+    aesgcm = AESGCM(get_key())
     nonce = os.urandom(_NONCE_BYTES)
     ct = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
     blob = bytes([_CURRENT_KEY_ID]) + nonce + ct
@@ -120,7 +120,7 @@ def decrypt_str(ciphertext_b64: str) -> str:
 
     nonce = blob[1 : 1 + _NONCE_BYTES]
     ct = blob[1 + _NONCE_BYTES :]
-    aesgcm = AESGCM(_get_key())
+    aesgcm = AESGCM(get_key())
     # AES-GCM raises cryptography.exceptions.InvalidTag on tampered ciphertext
     # or wrong key — we let it propagate so callers see the failure.
     return aesgcm.decrypt(nonce, ct, None).decode("utf-8")

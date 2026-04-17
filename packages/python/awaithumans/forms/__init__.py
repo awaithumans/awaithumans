@@ -27,7 +27,14 @@ from awaithumans.forms.capabilities import (
 )
 from awaithumans.forms.definition import FORM_DEFINITION_VERSION, FormDefinition, FormField
 from awaithumans.forms.extract import extract_form
-from awaithumans.forms.fields.complex import Subform, Table, TableColumn, TableColumnKind
+from awaithumans.forms.fields.complex import (
+    Subform,
+    Table,
+    TableColumn,
+    TableColumnKind,
+    subform,
+    table,
+)
 from awaithumans.forms.fields.date_time import (
     DatePicker,
     DateRange,
@@ -98,7 +105,6 @@ from awaithumans.forms.fields.text import (
     url,
 )
 from awaithumans.forms.infer import infer_field_from_type
-from awaithumans.forms.fields.complex import subform, table
 
 __all__ = [
     # Framework

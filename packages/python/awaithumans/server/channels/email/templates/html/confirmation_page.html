@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Confirm: $action_label</title>
+  <style>
+    body { margin:0; background:$bg_dark; color:$text_light; font-family:$font_stack;
+           min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { background:$bg_card_dark; border:1px solid $border_dark; border-radius:12px; padding:32px; max-width:440px; width:100%; }
+    h1 { margin:0 0 8px; font-size:18px; font-weight:600; }
+    p.task { margin:0 0 24px; color:$text_muted_dark; font-size:14px; line-height:1.5; }
+    .row { display:flex; gap:12px; }
+    button, a.cancel { flex:1; padding:12px 16px; border-radius:8px; font-size:14px; font-weight:600;
+                       border:none; cursor:pointer; text-align:center; text-decoration:none; }
+    button.primary { background:$bg_primary; color:$text_on_primary; }
+    a.cancel { background:$bg_cancel; color:$text_cancel; border:1px solid $border_cancel; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Confirm: $action_label</h1>
+    <p class="task">$task_title</p>
+    <form method="POST" action="$post_url" class="row">
+      <a class="cancel" href="$cancel_url">Cancel</a>
+      <button class="primary" type="submit">$action_label</button>
+    </form>
+  </div>
+</body>
+</html>

@@ -17,7 +17,10 @@ def add_user(
 ) -> None:
     """Add a user to the awaithumans user directory."""
     # TODO: implement — write to the user directory (JSON file or DB)
-    logger.info("Adding user: %s (role=%s, access_level=%s, pool=%s)", email, role, access_level, pool)
+    logger.info(
+        "Adding user: %s (role=%s, access_level=%s, pool=%s)",
+        email, role, access_level, pool,
+    )
     typer.echo(f"Added user: {email}")
     if role:
         typer.echo(f"  Role: {role}")

@@ -1,0 +1,7 @@
+REVIEW REQUESTED
+
+$task_title
+
+$payload_block
+$buttons_block
+Or open the dashboard: $review_url

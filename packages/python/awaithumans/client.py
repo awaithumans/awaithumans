@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 from typing import TypeVar
 
 import httpx
@@ -154,7 +153,10 @@ async def _poll_until_terminal(
                 raise AwaitHumansError(
                     code="TASK_NOT_FOUND",
                     message=f"Task '{task_id}' not found on the server.",
-                    hint="The task may have been deleted or the server was restarted with a fresh database.",
+                    hint=(
+                        "The task may have been deleted or the server "
+                        "was restarted with a fresh database."
+                    ),
                     docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-not-found",
                 )
 

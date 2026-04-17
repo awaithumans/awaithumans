@@ -46,7 +46,7 @@ class SectionCollapse(FormFieldBase):
     kind: Literal["section_collapse"] = "section_collapse"
     title: str
     subtitle: str | None = None
-    fields: list["FormField"] = Field(default_factory=list)
+    fields: list[FormField] = Field(default_factory=list)
     default_open: bool = True
     required: bool = False
 
@@ -65,7 +65,7 @@ def divider() -> Divider:
 def section_collapse(
     title: str,
     *,
-    fields: list["FormField"],
+    fields: list[FormField],
     subtitle: str | None = None,
     default_open: bool = True,
 ) -> SectionCollapse:
