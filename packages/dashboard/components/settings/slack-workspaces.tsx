@@ -74,6 +74,8 @@ export function SlackWorkspaces() {
 				) : null
 			}
 		>
+			{/* error is terminal — the banner above already renders it.
+			    When installs is null without an error, we're still fetching. */}
 			{error ? (
 				<div className="px-5 py-4 text-red-400 text-xs">{error}</div>
 			) : installs === null ? (

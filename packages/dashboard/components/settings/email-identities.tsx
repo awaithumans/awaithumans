@@ -85,7 +85,10 @@ export function EmailIdentities() {
 				</div>
 			)}
 
-			{identities === null ? (
+			{/* When the endpoint errors (e.g. admin token not set → 503),
+			    `identities` stays null forever. The error banner above
+			    tells the story — don't also pin a perma-spinner. */}
+			{error ? null : identities === null ? (
 				<div className="px-5 py-4">
 					<TerminalSpinner label="listing identities" />
 				</div>

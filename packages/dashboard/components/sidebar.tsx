@@ -32,7 +32,10 @@ export function Sidebar() {
 	const pathname = usePathname();
 
 	return (
-		<aside className="w-60 shrink-0 border-r border-white/10 flex flex-col bg-bg">
+		// Sticky + h-screen keeps the sidebar pinned to the viewport while
+		// the main content scrolls. Without this, tall pages (analytics,
+		// settings) leave the nav stranded above the fold.
+		<aside className="w-60 shrink-0 border-r border-white/10 flex flex-col bg-bg sticky top-0 h-screen self-start">
 			{/* Logo */}
 			<div className="px-5 py-5 border-b border-white/10">
 				<Link href="/" aria-label="Home">
