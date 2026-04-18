@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Slack, Trash2 } from "lucide-react";
+import { ExternalLink, Slack } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { TerminalSpinner } from "@/components/terminal-spinner";
@@ -12,6 +12,7 @@ import {
 	type SystemStatus,
 } from "@/lib/server";
 import { formatRelativeTime } from "@/lib/utils";
+import { DestructiveInlineButton } from "./inline-confirm";
 import { SettingsSection } from "./section";
 
 export function SlackWorkspaces() {
@@ -41,7 +42,6 @@ export function SlackWorkspaces() {
 	}, [load]);
 
 	const handleUninstall = async (teamId: string) => {
-		if (!confirm(`Uninstall workspace ${teamId}?`)) return;
 		setDeletingId(teamId);
 		try {
 			await uninstallSlackWorkspace(teamId);
@@ -102,15 +102,12 @@ export function SlackWorkspaces() {
 									{formatRelativeTime(i.installed_at)}
 								</div>
 							</div>
-							<button
-								type="button"
-								onClick={() => handleUninstall(i.team_id)}
-								disabled={deletingId === i.team_id}
-								className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-400 disabled:opacity-40 transition-colors px-2 py-1 rounded-md hover:bg-red-400/5"
-							>
-								<Trash2 size={13} />
-								{deletingId === i.team_id ? "Removing…" : "Uninstall"}
-							</button>
+							<DestructiveInlineButton
+								label="Uninstall"
+								armedLabel="Yes, uninstall"
+								busy={deletingId === i.team_id}
+								onConfirm={() => handleUninstall(i.team_id)}
+							/>
 						</li>
 					))}
 				</ul>

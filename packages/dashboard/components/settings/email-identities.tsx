@@ -1,6 +1,6 @@
 "use client";
 
-import { Mail, Plus, Trash2, X } from "lucide-react";
+import { Mail, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { TerminalSpinner } from "@/components/terminal-spinner";
@@ -13,6 +13,7 @@ import {
 	type EmailTransport,
 } from "@/lib/server";
 import { cn } from "@/lib/utils";
+import { DestructiveInlineButton } from "./inline-confirm";
 import { SettingsSection } from "./section";
 
 const TRANSPORTS: EmailTransport[] = ["resend", "smtp", "logging", "noop"];
@@ -38,7 +39,6 @@ export function EmailIdentities() {
 	}, [load]);
 
 	const handleDelete = async (id: string) => {
-		if (!confirm(`Delete identity "${id}"?`)) return;
 		setDeletingId(id);
 		try {
 			await deleteEmailIdentity(id);
@@ -127,15 +127,12 @@ export function EmailIdentities() {
 									)}
 								</div>
 							</div>
-							<button
-								type="button"
-								onClick={() => handleDelete(i.id)}
-								disabled={deletingId === i.id}
-								className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-400 disabled:opacity-40 transition-colors px-2 py-1 rounded-md hover:bg-red-400/5"
-							>
-								<Trash2 size={13} />
-								{deletingId === i.id ? "Removing…" : "Delete"}
-							</button>
+							<DestructiveInlineButton
+								label="Delete"
+								armedLabel="Yes, delete"
+								busy={deletingId === i.id}
+								onConfirm={() => handleDelete(i.id)}
+							/>
 						</li>
 					))}
 				</ul>

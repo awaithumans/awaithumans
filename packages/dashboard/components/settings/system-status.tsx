@@ -24,21 +24,23 @@ export function SystemStatusCard() {
 			icon={Server}
 			title="System"
 			description="Snapshot of how the server is configured. No secrets — just what's on and what's off."
+			flat
 		>
 			{error ? (
-				<div className="px-5 py-4 text-red-400 text-xs">{error}</div>
+				<div className="pt-2 text-red-400 text-xs">{error}</div>
 			) : !status ? (
-				<div className="px-5 py-4">
+				<div className="pt-2">
 					<TerminalSpinner label="probing server" />
 				</div>
 			) : (
-				<dl className="divide-y divide-white/5">
+				// Flat list — no outer card. Each row is its own line in a
+				// config file: label on the left, value on the right,
+				// divided by a hairline.
+				<dl className="divide-y divide-white/5 border-y border-white/5">
 					<Row label="Version" value={status.version} />
 					<Row
 						label="Environment"
-						value={
-							<span className="font-mono">{status.environment}</span>
-						}
+						value={status.environment}
 					/>
 					<Row
 						label="Public URL"
@@ -83,9 +85,13 @@ export function SystemStatusCard() {
 						label="Email transport"
 						value={
 							status.email_transport ? (
-								<span className="font-mono text-brand">
+								<span className="text-brand">
 									{status.email_transport}
-									{status.email_from ? ` · ${status.email_from}` : null}
+									{status.email_from ? (
+										<span className="text-muted">
+											{" "}· {status.email_from}
+										</span>
+									) : null}
 								</span>
 							) : (
 								<ModeBadge on={false} onText="" offText="Not configured" />
@@ -106,8 +112,8 @@ function Row({
 	value: React.ReactNode;
 }) {
 	return (
-		<div className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
-			<dt className="text-white/50 text-xs uppercase tracking-wider">{label}</dt>
+		<div className="flex items-center justify-between gap-4 py-3 text-sm">
+			<dt className="text-muted text-xs uppercase tracking-wider">{label}</dt>
 			<dd className="text-right">{value}</dd>
 		</div>
 	);
@@ -128,7 +134,7 @@ function ModeBadge({
 	return (
 		<span className="inline-flex items-center gap-2 text-xs">
 			<StatusDot state={state} />
-			<span className={on ? "text-fg" : "text-white/40"}>
+			<span className={on ? "text-fg" : "text-muted"}>
 				{on ? onText : offText}
 			</span>
 		</span>
