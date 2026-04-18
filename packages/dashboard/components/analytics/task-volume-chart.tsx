@@ -9,116 +9,83 @@
 
 import type { TaskStatsByDay } from "@/lib/server";
 
-const CHART_HEIGHT = 140;
-const BAR_GAP = 1;
-const DAY_GAP = 2;
-const GROUP_WIDTH = 12;
-const LABEL_ROW = 16;
-// Horizontal padding so the first / last axis labels don't clip at the
-// viewBox edges.
-const SIDE_PAD = 18;
+const HEIGHT = 140;
+const BAR_GAP = 1;       // px between the created/completed pair inside one day
+const DAY_GAP = 2;       // px between day groups
+const LABEL_ROW_HEIGHT = 14;
 
 export function TaskVolumeChart({ data }: { data: TaskStatsByDay[] }) {
 	const max = Math.max(1, ...data.flatMap((d) => [d.created, d.completed]));
 	const days = data.length;
 
-	const barWidth = (GROUP_WIDTH - BAR_GAP) / 2;
-	const barsWidth = days * (GROUP_WIDTH + DAY_GAP);
-	const width = barsWidth + SIDE_PAD * 2;
-	const total = { created: 0, completed: 0 };
-	for (const d of data) {
-		total.created += d.created;
-		total.completed += d.completed;
-	}
+	// One "day group" = 2 bars + 1 inner gap.
+	// Total width is flexible — we let CSS scale. We output a viewBox
+	// so bars compress gracefully on narrow screens.
+	const groupWidth = 12; // logical units per day group
+	const barWidth = (groupWidth - BAR_GAP) / 2;
+	const width = days * (groupWidth + DAY_GAP);
 
 	return (
 		<div className="w-full">
-			<div className="flex items-center gap-5 mb-4 text-xs">
-				<Legend
-					color="var(--color-brand)"
-					label="Created"
-					count={total.created}
-				/>
-				<Legend
-					color="var(--color-fg-muted)"
-					label="Completed"
-					count={total.completed}
-				/>
-				<span className="ml-auto text-white/35 text-[11px]">
-					Last {days} days
-				</span>
+			<div className="flex items-center gap-4 mb-3 text-xs text-white/50">
+				<Legend color="var(--color-brand)" label="Created" />
+				<Legend color="rgba(255,255,255,0.45)" label="Completed" />
+				<span className="ml-auto text-white/30">Last {days} days</span>
 			</div>
 			<svg
-				viewBox={`0 0 ${width} ${CHART_HEIGHT + LABEL_ROW}`}
+				viewBox={`0 0 ${width} ${HEIGHT + LABEL_ROW_HEIGHT}`}
 				preserveAspectRatio="none"
 				className="w-full h-[160px]"
 				role="img"
 				aria-label="Task volume per day"
 			>
-				{/* Horizontal gridlines at 0/50/100% of max. */}
-				{[0, 0.5, 1].map((frac) => {
-					const y = CHART_HEIGHT - frac * CHART_HEIGHT;
-					return (
-						<line
-							key={frac}
-							x1={SIDE_PAD}
-							y1={y}
-							x2={width - SIDE_PAD}
-							y2={y}
-							stroke="rgba(255,255,255,0.05)"
-							strokeWidth="0.5"
-							strokeDasharray={frac === 0 ? undefined : "1,2"}
-						/>
-					);
-				})}
-
+				{/* Zero baseline */}
+				<line
+					x1="0"
+					y1={HEIGHT}
+					x2={width}
+					y2={HEIGHT}
+					stroke="rgba(255,255,255,0.08)"
+					strokeWidth="0.5"
+				/>
 				{data.map((d, i) => {
-					const x = SIDE_PAD + i * (GROUP_WIDTH + DAY_GAP);
-					const createdH = (d.created / max) * CHART_HEIGHT;
-					const completedH = (d.completed / max) * CHART_HEIGHT;
+					const x = i * (groupWidth + DAY_GAP);
+					const createdH = (d.created / max) * HEIGHT;
+					const completedH = (d.completed / max) * HEIGHT;
 					return (
 						<g key={d.date}>
 							<rect
 								x={x}
-								y={CHART_HEIGHT - createdH}
+								y={HEIGHT - createdH}
 								width={barWidth}
 								height={createdH}
 								fill="var(--color-brand)"
-								opacity="0.9"
-								rx="0.5"
-							>
-								<title>{`${formatShortDate(d.date)}: ${d.created} created`}</title>
-							</rect>
+								opacity="0.85"
+							/>
 							<rect
 								x={x + barWidth + BAR_GAP}
-								y={CHART_HEIGHT - completedH}
+								y={HEIGHT - completedH}
 								width={barWidth}
 								height={completedH}
-								fill="var(--color-fg-muted)"
-								rx="0.5"
-							>
-								<title>{`${formatShortDate(d.date)}: ${d.completed} completed`}</title>
-							</rect>
+								fill="rgba(255,255,255,0.45)"
+							/>
 						</g>
 					);
 				})}
-
-				{/* First + midpoint + last date stamps only — more than that
-				    turns into a blur at 30 days / 5 px per day. */}
+				{/* First + last + midpoint day labels — keep the axis legible
+				    on narrow screens without scribbling 30 stamps. */}
 				{[0, Math.floor((days - 1) / 2), days - 1]
 					.filter((v, idx, arr) => arr.indexOf(v) === idx)
 					.map((i) => {
-						const x =
-							SIDE_PAD + i * (GROUP_WIDTH + DAY_GAP) + GROUP_WIDTH / 2;
+						const x = i * (groupWidth + DAY_GAP) + groupWidth / 2;
 						return (
 							<text
 								key={i}
 								x={x}
-								y={CHART_HEIGHT + LABEL_ROW - 4}
+								y={HEIGHT + LABEL_ROW_HEIGHT - 2}
 								textAnchor="middle"
-								fontSize="7"
-								fontFamily="var(--font-geist-sans), sans-serif"
-								fill="rgba(255,255,255,0.35)"
+								fontSize="6"
+								fill="rgba(255,255,255,0.3)"
 							>
 								{formatShortDate(data[i].date)}
 							</text>
@@ -129,25 +96,14 @@ export function TaskVolumeChart({ data }: { data: TaskStatsByDay[] }) {
 	);
 }
 
-function Legend({
-	color,
-	label,
-	count,
-}: {
-	color: string;
-	label: string;
-	count?: number;
-}) {
+function Legend({ color, label }: { color: string; label: string }) {
 	return (
-		<span className="inline-flex items-center gap-1.5 text-white/55">
+		<span className="inline-flex items-center gap-1.5">
 			<span
 				className="inline-block w-2 h-2 rounded-sm"
 				style={{ background: color }}
 			/>
 			{label}
-			{count !== undefined && (
-				<span className="text-white/35 tabular-nums">· {count}</span>
-			)}
 		</span>
 	);
 }

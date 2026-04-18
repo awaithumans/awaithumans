@@ -12,7 +12,7 @@ import { ChannelMix } from "@/components/analytics/channel-mix";
 import { StatCard } from "@/components/analytics/stat-card";
 import { TaskVolumeChart } from "@/components/analytics/task-volume-chart";
 import { ErrorBanner } from "@/components/error-banner";
-import { Skeleton } from "@/components/skeleton";
+import { TerminalSpinner } from "@/components/terminal-spinner";
 import { fetchTaskStats, type TaskStats } from "@/lib/server";
 
 const WINDOW_OPTIONS = [7, 30, 90] as const;
@@ -45,22 +45,20 @@ export default function AnalyticsPage() {
 
 	return (
 		<div className="max-w-5xl">
-			<header className="flex items-end justify-between mb-8 gap-4">
+			<div className="flex items-start justify-between mb-8 gap-4">
 				<div>
-					<h1 className="text-[28px] font-semibold tracking-tight leading-none">
-						Analytics
-					</h1>
-					<p className="text-white/45 text-sm mt-2">
-						How your humans and agents are moving tasks through the system.
+					<h1 className="text-2xl font-bold">Analytics</h1>
+					<p className="text-white/45 text-sm mt-1">
+						How your humans + agents are moving tasks through the system.
 					</p>
 				</div>
 				<WindowPicker value={windowDays} onChange={setWindowDays} />
-			</header>
+			</div>
 
 			{error && <ErrorBanner message={error} />}
 
 			{!stats && !error ? (
-				<AnalyticsSkeleton />
+				<TerminalSpinner label="aggregating stats" size="md" />
 			) : stats ? (
 				<div className="space-y-6">
 					{/* KPI row */}
@@ -163,29 +161,4 @@ function formatDuration(seconds: number | null): string {
 	if (hours < 24) return `${hours.toFixed(1)}h`;
 	const days = hours / 24;
 	return `${days.toFixed(1)}d`;
-}
-
-function AnalyticsSkeleton() {
-	return (
-		<div className="space-y-6">
-			<div className="grid grid-cols-4 gap-4">
-				{Array.from({ length: 4 }).map((_, i) => (
-					<div
-						key={i}
-						className="border border-white/[0.07] rounded-lg px-5 py-4 bg-white/[0.015]"
-					>
-						<Skeleton className="h-2.5 w-20 mb-3" />
-						<Skeleton className="h-7 w-16 mb-2" />
-						<Skeleton className="h-3 w-24" />
-					</div>
-				))}
-			</div>
-			<div>
-				<Skeleton className="h-3.5 w-16 mb-3" />
-				<div className="border border-white/[0.07] rounded-lg p-5 bg-white/[0.015]">
-					<Skeleton className="h-[160px] w-full" />
-				</div>
-			</div>
-		</div>
-	);
 }

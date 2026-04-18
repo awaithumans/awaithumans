@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { GeistMono } from "geist/font/mono";
-import { GeistSans } from "geist/font/sans";
 
+import { ConsoleBanner } from "@/components/console-banner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,11 +14,9 @@ export default function RootLayout({
 	children: React.ReactNode;
 }) {
 	return (
-		<html
-			lang="en"
-			className={`dark ${GeistSans.variable} ${GeistMono.variable}`}
-		>
-			<body className="min-h-screen bg-bg text-fg font-sans antialiased">
+		<html lang="en" className="dark">
+			<body className="min-h-screen bg-bg text-fg font-mono antialiased">
+				<ConsoleBanner />
 				{children}
 			</body>
 		</html>

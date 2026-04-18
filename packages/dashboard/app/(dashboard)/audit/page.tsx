@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { fetchTasks, type Task } from "@/lib/server";
 import { formatRelativeTime } from "@/lib/utils";
 import { AUDIT_PAGE_DEFAULT_LIMIT, TASK_ID_TRUNCATE_LENGTH, TERMINAL_STATUSES } from "@/lib/constants";
+import { ShellEmptyState } from "@/components/shell-empty-state";
 import { StatusBadge } from "@/components/status-badge";
+import { TerminalSpinner } from "@/components/terminal-spinner";
 
 export default function AuditLogPage() {
 	const router = useRouter();
@@ -32,14 +34,12 @@ export default function AuditLogPage() {
 			</div>
 
 			{loading ? (
-				<div className="text-white/40 text-sm">Loading...</div>
+				<TerminalSpinner label="awaiting audit entries" size="md" />
 			) : completedTasks.length === 0 ? (
-				<div className="text-center py-20">
-					<p className="text-white/40 text-lg">No completed tasks yet</p>
-					<p className="text-white/20 text-sm mt-2">
-						Audit entries will appear here after tasks are completed.
-					</p>
-				</div>
+				<ShellEmptyState
+					heading="tail -f audit.log — no terminal events yet"
+					note="Completed, timed-out, and cancelled tasks land here the moment they close."
+				/>
 			) : (
 				<div className="border border-white/10 rounded-lg overflow-hidden">
 					<table className="w-full">

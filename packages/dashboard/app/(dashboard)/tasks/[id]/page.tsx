@@ -1,30 +1,29 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-import { ErrorBanner } from "@/components/error-banner";
+import { useParams, useRouter } from "next/navigation";
 import {
-	FormRenderer,
-	initialValueFor,
-	type FormValue,
-} from "@/components/form-renderer";
-import { StatusBadge } from "@/components/status-badge";
+	fetchTask,
+	fetchAuditTrail,
+	completeTask,
+	cancelTask,
+	type Task,
+	type AuditEntry,
+} from "@/lib/server";
+import { cn, formatRelativeTime } from "@/lib/utils";
 import {
 	IDEMPOTENCY_KEY_DISPLAY_LENGTH,
 	SECONDS_PER_MINUTE,
 	TERMINAL_STATUSES,
 } from "@/lib/constants";
+import { ErrorBanner } from "@/components/error-banner";
+import { StatusBadge } from "@/components/status-badge";
+import { TerminalSpinner } from "@/components/terminal-spinner";
 import {
-	cancelTask,
-	completeTask,
-	fetchAuditTrail,
-	fetchTask,
-	type AuditEntry,
-	type Task,
-} from "@/lib/server";
-import { cn, formatRelativeTime, formatStatus } from "@/lib/utils";
+	FormRenderer,
+	initialValueFor,
+	type FormValue,
+} from "@/components/form-renderer";
 
 export default function TaskDetailPage() {
 	const params = useParams();
@@ -93,7 +92,7 @@ export default function TaskDetailPage() {
 		: false;
 
 	if (loading) {
-		return <div className="text-white/40 text-sm">Loading task...</div>;
+		return <TerminalSpinner label="awaiting task" size="md" />;
 	}
 
 	if (!task) {
@@ -103,40 +102,30 @@ export default function TaskDetailPage() {
 	return (
 		<div className="max-w-5xl mx-auto">
 			{/* Header */}
-			<div className="mb-8">
-				<button
-					type="button"
-					onClick={() => router.push("/")}
-					className="inline-flex items-center gap-1.5 text-white/40 text-xs hover:text-white/70 transition-colors mb-4 group"
-				>
-					<ArrowLeft
-						size={13}
-						className="group-hover:-translate-x-0.5 transition-transform"
-					/>
-					Back to tasks
-				</button>
-				<div className="flex items-start justify-between gap-4">
-					<div className="min-w-0">
-						<h1 className="text-[26px] font-semibold tracking-tight leading-tight">
-							{task.task}
-						</h1>
-						<div className="flex items-center gap-3 mt-3">
-							<StatusBadge status={task.status} />
-							<span className="text-white/30 text-[11px] font-mono tabular-nums">
-								{task.id}
-							</span>
-						</div>
+			<div className="flex items-start justify-between mb-8">
+				<div>
+					<button
+						type="button"
+						onClick={() => router.push("/")}
+						className="text-white/40 text-sm hover:text-white/60 transition-colors mb-2 block"
+					>
+						← Back to tasks
+					</button>
+					<h1 className="text-2xl font-bold">{task.task}</h1>
+					<div className="flex items-center gap-3 mt-2">
+						<StatusBadge status={task.status} />
+						<span className="text-white/30 text-xs font-mono">{task.id}</span>
 					</div>
-					{!isTerminal && (
-						<button
-							type="button"
-							onClick={handleCancel}
-							className="shrink-0 px-3 py-1.5 text-xs font-medium rounded-md border border-red-400/25 text-red-400 hover:bg-red-400/10 hover:border-red-400/40 transition-colors"
-						>
-							Cancel task
-						</button>
-					)}
 				</div>
+				{!isTerminal && (
+					<button
+						type="button"
+						onClick={handleCancel}
+						className="px-3 py-1.5 text-sm rounded-md border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-colors"
+					>
+						Cancel Task
+					</button>
+				)}
 			</div>
 
 			{error && <ErrorBanner message={error} />}
@@ -269,16 +258,14 @@ export default function TaskDetailPage() {
 											)}
 										/>
 										<div>
-											<div className="text-sm font-medium">
-												{formatStatus(entry.action)}
-											</div>
-											<div className="text-white/40 text-[11px] mt-0.5">
+											<div className="text-sm font-medium">{entry.action}</div>
+											<div className="text-white/30 text-xs mt-0.5">
 												{entry.actor_type === "human" && entry.actor_email
 													? entry.actor_email
 													: entry.actor_type}
-												{entry.channel && ` · via ${entry.channel}`}
+												{entry.channel && ` via ${entry.channel}`}
 											</div>
-											<div className="text-white/25 text-[11px] mt-0.5">
+											<div className="text-white/20 text-xs mt-0.5">
 												{formatRelativeTime(entry.created_at)}
 											</div>
 										</div>

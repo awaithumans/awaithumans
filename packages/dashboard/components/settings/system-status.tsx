@@ -3,6 +3,7 @@
 import { Server } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { TerminalSpinner } from "@/components/terminal-spinner";
 import { fetchSystemStatus, type SystemStatus } from "@/lib/server";
 import { SettingsSection, StatusDot } from "./section";
 
@@ -27,7 +28,9 @@ export function SystemStatusCard() {
 			{error ? (
 				<div className="px-5 py-4 text-red-400 text-xs">{error}</div>
 			) : !status ? (
-				<div className="px-5 py-4 text-white/30 text-xs">Loading…</div>
+				<div className="px-5 py-4">
+					<TerminalSpinner label="probing server" />
+				</div>
 			) : (
 				<dl className="divide-y divide-white/5">
 					<Row label="Version" value={status.version} />

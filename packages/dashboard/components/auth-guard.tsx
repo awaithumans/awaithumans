@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { fetchMe } from "@/lib/server";
+import { TerminalSpinner } from "./terminal-spinner";
 
 type State = "loading" | "allowed" | "redirecting";
 
@@ -51,8 +52,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
 	if (state === "loading" || state === "redirecting") {
 		return (
-			<div className="min-h-screen flex items-center justify-center text-white/30 text-sm">
-				Loading…
+			<div className="min-h-screen flex items-center justify-center">
+				<TerminalSpinner
+					label={state === "redirecting" ? "redirecting" : "awaiting session"}
+				/>
 			</div>
 		);
 	}

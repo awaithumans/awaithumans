@@ -3,7 +3,7 @@
 import { Mail, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { EmptyState } from "@/components/empty-state";
+import { TerminalSpinner } from "@/components/terminal-spinner";
 import {
 	createEmailIdentity,
 	deleteEmailIdentity,
@@ -79,31 +79,23 @@ export function EmailIdentities() {
 				/>
 			)}
 
-			{error && !error.includes("503") && (
+			{error && (
 				<div className="px-5 py-3 text-red-400 text-xs border-b border-red-400/20 bg-red-400/5">
 					{error}
 				</div>
 			)}
 
-			{identities === null && !error ? (
-				<div className="px-5 py-4 text-white/30 text-xs">Loading…</div>
-			) : (identities?.length ?? 0) === 0 && !showForm ? (
-				<EmptyState
-					icon={Mail}
-					title={
-						error
-							? "Admin endpoints disabled"
-							: "No sender identities yet"
-					}
-					description={
-						error
-							? "Set AWAITHUMANS_ADMIN_API_TOKEN on the server to enable identity management."
-							: "Add an identity to send notifications from your team's address."
-					}
-				/>
+			{identities === null ? (
+				<div className="px-5 py-4">
+					<TerminalSpinner label="listing identities" />
+				</div>
+			) : identities.length === 0 && !showForm ? (
+				<div className="px-5 py-6 text-center text-white/35 text-sm">
+					No sender identities configured.
+				</div>
 			) : (
 				<ul className="divide-y divide-white/5">
-					{(identities ?? []).map((i) => (
+					{identities.map((i) => (
 						<li
 							key={i.id}
 							className="px-5 py-3 flex items-center justify-between gap-4"

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { LogoMark } from "@/components/logo";
+import { TerminalSpinner } from "@/components/terminal-spinner";
 import { login, fetchMe } from "@/lib/server";
 
 export default function LoginPage() {
@@ -52,8 +53,8 @@ export default function LoginPage() {
 	// Don't flash the login form while we're checking session state.
 	if (authRequired === null) {
 		return (
-			<div className="min-h-screen flex items-center justify-center text-white/40 text-sm">
-				Loading…
+			<div className="min-h-screen flex items-center justify-center">
+				<TerminalSpinner label="checking session" />
 			</div>
 		);
 	}
