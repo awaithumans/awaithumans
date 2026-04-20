@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
+from awaithumans.server.schemas._datetime import utc_iso
 from awaithumans.types import TaskStatus
 
 
@@ -56,9 +57,17 @@ class TaskResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("created_at", "updated_at", "completed_at", "timed_out_at")
+    def _ser_dt(self, dt: datetime | None) -> str | None:
+        return utc_iso(dt)
+
 
 class PollResponse(BaseModel):
     status: str
     response: dict[str, Any] | None = None
     completed_at: datetime | None = None
     timed_out_at: datetime | None = None
+
+    @field_serializer("completed_at", "timed_out_at")
+    def _ser_dt(self, dt: datetime | None) -> str | None:
+        return utc_iso(dt)
