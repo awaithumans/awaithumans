@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Eyebrow } from "@/components/eyebrow";
 import type {
 	SubformField,
 	TableColumn,
@@ -263,9 +264,7 @@ export function SubformRenderer({
 						className="border border-white/10 rounded-md p-3 space-y-3 bg-white/5"
 					>
 						<div className="flex items-center justify-between">
-							<span className="text-xs text-white/40 uppercase tracking-wider">
-								#{i + 1}
-							</span>
+							<Eyebrow className="text-white/40">#{i + 1}</Eyebrow>
 							{canRemove && (
 								<button
 									type="button"

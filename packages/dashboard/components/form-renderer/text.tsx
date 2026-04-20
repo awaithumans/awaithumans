@@ -1,3 +1,4 @@
+import { Eyebrow } from "@/components/eyebrow";
 import type {
 	DisplayTextField,
 	LongTextField,
@@ -16,9 +17,9 @@ export function DisplayTextRenderer({ field }: { field: DisplayTextField }) {
 	return (
 		<div className="space-y-2">
 			{field.label && (
-				<div className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+				<Eyebrow weight="semibold" className="block text-white/50">
 					{field.label}
-				</div>
+				</Eyebrow>
 			)}
 			{paragraphs.map((para, i) => (
 				<p

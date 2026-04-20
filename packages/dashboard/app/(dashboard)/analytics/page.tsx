@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChannelMix } from "@/components/analytics/channel-mix";
 import { TaskVolumeChart } from "@/components/analytics/task-volume-chart";
 import { ErrorBanner } from "@/components/error-banner";
+import { Eyebrow } from "@/components/eyebrow";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 import { fetchTaskStats, type TaskStats } from "@/lib/server";
 import { cn } from "@/lib/utils";
@@ -110,9 +111,13 @@ export default function AnalyticsPage() {
 
 					{/* Chart */}
 					<section className="reveal-5">
-						<h2 className="text-xs font-semibold mb-3 text-muted uppercase tracking-[0.18em]">
+						<Eyebrow
+							as="h2"
+							weight="semibold"
+							className="block mb-3 tracking-[0.18em]"
+						>
 							Volume
-						</h2>
+						</Eyebrow>
 						<div className="border border-white/10 rounded-lg p-5 bg-white/[0.015]">
 							<TaskVolumeChart data={stats.by_day} />
 						</div>
@@ -120,9 +125,13 @@ export default function AnalyticsPage() {
 
 					{/* Channels */}
 					<section className="reveal-6">
-						<h2 className="text-xs font-semibold mb-3 text-muted uppercase tracking-[0.18em]">
+						<Eyebrow
+							as="h2"
+							weight="semibold"
+							className="block mb-3 tracking-[0.18em]"
+						>
 							Completion channels
-						</h2>
+						</Eyebrow>
 						<ChannelMix byChannel={stats.by_channel} />
 					</section>
 				</div>
@@ -177,9 +186,9 @@ function HeroMetric({
 			)}
 		>
 			<div>
-				<div className="text-[10px] uppercase tracking-[0.22em] text-muted font-medium">
+				<Eyebrow size="micro" className="tracking-[0.22em]">
 					{label}
-				</div>
+				</Eyebrow>
 				<div className="mt-5 text-7xl font-bold text-brand tabular-nums leading-none">
 					{value}
 				</div>
@@ -211,10 +220,10 @@ function SupportingStat({
 				className,
 			)}
 		>
-			<div className="flex items-center gap-2 text-muted text-[10px] uppercase tracking-wider font-medium">
+			<Eyebrow size="micro" className="flex items-center gap-2">
 				<Icon size={12} />
 				<span>{label}</span>
-			</div>
+			</Eyebrow>
 			<div className="mt-1.5 text-2xl font-semibold tabular-nums">{value}</div>
 			{sub && <div className="mt-1 text-muted text-xs tabular-nums">{sub}</div>}
 		</div>

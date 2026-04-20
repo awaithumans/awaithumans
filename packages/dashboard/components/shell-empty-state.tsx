@@ -14,6 +14,7 @@
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 
+import { Eyebrow } from "@/components/eyebrow";
 import { cn } from "@/lib/utils";
 
 export function ShellEmptyState({
@@ -77,9 +78,9 @@ function CodeSnippet({
 	return (
 		<div className="relative bg-bg/40 border-t border-white/5">
 			<div className="flex items-center justify-between px-5 py-2 border-b border-white/5">
-				<span className="text-[10px] font-mono uppercase tracking-wider text-white/30">
+				<Eyebrow size="micro" tone="subtle" mono>
 					{language}
-				</span>
+				</Eyebrow>
 				<button
 					type="button"
 					onClick={copy}

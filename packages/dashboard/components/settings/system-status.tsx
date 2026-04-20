@@ -3,6 +3,7 @@
 import { Server } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Eyebrow } from "@/components/eyebrow";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 import { fetchSystemStatus, type SystemStatus } from "@/lib/server";
 import { SettingsSection, StatusDot } from "./section";
@@ -113,7 +114,7 @@ function Row({
 }) {
 	return (
 		<div className="flex items-center justify-between gap-4 py-3 text-sm">
-			<dt className="text-muted text-xs uppercase tracking-wider">{label}</dt>
+			<Eyebrow as="dt">{label}</Eyebrow>
 			<dd className="text-right">{value}</dd>
 		</div>
 	);

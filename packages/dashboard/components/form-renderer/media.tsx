@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { Eyebrow } from "@/components/eyebrow";
 import {
 	SIGNATURE_CANVAS_HEIGHT,
 	SIGNATURE_CANVAS_WIDTH,
@@ -237,9 +238,9 @@ export function ImageDisplayRenderer({ field }: { field: ImageField }) {
 	return (
 		<div className="space-y-1">
 			{field.label && (
-				<div className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+				<Eyebrow weight="semibold" className="block text-white/50">
 					{field.label}
-				</div>
+				</Eyebrow>
 			)}
 			{/* eslint-disable-next-line @next/next/no-img-element */}
 			<img
@@ -259,9 +260,9 @@ export function VideoDisplayRenderer({ field }: { field: VideoField }) {
 	return (
 		<div className="space-y-1">
 			{field.label && (
-				<div className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+				<Eyebrow weight="semibold" className="block text-white/50">
 					{field.label}
-				</div>
+				</Eyebrow>
 			)}
 			<video
 				src={field.url}
@@ -287,9 +288,9 @@ export function PdfViewerRenderer({ field }: { field: PdfViewerField }) {
 	return (
 		<div className="space-y-1">
 			{field.label && (
-				<div className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+				<Eyebrow weight="semibold" className="block text-white/50">
 					{field.label}
-				</div>
+				</Eyebrow>
 			)}
 			{mounted && (
 				<iframe
@@ -316,9 +317,9 @@ export function HtmlBlockRenderer({ field }: { field: HtmlBlockField }) {
 	return (
 		<div className="space-y-1">
 			{field.label && (
-				<div className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+				<Eyebrow weight="semibold" className="block text-white/50">
 					{field.label}
-				</div>
+				</Eyebrow>
 			)}
 			<iframe
 				title={field.label ?? "HTML"}
