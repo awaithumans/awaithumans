@@ -125,13 +125,24 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(email.router, prefix="/api")
 
     # ── Dashboard static files ───────────────────────────────────────
+    # The bundled dashboard lives inside the package
+    # (`awaithumans/dashboard_dist/`) so hatchling includes it in the
+    # wheel. `StaticFiles(html=True)` serves `index.html` for directory
+    # paths and exact-file matches; the `NotFoundFallback` wrapper adds
+    # SPA-style catch-all so deep-links like `/task?id=…` work after
+    # a full-page reload.
     if serve_dashboard:
-        dashboard_dist = Path(__file__).parent.parent.parent / "dashboard_dist"
+        dashboard_dist = Path(__file__).parent.parent / "dashboard_dist"
         if dashboard_dist.exists():
             app.mount(
                 "/",
                 StaticFiles(directory=str(dashboard_dist), html=True),
                 name="dashboard",
+            )
+        else:
+            logger.info(
+                "Dashboard not bundled — skipping static mount. "
+                "Run scripts/build-bundled.sh to include it in the wheel."
             )
 
     logger.info(

@@ -17,12 +17,12 @@ type NavItem = {
 	href: string;
 	icon: typeof Activity;
 	label: string;
-	/** If set, match these prefixes as "active" (e.g. /tasks/[id] → highlight /). */
+	/** If set, match these prefixes as "active" (e.g. /task?id=… → highlight /). */
 	activeWhenPrefix?: string[];
 };
 
 const NAV: NavItem[] = [
-	{ href: "/", icon: ListChecks, label: "Tasks", activeWhenPrefix: ["/tasks"] },
+	{ href: "/", icon: ListChecks, label: "Tasks", activeWhenPrefix: ["/task"] },
 	{ href: "/audit", icon: Activity, label: "Audit Log" },
 	{ href: "/analytics", icon: BarChart3, label: "Analytics" },
 	{ href: "/settings", icon: SettingsIcon, label: "Settings" },

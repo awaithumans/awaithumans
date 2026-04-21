@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
 	fetchTask,
 	fetchAuditTrail,
@@ -26,10 +26,26 @@ import {
 	type FormValue,
 } from "@/components/form-renderer";
 
+/**
+ * Route is query-param (`/task?id=...`) rather than dynamic segment
+ * (`/tasks/[id]`) so the dashboard can build to a flat static export
+ * and ship inside the Python wheel. Dynamic segments without known
+ * params at build time are incompatible with output: "export".
+ *
+ * `useSearchParams` requires a Suspense boundary in static export.
+ */
 export default function TaskDetailPage() {
-	const params = useParams();
+	return (
+		<Suspense fallback={<TerminalSpinner label="awaiting task" size="md" />}>
+			<TaskDetailPageInner />
+		</Suspense>
+	);
+}
+
+function TaskDetailPageInner() {
 	const router = useRouter();
-	const taskId = params.id as string;
+	const searchParams = useSearchParams();
+	const taskId = searchParams.get("id") ?? "";
 
 	const [task, setTask] = useState<Task | null>(null);
 	const [audit, setAudit] = useState<AuditEntry[]>([]);
