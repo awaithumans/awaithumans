@@ -28,7 +28,6 @@ import {
 	MarketplaceNotAvailableError,
 	PollError,
 	SchemaValidationError,
-	ServerUnreachableError,
 	TaskCancelledError,
 	TaskCreateError,
 	TaskNotFoundError,
@@ -36,6 +35,7 @@ import {
 	TimeoutRangeError,
 	VerificationExhaustedError,
 } from "./errors";
+import { fetchWithTimeout } from "./fetch";
 import { generateIdempotencyKey } from "./idempotency";
 import type { AwaitHumanOptions } from "./types";
 import {
@@ -110,7 +110,7 @@ export async function awaitHuman<TPayload, TResponse>(
 	const task = await createTask(serverUrl, body);
 
 	// ── Long-poll until terminal ────────────────────────────────────────
-	return await pollUntilTerminal(
+	return pollUntilTerminal(
 		serverUrl,
 		task.id,
 		options.task,
@@ -125,26 +125,19 @@ async function createTask(
 	serverUrl: string,
 	body: CreateTaskRequestWire,
 ): Promise<CreateTaskResponseWire> {
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), CREATE_TASK_TIMEOUT_MS);
-
-	let resp: Response;
-	try {
-		resp = await fetch(`${serverUrl}/api/tasks`, {
+	const resp = await fetchWithTimeout(
+		`${serverUrl}/api/tasks`,
+		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
-			signal: controller.signal,
-		});
-	} catch (err) {
-		throw new ServerUnreachableError(serverUrl, err);
-	} finally {
-		clearTimeout(timer);
-	}
+		},
+		CREATE_TASK_TIMEOUT_MS,
+		serverUrl,
+	);
 
 	if (resp.status !== 200 && resp.status !== 201) {
-		const text = await safeBodyText(resp);
-		throw new TaskCreateError(resp.status, text);
+		throw new TaskCreateError(resp.status, await safeBodyText(resp));
 	}
 
 	return (await resp.json()) as CreateTaskResponseWire;
@@ -170,17 +163,7 @@ async function pollUntilTerminal<TResponse>(
 	// for ~POLL_INTERVAL_SECONDS and then returns the current status.
 	// When the status is non-terminal we reconnect.
 	while (true) {
-		const controller = new AbortController();
-		const timer = setTimeout(() => controller.abort(), fetchTimeoutMs);
-
-		let resp: Response;
-		try {
-			resp = await fetch(url, { signal: controller.signal });
-		} catch (err) {
-			throw new ServerUnreachableError(serverUrl, err);
-		} finally {
-			clearTimeout(timer);
-		}
+		const resp = await fetchWithTimeout(url, {}, fetchTimeoutMs, serverUrl);
 
 		if (resp.status === 404) {
 			throw new TaskNotFoundError(taskId);
