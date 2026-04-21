@@ -16,8 +16,10 @@ import {
 	SECONDS_PER_MINUTE,
 	TERMINAL_STATUSES,
 } from "@/lib/constants";
-import { StatusBadge } from "@/components/status-badge";
 import { ErrorBanner } from "@/components/error-banner";
+import { Eyebrow } from "@/components/eyebrow";
+import { StatusBadge } from "@/components/status-badge";
+import { TerminalSpinner } from "@/components/terminal-spinner";
 import {
 	FormRenderer,
 	initialValueFor,
@@ -91,7 +93,7 @@ export default function TaskDetailPage() {
 		: false;
 
 	if (loading) {
-		return <div className="text-white/40 text-sm">Loading task...</div>;
+		return <TerminalSpinner label="awaiting task" size="md" />;
 	}
 
 	if (!task) {
@@ -134,9 +136,9 @@ export default function TaskDetailPage() {
 				<div className="col-span-2 space-y-6">
 					{/* Payload */}
 					<div className="border border-white/10 rounded-lg p-5">
-						<h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">
+						<Eyebrow as="h2" size="md" tone="bright" weight="semibold" className="block mb-4">
 							Task Payload
-						</h2>
+						</Eyebrow>
 						{task.payload && !task.redact_payload ? (
 							<div className="space-y-3">
 								{Object.entries(task.payload).map(([key, value]) => (
@@ -171,9 +173,9 @@ export default function TaskDetailPage() {
 					{/* Response Form (if not terminal) */}
 					{!isTerminal && task.form_definition && (
 						<div className="border border-brand/20 rounded-lg p-5 bg-brand/5">
-							<h2 className="text-sm font-semibold text-brand uppercase tracking-wider mb-4">
+							<Eyebrow as="h2" size="md" tone="brand" weight="semibold" className="block mb-4">
 								Your Response
-							</h2>
+							</Eyebrow>
 							<FormRenderer
 								form={task.form_definition}
 								value={formData}
@@ -194,9 +196,9 @@ export default function TaskDetailPage() {
 					{/* Completed Response */}
 					{task.response && (
 						<div className="border border-white/10 rounded-lg p-5">
-							<h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">
+							<Eyebrow as="h2" size="md" tone="bright" weight="semibold" className="block mb-4">
 								Response
-							</h2>
+							</Eyebrow>
 							<div className="space-y-3">
 								{Object.entries(task.response).map(([key, value]) => (
 									<div key={key} className="flex items-start gap-3">
@@ -232,9 +234,9 @@ export default function TaskDetailPage() {
 
 				{/* Right: Timeline */}
 				<div className="border border-white/10 rounded-lg p-5">
-					<h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">
+					<Eyebrow as="h2" size="md" tone="bright" weight="semibold" className="block mb-4">
 						Timeline
-					</h2>
+					</Eyebrow>
 					{audit.length === 0 ? (
 						<div className="text-white/30 text-sm">No events yet</div>
 					) : (

@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+
+from awaithumans.server.schemas._datetime import utc_iso
 
 
 class AuditEntryResponse(BaseModel):
@@ -21,3 +23,7 @@ class AuditEntryResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("created_at")
+    def _ser_dt(self, dt: datetime | None) -> str | None:
+        return utc_iso(dt)

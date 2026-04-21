@@ -9,8 +9,10 @@ import {
 	TASK_ID_TRUNCATE_LENGTH,
 	TASK_LIST_POLL_INTERVAL_MS,
 } from "@/lib/constants";
-import { StatusBadge } from "@/components/status-badge";
 import { ErrorBanner } from "@/components/error-banner";
+import { ShellEmptyState } from "@/components/shell-empty-state";
+import { StatusBadge } from "@/components/status-badge";
+import { TerminalSpinner } from "@/components/terminal-spinner";
 
 const STATUS_FILTERS: { label: string; value: TaskStatus | "all" }[] = [
 	{ label: "All", value: "all" },
@@ -79,14 +81,20 @@ export default function TaskQueuePage() {
 			{error && <ErrorBanner message={error} />}
 
 			{loading ? (
-				<div className="text-white/40 text-sm">Loading tasks...</div>
+				<TerminalSpinner label="awaiting tasks" size="md" />
 			) : tasks.length === 0 ? (
-				<div className="text-center py-20">
-					<p className="text-white/40 text-lg">No tasks yet</p>
-					<p className="text-white/20 text-sm mt-2">
-						Tasks will appear here when an agent calls await_human()
-					</p>
-				</div>
+				<ShellEmptyState
+					heading="await_human — waiting for your first task"
+					note="Tasks appear here the moment an agent calls await_human() against this server."
+					snippet={`from awaithumans import await_human
+
+result = await await_human(
+    task="Approve this wire transfer",
+    payload={"amount": 50_000, "to": "acme.inc"},
+    timeout_seconds=900,
+)`}
+					language="python"
+				/>
 			) : (
 				<div className="border border-white/10 rounded-lg overflow-hidden">
 					<table className="w-full">

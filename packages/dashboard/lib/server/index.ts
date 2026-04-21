@@ -14,6 +14,26 @@ export type {
 } from "@/lib/types";
 
 export { fetchAuditTrail } from "./audit";
-export { apiFetch } from "./client";
+export { fetchMe, login, logout, type MeResponse } from "./auth";
+export { apiFetch, UnauthorizedError } from "./client";
+export {
+	createEmailIdentity,
+	deleteEmailIdentity,
+	fetchEmailIdentities,
+	type CreateEmailIdentityRequest,
+	type EmailIdentity,
+	type EmailTransport,
+} from "./email-identities";
 export { fetchHealth } from "./health";
+export {
+	fetchSlackInstallations,
+	uninstallSlackWorkspace,
+	type SlackInstallation,
+} from "./slack";
+export {
+	fetchTaskStats,
+	type TaskStats,
+	type TaskStatsByDay,
+} from "./stats";
+export { fetchSystemStatus, type SystemStatus } from "./status";
 export { cancelTask, completeTask, fetchTask, fetchTasks } from "./tasks";

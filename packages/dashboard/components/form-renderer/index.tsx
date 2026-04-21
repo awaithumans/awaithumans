@@ -332,9 +332,26 @@ export function initialValueFor(form: FormDefinition): FormValue {
 	return out;
 }
 
+// Kinds that render UI but don't contribute a value to the response.
+// Skipping them here keeps display-only primitives (text blocks, media,
+// layout) out of the submitted response payload even when they have a
+// `name`. Without this, e.g. a display_text named "intro" shows up as
+// `{"intro": null}` in the human's response — misleading and pollutes
+// the audit trail.
+const NON_INPUT_KINDS = new Set([
+	"display_text",
+	"image",
+	"video",
+	"pdf_viewer",
+	"html",
+	"section",
+	"divider",
+]);
+
 function walk(fields: FormField[], out: FormValue): void {
 	for (const f of fields) {
 		if (!f.name) continue;
+		if (NON_INPUT_KINDS.has(f.kind)) continue;
 		switch (f.kind) {
 			case "switch":
 				out[f.name] = f.default ?? null;
@@ -375,6 +392,8 @@ function walk(fields: FormField[], out: FormValue): void {
 				walk(f.fields, out);
 				break;
 			default:
+				// Plain-value input kinds (short_text, long_text, rich_text,
+				// file_upload, signature, date_range) start blank.
 				out[f.name] = null;
 		}
 	}
