@@ -114,3 +114,66 @@ export class MarketplaceNotAvailableError extends AwaitHumansError {
 		});
 	}
 }
+
+// ─── Runtime errors returned by the server ───────────────────────────
+
+export class TaskNotFoundError extends AwaitHumansError {
+	constructor(taskId: string) {
+		super({
+			code: "TASK_NOT_FOUND",
+			message: `Task "${taskId}" not found on the server.`,
+			hint:
+				"The task may have been deleted or the server was restarted with a fresh database.",
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#task-not-found`,
+		});
+	}
+}
+
+export class TaskCancelledError extends AwaitHumansError {
+	constructor(task: string) {
+		super({
+			code: "TASK_CANCELLED",
+			message: `Task "${task}" was cancelled.`,
+			hint: "The task was cancelled by an admin or another agent before a human completed it.",
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#task-cancelled`,
+		});
+	}
+}
+
+export class TaskCreateError extends AwaitHumansError {
+	constructor(status: number, serverBody: string) {
+		super({
+			code: "TASK_CREATE_FAILED",
+			message: `Failed to create task on the server (HTTP ${status}).`,
+			hint: `Server response: ${serverBody.slice(0, 500)}`,
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#task-create-failed`,
+		});
+	}
+}
+
+export class PollError extends AwaitHumansError {
+	constructor(taskId: string, status: number, serverBody: string) {
+		super({
+			code: "POLL_FAILED",
+			message: `Failed to poll task "${taskId}" (HTTP ${status}).`,
+			hint: `Server response: ${serverBody.slice(0, 500)}`,
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#poll-failed`,
+		});
+	}
+}
+
+export class ServerUnreachableError extends AwaitHumansError {
+	constructor(serverUrl: string, cause: unknown) {
+		super({
+			code: "SERVER_UNREACHABLE",
+			message: `Could not reach the awaithumans server at ${serverUrl}.`,
+			hint: [
+				"Check:",
+				"  1. Is the server running? (awaithumans dev)",
+				"  2. Is the URL correct? Override with `serverUrl` or AWAITHUMANS_URL.",
+				`  3. Underlying error: ${String(cause)}`,
+			].join("\n"),
+			docsUrl: `${DOCS_TROUBLESHOOTING_URL}#server-unreachable`,
+		});
+	}
+}

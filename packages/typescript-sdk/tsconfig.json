@@ -1,8 +1,14 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
-  },
-  "include": ["src"]
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": "src",
+		// The SDK uses `fetch`, `AbortController`, `TextEncoder`, and
+		// `crypto.subtle` — all present in every modern runtime we care
+		// about (Node 18+, Bun, Deno, browsers, edge). The `DOM` lib
+		// provides the type declarations without pulling in a Node-
+		// specific `@types/node` dep that would break edge-runtime use.
+		"lib": ["ES2022", "DOM"]
+	},
+	"include": ["src"]
 }
