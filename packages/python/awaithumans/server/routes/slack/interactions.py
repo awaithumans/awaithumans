@@ -324,18 +324,25 @@ async def _ephemeral_reply(
 ) -> None:
     """Post an ephemeral message to the clicker.
 
-    Uses response_url when we have it (works even without chat:write to
-    the channel) and falls back to chat.postEphemeral for private
-    channels where response_url isn't useful.
+    Slack's interaction payloads include a short-lived `response_url`
+    that accepts a plain JSON POST from anywhere — no bot token or
+    channel membership needed. We hit it directly with `httpx`
+    (already a runtime dep) because `AsyncWebClient.api_call` only
+    targets `https://slack.com/api/<method>` and can't override the
+    URL. Falls back to `chat.postEphemeral` (requires `chat:write`
+    scope + bot membership in the channel) for edges where the
+    response_url isn't present.
     """
+    import httpx
+
     if response_url:
         try:
-            await client.api_call(
-                "",
-                http_verb="POST",
-                json={"response_type": "ephemeral", "text": text},
-                url=response_url,
-            )
+            async with httpx.AsyncClient(timeout=5.0) as http:
+                resp = await http.post(
+                    response_url,
+                    json={"response_type": "ephemeral", "text": text},
+                )
+                resp.raise_for_status()
             return
         except Exception as exc:  # noqa: BLE001
             logger.warning("ephemeral via response_url failed: %s", exc)

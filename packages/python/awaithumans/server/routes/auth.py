@@ -24,7 +24,7 @@ from awaithumans.server.core.auth import (
     verify_session,
 )
 from awaithumans.server.core.config import settings
-from awaithumans.server.core.password import verify_password
+from awaithumans.server.core.password import dummy_verify, verify_password
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.auth import LoginRequest, MeResponse
 from awaithumans.server.services.user_service import get_user, get_user_by_email
@@ -53,7 +53,12 @@ async def login(
     user = await get_user_by_email(session, body.email)
     reject = HTTPException(status_code=401, detail="Invalid credentials.")
 
+    # Timing equalization: without this, the unknown-user path skips
+    # argon2 and returns ~100ms faster than the known-user path,
+    # letting an attacker probe for registered emails. Burn the same
+    # CPU budget either way.
     if user is None or not user.active or not user.password_hash:
+        dummy_verify(body.password)
         logger.info("Failed login (no match / inactive / no password): %s", body.email)
         raise reject
 
