@@ -34,12 +34,17 @@ export { awaitHumanInputSchema } from "./schemas";
 
 export {
 	AwaitHumansError,
-	TaskTimeoutError,
-	SchemaValidationError,
-	TimeoutRangeError,
-	TaskAlreadyTerminalError,
-	VerificationExhaustedError,
 	MarketplaceNotAvailableError,
+	PollError,
+	SchemaValidationError,
+	ServerUnreachableError,
+	TaskAlreadyTerminalError,
+	TaskCancelledError,
+	TaskCreateError,
+	TaskNotFoundError,
+	TaskTimeoutError,
+	TimeoutRangeError,
+	VerificationExhaustedError,
 } from "./errors";
 
 export { awaitAgent, awaitAny } from "./reserved";
