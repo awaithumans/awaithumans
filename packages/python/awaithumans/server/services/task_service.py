@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.db.models import AuditEntry, Task, TaskStatus
 from awaithumans.server.services.exceptions import (
+    TaskAlreadyClaimedError,
     TaskAlreadyTerminalError,
     TaskNotFoundError,
 )
@@ -128,6 +129,76 @@ async def list_tasks(
         query = query.where(Task.assigned_to_email == assigned_to_email)
     result = await session.execute(query)
     return list(result.scalars().all())
+
+
+async def claim_task(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    user_id: str,
+    user_email: str | None = None,
+) -> Task:
+    """Claim a broadcast task (first-writer-wins).
+
+    Used when a task was posted to a channel with no specific assignee
+    and a human clicked "Claim." Atomic `UPDATE ... WHERE
+    assigned_to_user_id IS NULL` — second clicker sees
+    `TaskAlreadyClaimedError` and the caller surfaces an ephemeral
+    "already claimed by X" to them.
+
+    Raises `TaskNotFoundError` if no such task, `TaskAlreadyTerminalError`
+    if it's already completed/cancelled/timed-out (a stale message from
+    before a completion on another channel), `TaskAlreadyClaimedError`
+    if another user beat us to it.
+    """
+    task = await get_task(session, task_id)
+
+    if task.status in TERMINAL_STATUSES_SET:
+        raise TaskAlreadyTerminalError(task_id, task.status)
+
+    # Fast-path: already claimed by someone.
+    if task.assigned_to_user_id is not None:
+        raise TaskAlreadyClaimedError(task_id, task.assigned_to_user_id)
+
+    now = datetime.now(timezone.utc)
+    result = await session.execute(
+        update(Task)
+        .where(Task.id == task_id)
+        .where(Task.assigned_to_user_id.is_(None))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
+        .values(
+            assigned_to_user_id=user_id,
+            assigned_to_email=user_email,
+            updated_at=now,
+        )
+    )
+
+    if result.rowcount == 0:
+        # Race: another claimer committed between our SELECT and UPDATE.
+        # Re-read to tell the loser who actually won.
+        await session.refresh(task)
+        if task.assigned_to_user_id is not None:
+            raise TaskAlreadyClaimedError(task_id, task.assigned_to_user_id)
+        if task.status in TERMINAL_STATUSES_SET:
+            raise TaskAlreadyTerminalError(task_id, task.status)
+        # Shouldn't happen, but don't leave the caller guessing.
+        raise TaskAlreadyClaimedError(task_id, None)
+
+    audit = AuditEntry(
+        task_id=task_id,
+        from_status=task.status.value,
+        to_status=task.status.value,  # claim doesn't change status
+        action="claimed",
+        actor_type="human",
+        actor_email=user_email,
+        channel="slack",
+        extra_data={"user_id": user_id},
+    )
+    session.add(audit)
+    await session.commit()
+
+    await session.refresh(task)
+    return task
 
 
 async def complete_task(

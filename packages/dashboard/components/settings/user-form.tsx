@@ -1,12 +1,16 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Eyebrow } from "@/components/eyebrow";
 import {
 	createUser,
+	fetchSlackInstallations,
+	fetchSlackWorkspaceMembers,
 	type CreateUserRequest,
+	type SlackInstallation,
+	type SlackMember,
 	type User,
 	updateUser,
 } from "@/lib/server";
@@ -40,6 +44,39 @@ export function UserForm({
 	const [email, setEmail] = useState(editing?.email ?? "");
 	const [slackTeamId, setSlackTeamId] = useState(editing?.slack_team_id ?? "");
 	const [slackUserId, setSlackUserId] = useState(editing?.slack_user_id ?? "");
+
+	// Slack workspace picker — loaded lazily on mount; silently disabled
+	// if no workspaces are installed.
+	const [installations, setInstallations] = useState<SlackInstallation[]>([]);
+	const [members, setMembers] = useState<SlackMember[] | null>(null);
+	const [loadingMembers, setLoadingMembers] = useState(false);
+	const [memberLoadError, setMemberLoadError] = useState<string | null>(null);
+
+	useEffect(() => {
+		fetchSlackInstallations()
+			.then(setInstallations)
+			.catch(() => setInstallations([]));
+	}, []);
+
+	// When the operator picks a team from the dropdown, fetch its
+	// members so the user ID field becomes a combobox of real people
+	// rather than a free-text paste box.
+	useEffect(() => {
+		if (!slackTeamId || !installations.some((i) => i.team_id === slackTeamId)) {
+			setMembers(null);
+			return;
+		}
+		setLoadingMembers(true);
+		setMemberLoadError(null);
+		fetchSlackWorkspaceMembers(slackTeamId)
+			.then(setMembers)
+			.catch((err: unknown) =>
+				setMemberLoadError(
+					err instanceof Error ? err.message : "Failed to load members",
+				),
+			)
+			.finally(() => setLoadingMembers(false));
+	}, [slackTeamId, installations]);
 	const [role, setRole] = useState(editing?.role ?? "");
 	const [accessLevel, setAccessLevel] = useState(editing?.access_level ?? "");
 	const [pool, setPool] = useState(editing?.pool ?? "");
@@ -139,24 +176,77 @@ export function UserForm({
 				</Field>
 
 				<Field
-					label="Slack team ID"
-					hint="Slack user IDs are workspace-scoped. Set the pair together."
+					label="Slack workspace"
+					hint={
+						installations.length === 0
+							? "No Slack workspaces installed. Add one from Settings → Slack."
+							: "Pick a workspace the app is installed in, or paste a team ID manually."
+					}
 				>
-					<input
-						value={slackTeamId}
-						onChange={(e) => setSlackTeamId(e.target.value)}
-						className={cn(inputClass, "font-mono")}
-						placeholder="T01ABC234"
-					/>
+					{installations.length > 0 ? (
+						<select
+							value={slackTeamId}
+							onChange={(e) => {
+								setSlackTeamId(e.target.value);
+								// Clear the user ID when workspace changes — IDs
+								// are team-scoped so the previous U… wouldn't resolve.
+								setSlackUserId("");
+							}}
+							className={inputClass}
+						>
+							<option value="">—</option>
+							{installations.map((i) => (
+								<option key={i.team_id} value={i.team_id}>
+									{i.team_name || i.team_id}
+								</option>
+							))}
+						</select>
+					) : (
+						<input
+							value={slackTeamId}
+							onChange={(e) => setSlackTeamId(e.target.value)}
+							className={cn(inputClass, "font-mono")}
+							placeholder="T01ABC234"
+						/>
+					)}
 				</Field>
 
-				<Field label="Slack user ID">
-					<input
-						value={slackUserId}
-						onChange={(e) => setSlackUserId(e.target.value)}
-						className={cn(inputClass, "font-mono")}
-						placeholder="U01XYZ789"
-					/>
+				<Field
+					label="Slack member"
+					hint={
+						memberLoadError
+							? memberLoadError
+							: loadingMembers
+								? "Loading members…"
+								: members && members.length === 0
+									? "No members found."
+									: "Pick from the workspace, or paste a user ID."
+					}
+				>
+					{members && members.length > 0 ? (
+						<select
+							value={slackUserId}
+							onChange={(e) => setSlackUserId(e.target.value)}
+							className={inputClass}
+						>
+							<option value="">—</option>
+							{members.map((m) => (
+								<option key={m.id} value={m.id}>
+									{m.real_name
+										? `${m.real_name} (@${m.name})`
+										: `@${m.name}`}
+								</option>
+							))}
+						</select>
+					) : (
+						<input
+							value={slackUserId}
+							onChange={(e) => setSlackUserId(e.target.value)}
+							className={cn(inputClass, "font-mono")}
+							placeholder="U01XYZ789"
+							disabled={loadingMembers}
+						/>
+					)}
 				</Field>
 
 				<Field

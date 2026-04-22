@@ -91,6 +91,21 @@ class UserAlreadyExistsError(ServiceError):
         )
 
 
+class TaskAlreadyClaimedError(ServiceError):
+    """Another user claimed the task first (broadcast-to-channel flow)."""
+
+    status_code = 409
+    error_code = "TASK_ALREADY_CLAIMED"
+    docs_path = "task-already-claimed"
+
+    def __init__(self, task_id: str, claimed_by_user_id: str | None) -> None:
+        self.task_id = task_id
+        self.claimed_by_user_id = claimed_by_user_id
+        super().__init__(
+            f"Task '{task_id}' was already claimed by another user."
+        )
+
+
 class UserNoAddressError(ServiceError):
     """At least one delivery address (email or slack pair) must be set —
     a user with neither is unreachable and useless for routing."""

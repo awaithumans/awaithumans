@@ -25,3 +25,24 @@ export async function uninstallSlackWorkspace(teamId: string): Promise<void> {
 		{ method: "DELETE" },
 	);
 }
+
+export interface SlackMember {
+	id: string;
+	name: string;
+	real_name: string | null;
+	display_name: string | null;
+	is_admin: boolean;
+}
+
+/**
+ * Fetch active, human members of a Slack workspace. Powers the "pick a
+ * Slack member" dropdown in the user-form — operators don't have to
+ * remember or paste U... IDs.
+ */
+export async function fetchSlackWorkspaceMembers(
+	teamId: string,
+): Promise<SlackMember[]> {
+	return apiFetch<SlackMember[]>(
+		`/api/channels/slack/installations/${encodeURIComponent(teamId)}/members`,
+	);
+}
