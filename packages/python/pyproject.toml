@@ -9,6 +9,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["awaithumans"]
 
+# Bundle alembic into the wheel under `awaithumans/_alembic/` so the
+# installed package can find migrations + env.py without the dev-tree
+# `packages/python/alembic.ini` being present. Dev checkouts use the
+# outside copy; installed wheels fall through to the bundled one —
+# resolved at runtime by `db/connection.py:_alembic_paths()`.
+[tool.hatch.build.targets.wheel.force-include]
+"alembic.ini" = "awaithumans/_alembic/alembic.ini"
+"alembic" = "awaithumans/_alembic/alembic"
+
 [project]
 name = "awaithumans"
 version = "0.1.0"

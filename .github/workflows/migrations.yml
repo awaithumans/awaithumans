@@ -1,0 +1,63 @@
+name: migrations
+
+on:
+  pull_request:
+    paths:
+      - "packages/python/alembic/**"
+      - "packages/python/awaithumans/server/db/models/**"
+      - "packages/python/alembic.ini"
+      - ".github/workflows/migrations.yml"
+  push:
+    branches: [main]
+
+jobs:
+  single-head:
+    name: alembic single-head invariant
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package + server extras
+        run: pip install -e '.[server,dev]'
+
+      - name: Check single head
+        # Rule 1 from CONTRIBUTING.md §Database migrations. Two parallel
+        # PRs each adding a migration against the same parent produce two
+        # heads — this check turns that into a red PR instead of a broken
+        # deploy. The fix is always "rebase your migration onto the new
+        # head," never "merge anyway."
+        run: |
+          HEAD_COUNT=$(alembic heads 2>/dev/null | grep -c '^' || echo 0)
+          echo "alembic reports $HEAD_COUNT head(s):"
+          alembic heads
+          if [ "$HEAD_COUNT" -ne 1 ]; then
+            echo ""
+            echo "Expected exactly 1 head, got $HEAD_COUNT."
+            echo ""
+            echo "This PR added a migration against a parent that someone"
+            echo "else's migration also pointed at. Rebase onto main and"
+            echo "regenerate your migration:"
+            echo ""
+            echo "  git fetch origin && git rebase origin/main"
+            echo "  rm packages/python/alembic/versions/<your_migration>.py"
+            echo "  cd packages/python && alembic revision --autogenerate -m 'your message'"
+            echo ""
+            echo "See CONTRIBUTING.md Database migrations for details."
+            exit 1
+          fi
+
+      - name: Verify migrations apply cleanly on empty DB
+        env:
+          AWAITHUMANS_DB_PATH: /tmp/aw-ci.db
+        run: |
+          rm -f /tmp/aw-ci.db
+          alembic upgrade head
+          alembic current

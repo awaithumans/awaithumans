@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config as AlembicConfig
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
 
 from awaithumans.server.core.config import settings
 
@@ -52,12 +54,50 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+def _alembic_paths() -> tuple[Path, Path]:
+    """Return (alembic_ini, alembic_script_dir) for the current install.
+
+    Two layouts are supported:
+    - Dev checkout: `packages/python/alembic.ini` alongside `awaithumans/`.
+    - Installed wheel: bundled at `awaithumans/_alembic/alembic.ini` via
+      hatchling's `force-include` (see pyproject.toml).
+
+    Check dev first so `pip install -e .` and direct `alembic` CLI use in
+    the monorepo resolve to the same files the wheel would ship.
+    """
+    dev_ini = Path(__file__).resolve().parents[3] / "alembic.ini"
+    if dev_ini.exists():
+        return dev_ini, dev_ini.parent / "alembic"
+
+    pkg_root = Path(__file__).resolve().parents[2]
+    bundled_ini = pkg_root / "_alembic" / "alembic.ini"
+    return bundled_ini, pkg_root / "_alembic" / "alembic"
+
+
+def _alembic_config() -> AlembicConfig:
+    """Build an AlembicConfig with the URL and script_location pinned
+    to the current install layout."""
+    ini_path, script_dir = _alembic_paths()
+    cfg = AlembicConfig(str(ini_path))
+    cfg.set_main_option("script_location", str(script_dir))
+    cfg.set_main_option("sqlalchemy.url", settings.database_url_sync)
+    return cfg
+
+
 async def init_db() -> None:
-    """Create all tables. Called on server startup."""
-    engine = get_async_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    logger.info("Database tables created")
+    """Run any pending migrations. Called on server startup.
+
+    Alembic is sync; we run it in a thread so we don't block the loop.
+    Tests bypass init_db and use SQLModel.metadata.create_all directly
+    against their own in-memory engines.
+    """
+    import asyncio
+
+    def _run() -> None:
+        command.upgrade(_alembic_config(), "head")
+
+    await asyncio.to_thread(_run)
+    logger.info("Database migrations applied (head)")
 
 
 async def close_db() -> None:
