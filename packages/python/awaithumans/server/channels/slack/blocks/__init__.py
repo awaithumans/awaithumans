@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from awaithumans.server.channels.slack.blocks.helpers import UnrenderableInSlackError
 from awaithumans.server.channels.slack.blocks.surfaces import (
+    claimed_message_blocks,
     form_to_modal,
     open_review_message_blocks,
 )
 
 __all__ = [
     "UnrenderableInSlackError",
+    "claimed_message_blocks",
     "form_to_modal",
     "open_review_message_blocks",
 ]

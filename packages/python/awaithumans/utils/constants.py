@@ -56,6 +56,10 @@ SLACK_SIGNATURE_MAX_AGE_SECONDS = 300  # 5 minutes
 # Block Kit action_id for the "Review" button in the initial notification.
 SLACK_ACTION_OPEN_REVIEW = "awaithumans.open_review"
 
+# Block Kit action_id for the "Claim" button on broadcast messages posted
+# to a channel (notify=["slack:#ops"]). First clicker gets the task.
+SLACK_ACTION_CLAIM_TASK = "awaithumans.claim_task"
+
 # Block Kit callback_id for the review modal (matches on view_submission).
 SLACK_MODAL_CALLBACK_ID = "awaithumans.review_modal"
 

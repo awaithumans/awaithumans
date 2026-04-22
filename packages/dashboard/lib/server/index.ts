@@ -35,8 +35,10 @@ export {
 export { fetchHealth } from "./health";
 export {
 	fetchSlackInstallations,
+	fetchSlackWorkspaceMembers,
 	uninstallSlackWorkspace,
 	type SlackInstallation,
+	type SlackMember,
 } from "./slack";
 export {
 	fetchTaskStats,

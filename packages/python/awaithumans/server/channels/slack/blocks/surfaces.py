@@ -124,12 +124,20 @@ def open_review_message_blocks(
     review_url: str,
     open_button_action_id: str,
     unsupported_fields: list[str] | None = None,
+    broadcast: bool = False,
+    claim_button_action_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Initial message posted to a channel/user when a task is created.
 
     Always includes a "Review in dashboard" link-out. If the form is
     fully Slack-renderable, also includes an "Open in Slack" button
     that triggers the interactivity webhook to open a modal.
+
+    When `broadcast=True` (notify targets a channel, not a DM), adds a
+    "Claim this task" button as the primary call-to-action. The claim
+    handler atomically assigns the task to the clicker and opens the
+    modal for them. Later clickers get an ephemeral "already claimed"
+    response — see routes/slack/interactions.py.
     """
     text = f"*New task to review:* {truncate(task_title, _MESSAGE_TITLE_MAX)}"
     if unsupported_fields:
@@ -139,7 +147,19 @@ def open_review_message_blocks(
         )
 
     elements: list[dict[str, Any]] = []
-    if not unsupported_fields:
+    if broadcast and claim_button_action_id:
+        # Broadcast: claim is the primary action. We skip the separate
+        # "Open in Slack" button — clicking claim both assigns AND
+        # opens the modal in one step (modal flow is downstream of the
+        # atomic claim).
+        elements.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Claim this task"},
+            "style": "primary",
+            "action_id": claim_button_action_id,
+            "value": task_id,
+        })
+    elif not unsupported_fields:
         elements.append({
             "type": "button",
             "text": {"type": "plain_text", "text": "Open in Slack"},
@@ -157,6 +177,35 @@ def open_review_message_blocks(
     return [
         {"type": "section", "text": {"type": "mrkdwn", "text": text}},
         {"type": "actions", "elements": elements},
+    ]
+
+
+def claimed_message_blocks(
+    *,
+    task_title: str,
+    review_url: str,
+    claimed_by_display: str,
+) -> list[dict[str, Any]]:
+    """Replacement blocks posted via chat.update after a successful
+    claim. Shows who claimed the task and keeps a dashboard link for
+    observers."""
+    text = (
+        f"*Claimed by {claimed_by_display}:* "
+        f"{truncate(task_title, _MESSAGE_TITLE_MAX)}"
+    )
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": text}},
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "View in dashboard"},
+                    "url": review_url,
+                    "action_id": "awaithumans.open_dashboard",
+                }
+            ],
+        },
     ]
 
 

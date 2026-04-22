@@ -25,7 +25,10 @@ from awaithumans.server.channels.slack.client import (
 )
 from awaithumans.server.core.config import settings
 from awaithumans.server.db.connection import get_async_session_factory
-from awaithumans.utils.constants import SLACK_ACTION_OPEN_REVIEW
+from awaithumans.utils.constants import (
+    SLACK_ACTION_CLAIM_TASK,
+    SLACK_ACTION_OPEN_REVIEW,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from slack_sdk.web.async_client import AsyncWebClient
@@ -49,19 +52,28 @@ async def notify_task(
     form = _parse_form(form_definition)
     review_url = f"{settings.PUBLIC_URL.rstrip('/')}/tasks/{task_id}"
     offenders = unsupported_fields(form, "slack") if form is not None else None
-
-    blocks = open_review_message_blocks(
-        task_id=task_id,
-        task_title=task_title,
-        review_url=review_url,
-        open_button_action_id=SLACK_ACTION_OPEN_REVIEW,
-        unsupported_fields=offenders if offenders else None,
-    )
     fallback_text = f"New task: {task_title}"
 
     factory = get_async_session_factory()
     async with factory() as session:
         for route in routes:
+            # Broadcast: route target starts with `#` → posting to a
+            # channel where anyone could pick it up. Swap the "Open in
+            # Slack" button for "Claim this task" — first clicker wins.
+            # DM targets (`@user` / `U123456`) stay on the direct-open
+            # flow since the recipient is already implied.
+            broadcast = _is_channel_target(route.target)
+
+            blocks = open_review_message_blocks(
+                task_id=task_id,
+                task_title=task_title,
+                review_url=review_url,
+                open_button_action_id=SLACK_ACTION_OPEN_REVIEW,
+                unsupported_fields=offenders if offenders else None,
+                broadcast=broadcast,
+                claim_button_action_id=SLACK_ACTION_CLAIM_TASK,
+            )
+
             client = await _resolve_client(session, route)
             if client is None:
                 logger.warning(
@@ -77,10 +89,11 @@ async def notify_task(
                     blocks=blocks,
                 )
                 logger.info(
-                    "Slack notification sent for task %s → %s%s",
+                    "Slack notification sent for task %s → %s%s%s",
                     task_id,
                     route.target,
                     f" (team={route.identity})" if route.identity else "",
+                    " [broadcast]" if broadcast else "",
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error(
@@ -89,6 +102,23 @@ async def notify_task(
                     route.target,
                     exc,
                 )
+
+
+def _is_channel_target(target: str) -> bool:
+    """`#channel` names are broadcasts; `@user` and raw user IDs are DMs.
+
+    Slack uses `#` as the channel sigil across chat and the API. Raw
+    channel IDs (`C01ABC234`) are also broadcasts; we detect those
+    conservatively by checking the first char — `C` (public/private
+    channel) or `G` (group DM). User IDs start with `U` or `W`.
+    """
+    if not target:
+        return False
+    if target.startswith("#"):
+        return True
+    if target.startswith(("C", "G")):
+        return True
+    return False
 
 
 async def _resolve_client(
