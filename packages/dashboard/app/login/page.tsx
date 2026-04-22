@@ -1,13 +1,34 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import { LogoMark } from "@/components/logo";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 import { login, fetchMe } from "@/lib/server";
 
+/**
+ * Wrapping the search-params reader in Suspense is required for
+ * Next's static export (output: "export"). Without it, the build
+ * fails with "useSearchParams() should be wrapped in a suspense
+ * boundary at page /login". Split so the `?next=` lookup is inside
+ * the boundary and the page shell renders statically.
+ */
 export default function LoginPage() {
+	return (
+		<Suspense
+			fallback={
+				<div className="min-h-screen flex items-center justify-center">
+					<TerminalSpinner label="checking session" />
+				</div>
+			}
+		>
+			<LoginPageInner />
+		</Suspense>
+	);
+}
+
+function LoginPageInner() {
 	const router = useRouter();
 	const params = useSearchParams();
 	const next = params.get("next") || "/";

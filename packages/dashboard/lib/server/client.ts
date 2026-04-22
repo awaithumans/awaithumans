@@ -1,13 +1,25 @@
 /**
  * HTTP client for the awaithumans server.
  *
- * Handles API base URL discovery (via /api/discover) and the shared
- * apiFetch helper. Per-domain functions (tasks, audit, health) live in
- * sibling files and use apiFetch.
+ * Two modes:
+ *
+ * - **Bundled** (`NEXT_PUBLIC_AWAITHUMANS_BUNDLED=true` at build time):
+ *   the dashboard is served as static files from the Python server
+ *   itself, so every API call is same-origin. Base URL is `""` and
+ *   fetches use relative paths.
+ *
+ * - **Dev** (two-server): dashboard on `:3000`, API on `:3001`. We
+ *   ask the Next.js-side `/api/discover` route for the current API
+ *   origin (picks up whichever port the server actually bound to),
+ *   cache for 30s, fall back to DEFAULT_API_URL if unreachable.
+ *
+ * Per-domain functions (tasks, audit, health) live in sibling files
+ * and use apiFetch.
  */
 
 import { DEFAULT_API_URL } from "@/lib/constants";
 
+const BUNDLED_MODE = process.env.NEXT_PUBLIC_AWAITHUMANS_BUNDLED === "true";
 const CACHE_TTL_MS = 30_000;
 let cachedApiBase: string | null = null;
 let cachedAt: number = 0;
@@ -18,6 +30,9 @@ function invalidateCache() {
 }
 
 async function resolveApiBase(forceRefresh = false): Promise<string> {
+	// Bundled mode: same origin, always. No discovery, no cache needed.
+	if (BUNDLED_MODE) return "";
+
 	if (!forceRefresh && cachedApiBase && Date.now() - cachedAt < CACHE_TTL_MS) {
 		return cachedApiBase;
 	}

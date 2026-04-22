@@ -113,7 +113,7 @@ result = await await_human(
 									key={task.id}
 									className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
 									onClick={() => {
-										router.push(`/tasks/${task.id}`);
+										router.push(`/task?id=${encodeURIComponent(task.id)}`);
 									}}
 								>
 									<td className="px-4 py-3">
