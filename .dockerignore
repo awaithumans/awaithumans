@@ -1,0 +1,29 @@
+# Everything that shouldn't end up in the build context. Speeds up
+# `docker build` and avoids leaking dev junk into image layers.
+
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+.turbo/
+.next/
+.venv/
+.env
+.env.*
+!.env.example
+
+**/node_modules/
+**/dist/
+**/build/
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+**/*.db
+**/*.sqlite*
+**/coverage/
+**/*.egg-info/
+
+# Other packages we don't need to build the Docker image:
+packages/typescript-sdk/
+examples/
+docs/

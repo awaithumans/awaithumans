@@ -1,0 +1,61 @@
+# Docker Compose for self-hosters.
+#
+# Quick start:
+#   docker compose up
+#
+# What you get:
+#   - API + dashboard on http://localhost:3001
+#   - SQLite DB persisted in the `awaithumans-data` volume
+#
+# Production notes:
+#   1. Set AWAITHUMANS_PAYLOAD_KEY (required for Slack OAuth and
+#      dashboard password auth): `openssl rand -base64 32`
+#   2. Set AWAITHUMANS_DASHBOARD_PASSWORD to gate the dashboard.
+#   3. Point AWAITHUMANS_DATABASE_URL at Postgres when you outgrow
+#      SQLite (example below, commented out).
+
+services:
+  awaithumans:
+    image: ghcr.io/awaithumans/awaithumans:latest
+    # Build from source instead if you're working in the repo:
+    # build: .
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - AWAITHUMANS_PUBLIC_URL=${AWAITHUMANS_PUBLIC_URL:-http://localhost:3001}
+      - AWAITHUMANS_PAYLOAD_KEY=${AWAITHUMANS_PAYLOAD_KEY:-}
+      - AWAITHUMANS_DASHBOARD_PASSWORD=${AWAITHUMANS_DASHBOARD_PASSWORD:-}
+      - AWAITHUMANS_ADMIN_API_TOKEN=${AWAITHUMANS_ADMIN_API_TOKEN:-}
+      # Channel config (all optional). See docs for full list.
+      - AWAITHUMANS_SLACK_BOT_TOKEN=${AWAITHUMANS_SLACK_BOT_TOKEN:-}
+      - AWAITHUMANS_SLACK_SIGNING_SECRET=${AWAITHUMANS_SLACK_SIGNING_SECRET:-}
+      - AWAITHUMANS_EMAIL_TRANSPORT=${AWAITHUMANS_EMAIL_TRANSPORT:-}
+      - AWAITHUMANS_EMAIL_FROM=${AWAITHUMANS_EMAIL_FROM:-}
+      - AWAITHUMANS_RESEND_KEY=${AWAITHUMANS_RESEND_KEY:-}
+    volumes:
+      - awaithumans-data:/var/lib/awaithumans
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:3001/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Uncomment when you're ready for Postgres. Then set
+  # AWAITHUMANS_DATABASE_URL=postgresql://awaithumans:change-me@postgres:5432/awaithumans
+  # on the `awaithumans` service above.
+  #
+  # postgres:
+  #   image: postgres:16-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_USER=awaithumans
+  #     - POSTGRES_PASSWORD=change-me
+  #     - POSTGRES_DB=awaithumans
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  awaithumans-data:
+  # postgres-data:

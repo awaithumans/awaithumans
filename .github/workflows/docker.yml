@@ -1,0 +1,79 @@
+name: Docker image
+
+# When this runs:
+#  - every push to main (tag: `:main`)
+#  - every push of a `v*.*.*` tag (tags: `:vX.Y.Z`, `:X.Y.Z`, `:latest`)
+#  - manual dispatch for one-off builds
+#
+# Publishes to ghcr.io/<owner>/awaithumans. GHCR is free, integrates
+# with GitHub auth (no extra secrets needed — GITHUB_TOKEN works), and
+# supports multi-arch manifests out of the box.
+#
+# Security note: every ${{ ... }} expansion below is a trusted context
+# value (github.repository, github.ref, github.actor, GITHUB_TOKEN,
+# workflow outputs from pinned actions). No user-controlled fields
+# like issue titles, commit messages, or PR bodies are interpolated
+# into `run:` blocks — nothing to inject.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # QEMU lets us build linux/arm64 on an amd64 runner. Slower than
+      # a native arm runner but free and simple; switch to the
+      # `ubuntu-24.04-arm` runner for faster arm builds once it's GA on
+      # public repos. For now cross-compile is fine — heavy work is
+      # pure compute so the emulation overhead is bearable.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Produces tags for every trigger kind:
+      # push main       → :main
+      # push v1.2.3     → :v1.2.3, :1.2.3, :1.2, :1, :latest
+      - name: Resolve image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cross-run cache — speeds up subsequent builds a lot.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
