@@ -22,8 +22,19 @@ from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
 from awaithumans.server.db.connection import close_db, init_db
-from awaithumans.server.routes import auth, email, health, slack, stats, status, tasks, users
+from awaithumans.server.routes import (
+    auth,
+    email,
+    health,
+    setup,
+    slack,
+    stats,
+    status,
+    tasks,
+    users,
+)
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
+from awaithumans.server.services.user_service import count_users
 
 logger = logging.getLogger("awaithumans.server")
 
@@ -34,6 +45,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
     logger.info("Database initialized")
 
+    await _emit_first_run_banner_if_empty()
+
     scheduler_task = asyncio.create_task(run_timeout_scheduler())
 
     yield
@@ -43,6 +56,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await scheduler_task
     await close_db()
     logger.info("Server shut down")
+
+
+async def _emit_first_run_banner_if_empty() -> None:
+    """If zero users exist in the DB, generate a bootstrap token and
+    log the /setup URL so the operator can complete first-run setup."""
+    from awaithumans.server.core import bootstrap
+    from awaithumans.server.db.connection import get_async_session_factory
+
+    factory = get_async_session_factory()
+    async with factory() as session:
+        n = await count_users(session)
+
+    if n == 0:
+        token = bootstrap.ensure_token()
+        setup_url = f"{settings.PUBLIC_URL.rstrip('/')}/setup?token={token}"
+        bootstrap.log_setup_banner(setup_url)
 
 
 def create_app(*, serve_dashboard: bool = True) -> FastAPI:
@@ -79,15 +108,16 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
             "and set AWAITHUMANS_PAYLOAD_KEY."
         )
 
-    # Dashboard auth signs cookies with an HKDF-derived key from
-    # PAYLOAD_KEY. Without PAYLOAD_KEY, login() would crash on first
-    # call. Fail fast.
-    if settings.DASHBOARD_PASSWORD and not settings.PAYLOAD_KEY:
+    # Dashboard auth signs session cookies with an HKDF-derived key
+    # from PAYLOAD_KEY. Without it we'd either silently fall back to
+    # an insecure default (no) or crash on first login (surprising).
+    # Auth is always on in v1, so this is always required.
+    if not settings.PAYLOAD_KEY:
         raise RuntimeError(
-            "DASHBOARD_PASSWORD is set but PAYLOAD_KEY is not. Session "
-            "cookies can't be signed without PAYLOAD_KEY. Generate one "
-            "with: python -c 'import secrets; print(secrets.token_urlsafe(32))' "
-            "and set AWAITHUMANS_PAYLOAD_KEY."
+            "AWAITHUMANS_PAYLOAD_KEY is required — session cookies and "
+            "encrypted-at-rest columns both derive their keys from it. "
+            "Generate one with: python -c 'import secrets; "
+            "print(secrets.token_urlsafe(32))'"
         )
 
     # ── App ──────────────────────────────────────────────────────────
@@ -124,6 +154,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(slack.router, prefix="/api")
     app.include_router(email.router, prefix="/api")
     app.include_router(users.router, prefix="/api")
+    app.include_router(setup.router, prefix="/api")
 
     # ── Dashboard static files ───────────────────────────────────────
     # The bundled dashboard lives inside the package

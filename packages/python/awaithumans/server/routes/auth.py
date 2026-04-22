@@ -1,31 +1,33 @@
 """Dashboard auth routes — login, logout, session introspection.
 
-Public endpoints (auth is what these routes bootstrap):
+Public endpoints (these are what the rest of the API needs to be auth'd):
 
-    POST   /api/auth/login     { user, password }  → 204 + cookie
-    POST   /api/auth/logout                         → 204 + clear cookie
-    GET    /api/auth/me                             → { user, authenticated }
+    POST   /api/auth/login     { email, password }     → 204 + cookie
+    POST   /api/auth/logout                             → 204 + clear cookie
+    GET    /api/auth/me                                 → { authenticated, user }
 
-If `AWAITHUMANS_DASHBOARD_PASSWORD` is unset, login returns 503 —
-server is in no-auth mode, logging in would be meaningless. /me
-returns `{ authenticated: false }` so the dashboard can render a
-"no auth required" banner rather than a login page.
+No `auth_enabled: false` path anymore — auth is always on in v1. The
+dashboard uses `/api/setup/status` to distinguish first-run (show the
+`/setup` wizard) from normal (show the login form).
 """
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.core.auth import (
     InvalidSessionError,
     sign_session,
-    verify_password,
     verify_session,
 )
 from awaithumans.server.core.config import settings
+from awaithumans.server.core.password import verify_password
+from awaithumans.server.db.connection import get_session
+from awaithumans.server.services.user_service import get_user, get_user_by_email
 from awaithumans.utils.constants import (
     DASHBOARD_SESSION_COOKIE_NAME,
     DASHBOARD_SESSION_MAX_AGE_SECONDS,
@@ -36,37 +38,43 @@ logger = logging.getLogger("awaithumans.server.routes.auth")
 
 
 class LoginRequest(BaseModel):
-    user: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=1, max_length=320, description="User's email address.")
     password: str = Field(min_length=1, max_length=200)
 
 
 class MeResponse(BaseModel):
     authenticated: bool
-    user: str | None = None
-    # True when the operator has left the dashboard in no-auth mode
-    # (no DASHBOARD_PASSWORD). The dashboard shows a "running behind
-    # proxy — no password required" banner instead of a login form.
-    auth_enabled: bool
+    user_id: str | None = None
+    email: str | None = None
+    display_name: str | None = None
+    is_operator: bool = False
 
 
 @router.post("/login", status_code=status.HTTP_204_NO_CONTENT)
-async def login(body: LoginRequest, response: Response) -> Response:
-    """Verify credentials and set a signed session cookie."""
-    if not settings.DASHBOARD_PASSWORD:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Dashboard auth is not configured. "
-                "Set AWAITHUMANS_DASHBOARD_PASSWORD to enable login."
-            ),
-        )
+async def login(
+    body: LoginRequest,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Verify credentials against the user directory and set a signed
+    session cookie.
 
-    if not verify_password(user=body.user, password=body.password):
-        # Log at info, not warning — brute-forcers will spam this.
-        logger.info("Failed login attempt for user=%s", body.user)
-        raise HTTPException(status_code=401, detail="Invalid credentials.")
+    Returns 401 for unknown email, inactive account, no password set,
+    or wrong password — uniform error so we don't leak which field
+    was wrong.
+    """
+    user = await get_user_by_email(session, body.email)
+    reject = HTTPException(status_code=401, detail="Invalid credentials.")
 
-    token = sign_session(user=body.user)
+    if user is None or not user.active or not user.password_hash:
+        logger.info("Failed login (no match / inactive / no password): %s", body.email)
+        raise reject
+
+    if not verify_password(body.password, user.password_hash):
+        logger.info("Failed login (wrong password): %s", body.email)
+        raise reject
+
+    token = sign_session(user_id=user.id, is_operator=user.is_operator)
     response.set_cookie(
         key=DASHBOARD_SESSION_COOKIE_NAME,
         value=token,
@@ -88,20 +96,33 @@ async def logout(response: Response) -> Response:
 
 
 @router.get("/me", response_model=MeResponse)
-async def me(request: Request) -> MeResponse:
-    """Session introspection. Dashboard calls this on mount to decide
-    whether to render the login page or the task queue."""
-    auth_enabled = bool(settings.DASHBOARD_PASSWORD)
-    if not auth_enabled:
-        return MeResponse(authenticated=False, auth_enabled=False)
-
+async def me(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> MeResponse:
+    """Session introspection. Returns the current user record when
+    signed in, or `authenticated=false` otherwise. Dashboard mounts
+    call this to decide whether to render the queue or the login form."""
     cookie = request.cookies.get(DASHBOARD_SESSION_COOKIE_NAME)
     if not cookie:
-        return MeResponse(authenticated=False, auth_enabled=True)
+        return MeResponse(authenticated=False)
 
     try:
-        user = verify_session(cookie)
+        claims = verify_session(cookie)
     except InvalidSessionError:
-        return MeResponse(authenticated=False, auth_enabled=True)
+        return MeResponse(authenticated=False)
 
-    return MeResponse(authenticated=True, user=user, auth_enabled=True)
+    # Fresh read — if the user was deleted or deactivated, treat as
+    # logged out. The cookie's `is_operator` claim is overridden by
+    # the current DB value to keep role changes snappy.
+    user = await get_user(session, claims.user_id)
+    if user is None or not user.active:
+        return MeResponse(authenticated=False)
+
+    return MeResponse(
+        authenticated=True,
+        user_id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        is_operator=user.is_operator,
+    )

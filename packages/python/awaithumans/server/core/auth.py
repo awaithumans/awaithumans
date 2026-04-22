@@ -1,18 +1,30 @@
-"""Dashboard password auth — optional HMAC session cookies.
+"""Dashboard auth — DB-backed users + HMAC session cookies.
 
-Turned on by setting `AWAITHUMANS_DASHBOARD_PASSWORD`. When unset the
-middleware is a no-op and every route is public (operator is responsible
-for fronting the server with their own auth proxy).
+Always on. First-run state (zero users in the DB) is handled by the
+`/api/setup/*` routes which sit in the public-prefix list and gate
+themselves on an in-memory bootstrap token.
 
 Wire format: `cookie = base64url(hmac(body) || body)` where
-`body = json({u: user, e: expiry_unix})` — same shape as the email
-magic-link tokens. The HMAC key is HKDF-derived from PAYLOAD_KEY with
-a channel-scoped salt, so the same root key never signs two primitives.
+`body = json({u: user_id, o: is_operator, e: expiry_unix})`. The HMAC
+key is HKDF-derived from PAYLOAD_KEY with a channel-scoped salt, so
+the same root key never signs two primitives.
+
+Session validation is two-step:
+- `verify_session(cookie)` checks HMAC, expiry, and payload shape —
+  no DB hit. Returns a `SessionClaims` dataclass.
+- Routes that need fresh user data use the `require_session` FastAPI
+  dep, which looks up the user by ID (enabling later "invalidate on
+  password change" via a session_version field).
+
+An operator password change or row deletion doesn't invalidate
+outstanding sessions until they expire. Acceptable for v1. Post-launch
+we can add a `session_version` field and re-sign on password reset.
 
 The middleware enforces auth before routes run:
-- public paths (`/api/auth/*`, `/api/health`, static assets) skip the check
-- a valid `Authorization: Bearer <ADMIN_API_TOKEN>` acts as a skeleton key
-  (lets ops + the admin identity CRUD work without a session)
+- public paths (`/api/auth/*`, `/api/setup/*`, `/api/health`, static
+  assets) skip the check
+- a valid `Authorization: Bearer <ADMIN_API_TOKEN>` acts as a skeleton
+  key for automation (CI, ops scripts)
 - otherwise a valid session cookie is required, else 401
 """
 
@@ -24,7 +36,7 @@ import hmac
 import json
 import logging
 import time
-from typing import Any
+from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -45,19 +57,39 @@ from awaithumans.utils.constants import (
 logger = logging.getLogger("awaithumans.server.core.auth")
 
 
-# Paths that stay public even when auth is on. Auth routes (so the
-# login page can reach them), health probes, and the OAuth install
-# callbacks (signed by Slack, not us).
+# Paths that stay public even when auth is on:
+# - /api/auth/*        — login, logout, introspection
+# - /api/setup/*       — first-run bootstrap (gates itself on a token)
+# - /api/health        — readiness probes
+# - slack/email action — signed by their own HMAC, no session needed
 _PUBLIC_PREFIXES = (
     "/api/auth/",
+    "/api/setup/",
     "/api/health",
-    "/api/channels/slack/oauth/",   # Slack-signed state already gates these
-    "/api/channels/email/action/",  # magic links are self-signed
+    "/api/channels/slack/oauth/",           # Slack-signed state gates these
+    "/api/channels/slack/interactions",     # HMAC request signature gates this
+    "/api/channels/slack/events",           # HMAC request signature gates this
+    "/api/channels/email/action/",          # magic links are self-signed
 )
 
 
 class InvalidSessionError(Exception):
     """Session cookie failed HMAC, expiry, or format validation."""
+
+
+@dataclass(frozen=True)
+class SessionClaims:
+    """What the cookie tells us about the caller, without a DB hit.
+
+    `user_id` is the stable ID; email and display_name aren't signed
+    in to keep the cookie short and avoid stale display on rename.
+    `is_operator` is baked in so the middleware can make coarse
+    authz decisions (admin routes) without a DB query — fresh checks
+    still happen in route-level deps when a mutation is about to run.
+    """
+
+    user_id: str
+    is_operator: bool
 
 
 # ─── Key derivation ─────────────────────────────────────────────────────
@@ -76,21 +108,30 @@ def _hmac_key() -> bytes:
 # ─── Cookie sign/verify ─────────────────────────────────────────────────
 
 
-def _canonical(payload: dict[str, Any]) -> bytes:
+def _canonical(payload: dict[str, object]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
 
-def sign_session(*, user: str, ttl_seconds: int | None = None) -> str:
+def sign_session(
+    *, user_id: str, is_operator: bool, ttl_seconds: int | None = None
+) -> str:
     """Produce a signed session cookie value."""
     ttl = ttl_seconds if ttl_seconds is not None else DASHBOARD_SESSION_MAX_AGE_SECONDS
-    body = _canonical({"u": user, "e": int(time.time()) + ttl})
+    body = _canonical(
+        {
+            "u": user_id,
+            "o": bool(is_operator),
+            "e": int(time.time()) + ttl,
+        }
+    )
     mac = hmac.new(_hmac_key(), body, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(mac + body).decode().rstrip("=")
 
 
-def verify_session(cookie: str) -> str:
-    """Decode + verify a session cookie. Returns the username. Raises
-    `InvalidSessionError` on any failure."""
+def verify_session(cookie: str) -> SessionClaims:
+    """Decode + verify a session cookie. Raises `InvalidSessionError`
+    on any failure. Does NOT touch the DB — caller should re-read the
+    User row if freshness matters."""
     if not cookie:
         raise InvalidSessionError("empty cookie")
 
@@ -110,7 +151,8 @@ def verify_session(cookie: str) -> str:
 
     try:
         payload = json.loads(body)
-        user = str(payload["u"])
+        user_id = str(payload["u"])
+        is_operator = bool(payload["o"])
         expires_at = int(payload["e"])
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise InvalidSessionError(f"malformed body: {exc}") from exc
@@ -118,26 +160,7 @@ def verify_session(cookie: str) -> str:
     if time.time() > expires_at:
         raise InvalidSessionError("expired")
 
-    return user
-
-
-# ─── Password check ─────────────────────────────────────────────────────
-
-
-def verify_password(*, user: str, password: str) -> bool:
-    """Constant-time compare of submitted credentials against settings.
-
-    Auth is OFF when DASHBOARD_PASSWORD is unset; callers shouldn't
-    reach this function in that state. Returns False rather than
-    raising so login routes can return a uniform 401.
-    """
-    if not settings.DASHBOARD_PASSWORD:
-        return False
-    # Both branches run compare_digest so a mismatched username doesn't
-    # short-circuit faster than a wrong password (timing-leak defense).
-    user_ok = hmac.compare_digest(user, settings.DASHBOARD_USER)
-    pw_ok = hmac.compare_digest(password, settings.DASHBOARD_PASSWORD)
-    return user_ok and pw_ok
+    return SessionClaims(user_id=user_id, is_operator=is_operator)
 
 
 # ─── Middleware ─────────────────────────────────────────────────────────
@@ -148,29 +171,34 @@ def _is_public_path(path: str) -> bool:
 
 
 def _has_valid_admin_token(request: Request) -> bool:
-    """Bearer admin token acts as a skeleton key (ops use)."""
+    """Admin bearer token — automation escape hatch. Accepts either
+    `Authorization: Bearer <token>` (standard) or `X-Admin-Token:
+    <token>` (legacy header still used by the email identity CRUD)."""
     if not settings.ADMIN_API_TOKEN:
         return False
-    header = request.headers.get("authorization", "")
-    if not header.lower().startswith("bearer "):
+
+    supplied: str | None = None
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        supplied = auth_header.split(" ", 1)[1].strip()
+    else:
+        xadmin = request.headers.get("x-admin-token")
+        if xadmin:
+            supplied = xadmin
+
+    if not supplied:
         return False
-    supplied = header.split(" ", 1)[1].strip()
     return hmac.compare_digest(supplied, settings.ADMIN_API_TOKEN)
 
 
 class DashboardAuthMiddleware(BaseHTTPMiddleware):
-    """Gate the API behind the optional dashboard password."""
+    """Gate the API behind a logged-in user or the admin bearer token."""
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
-        # Auth off entirely — no password set.
-        if not settings.DASHBOARD_PASSWORD:
-            return await call_next(request)
-
         path = request.url.path
 
-        # Non-API requests (static assets served by the bundled
-        # dashboard, /docs, etc.) pass through. The dashboard itself
-        # enforces its own redirect via middleware.ts.
+        # Non-API requests (static assets, /docs, etc.) pass through.
+        # The dashboard enforces its own redirect via middleware.ts.
         if not path.startswith("/api/"):
             return await call_next(request)
 
@@ -178,12 +206,16 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if _has_valid_admin_token(request):
+            # Bearer-token caller — mark the request so downstream deps
+            # can distinguish "logged-in operator" from "automation."
+            request.state.auth_admin_token = True
             return await call_next(request)
 
         cookie = request.cookies.get(DASHBOARD_SESSION_COOKIE_NAME)
         if cookie:
             try:
-                request.state.auth_user = verify_session(cookie)
+                claims = verify_session(cookie)
+                request.state.auth_claims = claims
                 return await call_next(request)
             except InvalidSessionError as exc:
                 logger.info("Rejected session cookie: %s", exc)
@@ -194,16 +226,24 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         )
 
 
-# ─── FastAPI dep (optional — most routes covered by middleware) ─────────
+# ─── FastAPI deps ───────────────────────────────────────────────────────
 
 
-def require_session(request: Request) -> str:
-    """Dep for routes that need the logged-in user name (not just "auth").
-
-    Routes covered by the middleware can rely on `request.state.auth_user`
-    being set. This dep is the typed accessor.
-    """
-    user = getattr(request.state, "auth_user", None)
-    if not user:
+def require_session(request: Request) -> SessionClaims:
+    """Dep for routes that need the caller's user_id. Covers cookie-auth
+    only — routes that accept the admin bearer token use `require_admin`
+    from `core/admin_auth.py` instead."""
+    claims = getattr(request.state, "auth_claims", None)
+    if not isinstance(claims, SessionClaims):
         raise HTTPException(status_code=401, detail="Authentication required.")
-    return user
+    return claims
+
+
+def require_operator_session(request: Request) -> SessionClaims:
+    """Dep for routes that require operator privileges via session auth
+    (not the admin bearer token). Admin routes typically use the looser
+    `require_admin` dep which accepts either."""
+    claims = require_session(request)
+    if not claims.is_operator:
+        raise HTTPException(status_code=403, detail="Operator privileges required.")
+    return claims

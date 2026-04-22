@@ -14,7 +14,15 @@ export type {
 } from "@/lib/types";
 
 export { fetchAuditTrail } from "./audit";
-export { fetchMe, login, logout, type MeResponse } from "./auth";
+export {
+	createFirstOperator,
+	fetchMe,
+	fetchSetupStatus,
+	login,
+	logout,
+	type MeResponse,
+	type SetupStatusResponse,
+} from "./auth";
 export { apiFetch, UnauthorizedError } from "./client";
 export {
 	createEmailIdentity,

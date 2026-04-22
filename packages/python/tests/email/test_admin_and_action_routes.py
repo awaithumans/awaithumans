@@ -67,8 +67,12 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.mark.asyncio
 async def test_admin_endpoint_rejects_missing_token(client: AsyncClient) -> None:
+    """No session, no admin token → middleware 401. Post-A3 the same
+    401 covers both "not logged in" and "wrong admin token" — admin is
+    reachable either by session (operator) or bearer, but not both
+    missing."""
     resp = await client.get("/api/channels/email/identities")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -77,11 +81,15 @@ async def test_admin_endpoint_rejects_wrong_token(client: AsyncClient) -> None:
         "/api/channels/email/identities",
         headers={"X-Admin-Token": "nope"},
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_admin_endpoint_503_when_token_unset(client: AsyncClient) -> None:
+async def test_admin_endpoint_401_when_token_unset(client: AsyncClient) -> None:
+    """When ADMIN_API_TOKEN is unset, the admin bearer path is off —
+    but operator-session auth remains. An anonymous caller still gets
+    401 (middleware), not 503 (the old "feature-disabled" semantics
+    disappear since operators can always reach admin via login)."""
     orig = settings.ADMIN_API_TOKEN
     settings.ADMIN_API_TOKEN = None
     try:
@@ -89,7 +97,7 @@ async def test_admin_endpoint_503_when_token_unset(client: AsyncClient) -> None:
             "/api/channels/email/identities",
             headers={"X-Admin-Token": "anything"},
         )
-        assert resp.status_code == 503
+        assert resp.status_code == 401
     finally:
         settings.ADMIN_API_TOKEN = orig
 
