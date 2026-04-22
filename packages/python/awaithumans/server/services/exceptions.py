@@ -63,3 +63,45 @@ class TaskAlreadyExistsError(ServiceError):
         super().__init__(
             f"Task with idempotency key '{idempotency_key}' already exists (id={task_id})."
         )
+
+
+# ─── User service errors ──────────────────────────────────────────────
+
+
+class UserNotFoundError(ServiceError):
+    status_code = 404
+    error_code = "USER_NOT_FOUND"
+    docs_path = "user-not-found"
+
+    def __init__(self, user_id: str) -> None:
+        self.user_id = user_id
+        super().__init__(f"User '{user_id}' not found.")
+
+
+class UserAlreadyExistsError(ServiceError):
+    status_code = 409
+    error_code = "USER_ALREADY_EXISTS"
+    docs_path = "user-already-exists"
+
+    def __init__(self, conflict: str) -> None:
+        self.conflict = conflict
+        super().__init__(
+            f"A user with this {conflict} already exists. Each email and each "
+            f"(slack_team_id, slack_user_id) pair is unique across the directory."
+        )
+
+
+class UserNoAddressError(ServiceError):
+    """At least one delivery address (email or slack pair) must be set —
+    a user with neither is unreachable and useless for routing."""
+
+    status_code = 422
+    error_code = "USER_NO_ADDRESS"
+    docs_path = "user-no-address"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "A user must have at least one delivery address: either an email "
+            "or a (slack_team_id, slack_user_id) pair. Rows with neither "
+            "can't be reached by any channel."
+        )
