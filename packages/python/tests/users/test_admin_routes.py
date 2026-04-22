@@ -28,8 +28,15 @@ AUTH = {"X-Admin-Token": ADMIN_TOKEN}
 
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
-    orig = settings.ADMIN_API_TOKEN
+    import secrets
+
+    from awaithumans.server.core import encryption
+
+    orig_admin = settings.ADMIN_API_TOKEN
+    orig_key = settings.PAYLOAD_KEY
     settings.ADMIN_API_TOKEN = ADMIN_TOKEN
+    settings.PAYLOAD_KEY = secrets.token_urlsafe(32)
+    encryption.reset_key_cache()
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -50,7 +57,9 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
         yield c
 
     await engine.dispose()
-    settings.ADMIN_API_TOKEN = orig
+    settings.ADMIN_API_TOKEN = orig_admin
+    settings.PAYLOAD_KEY = orig_key
+    encryption.reset_key_cache()
 
 
 # ─── Auth gate ─────────────────────────────────────────────────────────
@@ -58,8 +67,9 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.mark.asyncio
 async def test_list_requires_admin_token(client: AsyncClient) -> None:
+    """No session and no admin token → middleware 401."""
     resp = await client.get("/api/admin/users")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -67,7 +77,7 @@ async def test_wrong_token_rejected(client: AsyncClient) -> None:
     resp = await client.get(
         "/api/admin/users", headers={"X-Admin-Token": "nope"}
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ─── Create ────────────────────────────────────────────────────────────

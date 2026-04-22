@@ -5,14 +5,13 @@ import { Suspense, useEffect, useState } from "react";
 
 import { LogoMark } from "@/components/logo";
 import { TerminalSpinner } from "@/components/terminal-spinner";
-import { login, fetchMe } from "@/lib/server";
+import { fetchMe, fetchSetupStatus, login } from "@/lib/server";
 
 /**
  * Wrapping the search-params reader in Suspense is required for
  * Next's static export (output: "export"). Without it, the build
  * fails with "useSearchParams() should be wrapped in a suspense
- * boundary at page /login". Split so the `?next=` lookup is inside
- * the boundary and the page shell renders statically.
+ * boundary at page /login".
  */
 export default function LoginPage() {
 	return (
@@ -33,24 +32,33 @@ function LoginPageInner() {
 	const params = useSearchParams();
 	const next = params.get("next") || "/";
 
-	const [user, setUser] = useState("admin");
+	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+	const [ready, setReady] = useState(false);
 
-	// If the server has auth off, bounce straight through.
+	// On mount: if the server has no users yet, bounce to /setup.
+	// If the caller is already logged in, bounce to `next`. Otherwise
+	// render the login form.
 	useEffect(() => {
-		fetchMe()
-			.then((me) => {
-				if (!me.auth_enabled) {
-					router.replace(next);
-				} else {
-					setAuthRequired(true);
-					if (me.authenticated) router.replace(next);
+		(async () => {
+			try {
+				const setup = await fetchSetupStatus();
+				if (setup.needs_setup) {
+					router.replace("/setup");
+					return;
 				}
-			})
-			.catch(() => setAuthRequired(true));
+				const me = await fetchMe();
+				if (me.authenticated) {
+					router.replace(next);
+					return;
+				}
+			} catch {
+				// Server unreachable — fall through and let the user try.
+			}
+			setReady(true);
+		})();
 	}, [router, next]);
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -58,7 +66,7 @@ function LoginPageInner() {
 		setSubmitting(true);
 		setError(null);
 		try {
-			await login(user, password);
+			await login(email, password);
 			router.replace(next);
 		} catch (err) {
 			setError(
@@ -71,8 +79,7 @@ function LoginPageInner() {
 		}
 	};
 
-	// Don't flash the login form while we're checking session state.
-	if (authRequired === null) {
+	if (!ready) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
 				<TerminalSpinner label="checking session" />
@@ -93,15 +100,16 @@ function LoginPageInner() {
 				<div className="border border-white/10 rounded-lg p-6 bg-white/[0.02]">
 					<h1 className="text-lg font-semibold mb-1">Sign in</h1>
 					<p className="text-white/40 text-xs mb-5">
-						Enter the dashboard password configured for this server.
+						Sign in with your dashboard credentials.
 					</p>
 
 					<form onSubmit={handleSubmit} className="space-y-4">
 						<Field
-							label="Username"
-							value={user}
-							onChange={setUser}
-							autoFocus={!user}
+							label="Email"
+							type="email"
+							value={email}
+							onChange={setEmail}
+							autoFocus={!email}
 							disabled={submitting}
 						/>
 						<Field
@@ -109,7 +117,7 @@ function LoginPageInner() {
 							type="password"
 							value={password}
 							onChange={setPassword}
-							autoFocus={!!user}
+							autoFocus={!!email}
 							disabled={submitting}
 						/>
 
@@ -121,7 +129,7 @@ function LoginPageInner() {
 
 						<button
 							type="submit"
-							disabled={submitting || !password}
+							disabled={submitting || !password || !email}
 							className="w-full px-4 py-2.5 bg-brand text-black font-semibold text-sm rounded-md hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
 						>
 							{submitting ? "Signing in…" : "Sign in"}
@@ -130,9 +138,11 @@ function LoginPageInner() {
 				</div>
 
 				<p className="text-center text-white/25 text-xs mt-6">
-					Running behind your own auth proxy? Leave{" "}
-					<code className="text-white/40">AWAITHUMANS_DASHBOARD_PASSWORD</code>{" "}
-					unset to disable this screen.
+					First time?{" "}
+					<a href="/setup" className="text-brand/80 hover:text-brand">
+						Set up the first operator
+					</a>
+					.
 				</p>
 			</div>
 		</div>

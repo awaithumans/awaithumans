@@ -1,12 +1,14 @@
-"""Shared admin-only guard — used by identity management routes.
+"""Admin-only guard — accepts either an operator session OR the
+admin bearer token.
 
-Clients pass `X-Admin-Token: <token>`; the server compares it against
-`AWAITHUMANS_ADMIN_API_TOKEN` in constant time. When the env is unset,
-all admin routes return 503 (feature explicitly disabled).
+Operators (logged-in users with `is_operator=True`) get dashboard
+access automatically. Automation (CI, ops scripts, migration tools)
+uses the `X-Admin-Token` bearer header. Either proves admin intent;
+the route doesn't care which.
 
-This is a pragmatic v1 gate. Multi-user auth with per-user roles is
-future work; today an operator generates one token and shares it with
-whoever needs to manage identities.
+When both `ADMIN_API_TOKEN` is unset AND the caller has no operator
+session, the route returns 403 (standard forbidden, not 503 —
+operators can still reach it via the dashboard login).
 """
 
 from __future__ import annotations
@@ -14,27 +16,40 @@ from __future__ import annotations
 import hmac
 import logging
 
-from fastapi import Header, HTTPException
+from fastapi import HTTPException, Request
 
+from awaithumans.server.core.auth import SessionClaims
 from awaithumans.server.core.config import settings
 
 logger = logging.getLogger("awaithumans.server.core.admin_auth")
 
 
-async def require_admin(
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
-) -> None:
-    """FastAPI dependency — raise 403/503 if the caller isn't an admin."""
+def _has_valid_admin_token(request: Request, header_value: str | None) -> bool:
+    """Accept both `X-Admin-Token: <token>` (legacy) and
+    `Authorization: Bearer <token>` (more standard). The dashboard
+    middleware already stripped the bearer form when `Bearer` matched
+    the admin token — in that case `request.state.auth_admin_token`
+    is set and we trust it."""
+    if getattr(request.state, "auth_admin_token", False):
+        return True
     if not settings.ADMIN_API_TOKEN:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Admin endpoints are disabled. Set AWAITHUMANS_ADMIN_API_TOKEN "
-                "to a high-entropy value (e.g. `python -c 'import secrets; "
-                "print(secrets.token_urlsafe(32))'`)."
-            ),
-        )
-    if not x_admin_token or not hmac.compare_digest(
-        x_admin_token, settings.ADMIN_API_TOKEN
-    ):
-        raise HTTPException(status_code=403, detail="Admin token required.")
+        return False
+    if not header_value:
+        return False
+    return hmac.compare_digest(header_value, settings.ADMIN_API_TOKEN)
+
+
+def _is_operator_session(request: Request) -> bool:
+    claims = getattr(request.state, "auth_claims", None)
+    return isinstance(claims, SessionClaims) and claims.is_operator
+
+
+async def require_admin(request: Request) -> None:
+    """FastAPI dependency — raise 403 if the caller isn't an operator
+    (by session) or an admin-token holder (by bearer header)."""
+    header_value = request.headers.get("x-admin-token")
+    if _has_valid_admin_token(request, header_value):
+        return
+    if _is_operator_session(request):
+        return
+    raise HTTPException(status_code=403, detail="Admin access required.")

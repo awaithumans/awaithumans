@@ -5,13 +5,47 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import secrets
 import socket
+from pathlib import Path
 
 import typer
 
 from awaithumans.utils.discovery import delete_discovery, write_discovery
 
 logger = logging.getLogger("awaithumans.cli")
+
+
+def _ensure_dev_payload_key(db_path: str) -> None:
+    """Generate a local PAYLOAD_KEY for dev if one isn't set in env.
+
+    PAYLOAD_KEY is now always required — it signs session cookies and
+    encrypts at-rest columns. For `awaithumans dev`, we don't want to
+    force every first-time user to run `python -c 'import secrets...'`
+    before the server starts.
+
+    Cached in `<.awaithumans dir>/payload.key` so sessions survive
+    restarts. File is 0600. Production must still set the env var
+    explicitly (this function only writes when env is unset).
+    """
+    if os.environ.get("AWAITHUMANS_PAYLOAD_KEY"):
+        return
+
+    key_path = Path(db_path).parent / "payload.key"
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if key_path.exists():
+        os.environ["AWAITHUMANS_PAYLOAD_KEY"] = key_path.read_text().strip()
+        return
+
+    key = secrets.token_urlsafe(32)
+    key_path.write_text(key)
+    try:
+        key_path.chmod(0o600)
+    except OSError:
+        pass  # Windows or exotic filesystems — best-effort
+    os.environ["AWAITHUMANS_PAYLOAD_KEY"] = key
+    logger.info("Generated dev PAYLOAD_KEY at %s (0600)", key_path)
 
 
 def _is_port_available(host: str, port: int) -> bool:
@@ -66,6 +100,9 @@ def dev(
     os.environ.setdefault("AWAITHUMANS_LOG_LEVEL", log_level)
     os.environ.setdefault("AWAITHUMANS_HOST", host)
     os.environ.setdefault("AWAITHUMANS_PORT", str(actual_port))
+
+    # Ensure a PAYLOAD_KEY exists for local dev (cached in .awaithumans/)
+    _ensure_dev_payload_key(db_path)
 
     # Write discovery file so SDKs and the dashboard can auto-find us
     write_discovery(host=host, port=actual_port)

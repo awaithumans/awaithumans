@@ -14,6 +14,7 @@ except ImportError:
     ) from None
 
 from awaithumans.cli.commands.add_user import add_user
+from awaithumans.cli.commands.bootstrap_operator import bootstrap_operator
 from awaithumans.cli.commands.dev import dev
 from awaithumans.cli.commands.list_users import list_users_cmd
 from awaithumans.cli.commands.remove_user import remove_user
@@ -27,6 +28,7 @@ app = typer.Typer(
 )
 
 app.command()(dev)
+app.command("bootstrap-operator")(bootstrap_operator)
 app.command("add-user")(add_user)
 app.command("list-users")(list_users_cmd)
 app.command("remove-user")(remove_user)

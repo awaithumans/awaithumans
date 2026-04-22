@@ -1,7 +1,13 @@
-"""Per-test installation of PAYLOAD_KEY + DASHBOARD_PASSWORD + isolated DB."""
+"""Per-test isolated SQLite + PAYLOAD_KEY + seeded operator user.
+
+After PR A3 the dashboard auth is DB-backed — every auth test needs a
+real User row to log in against. The `operator_user` fixture inserts
+one via the user service so tests look like the production path.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import tempfile
 from collections.abc import Iterator
@@ -9,21 +15,22 @@ from pathlib import Path
 
 import pytest
 
-from awaithumans.server import db as db_module
 from awaithumans.server.core import encryption
 from awaithumans.server.core.config import settings
+from awaithumans.server.db.models import User
+
+
+# Default operator credentials used across the auth test suite.
+OPERATOR_EMAIL = "operator@example.com"
+OPERATOR_PASSWORD = "correct-horse-battery-staple"
 
 
 @pytest.fixture(autouse=True)
 def _isolated_db() -> Iterator[None]:
-    """Route every test in this module to a fresh SQLite tempfile.
-
-    Without this, the TestClient-based tests hit the project's default
-    `.awaithumans/dev.db` which may carry stale schema from earlier runs.
-    """
+    """Route every test in this module to a fresh SQLite tempfile."""
     import awaithumans.server.db.connection as conn
+    from awaithumans.server.core import bootstrap
 
-    # Snapshot
     original_db_path = settings.DB_PATH
     original_db_url = settings.DATABASE_URL
     original_engine = conn._async_engine
@@ -35,6 +42,11 @@ def _isolated_db() -> Iterator[None]:
     conn._async_engine = None
     conn._async_session_factory = None
 
+    # The bootstrap flag is module state — reset it so each test
+    # starts from "no setup token generated yet."
+    bootstrap._token = None
+    bootstrap._completed = False
+
     yield
 
     settings.DB_PATH = original_db_path
@@ -43,27 +55,48 @@ def _isolated_db() -> Iterator[None]:
     conn._async_session_factory = original_factory
 
 
-@pytest.fixture
-def auth_enabled() -> Iterator[None]:
-    """Set a valid PAYLOAD_KEY + DASHBOARD_PASSWORD for the test."""
-    original_key = settings.PAYLOAD_KEY
-    original_pw = settings.DASHBOARD_PASSWORD
-    original_user = settings.DASHBOARD_USER
+@pytest.fixture(autouse=True)
+def _payload_key() -> Iterator[None]:
+    """Every auth test needs PAYLOAD_KEY — sessions and encrypted columns
+    both derive their keys from it."""
+    original = settings.PAYLOAD_KEY
     settings.PAYLOAD_KEY = secrets.token_urlsafe(32)
-    settings.DASHBOARD_PASSWORD = "correct-horse-battery-staple"
-    settings.DASHBOARD_USER = "admin"
     encryption.reset_key_cache()
     yield
-    settings.PAYLOAD_KEY = original_key
-    settings.DASHBOARD_PASSWORD = original_pw
-    settings.DASHBOARD_USER = original_user
+    settings.PAYLOAD_KEY = original
     encryption.reset_key_cache()
 
 
 @pytest.fixture
-def auth_disabled() -> Iterator[None]:
-    """Explicit no-auth mode — DASHBOARD_PASSWORD unset."""
-    original = settings.DASHBOARD_PASSWORD
-    settings.DASHBOARD_PASSWORD = None
-    yield
-    settings.DASHBOARD_PASSWORD = original
+def operator_user() -> Iterator[User]:
+    """Insert a fresh operator into the test DB and return the row.
+
+    Runs migrations + creates the user in one short-lived loop so tests
+    can log in via `POST /api/auth/login` immediately after."""
+    from awaithumans.server.db.connection import (
+        close_db,
+        get_async_session_factory,
+        init_db,
+    )
+    from awaithumans.server.services.user_service import create_user
+
+    async def _seed() -> User:
+        await init_db()
+        factory = get_async_session_factory()
+        async with factory() as session:
+            return await create_user(
+                session,
+                email=OPERATOR_EMAIL,
+                display_name="Test Operator",
+                is_operator=True,
+                password=OPERATOR_PASSWORD,
+            )
+
+    user = asyncio.new_event_loop().run_until_complete(_seed())
+
+    yield user
+
+    async def _teardown() -> None:
+        await close_db()
+
+    asyncio.new_event_loop().run_until_complete(_teardown())

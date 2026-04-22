@@ -13,13 +13,15 @@ from awaithumans.server.services.slack_installation_service import upsert_instal
 
 
 @pytest.fixture
-def client(auth_enabled) -> Iterator[TestClient]:
+def client(operator_user) -> Iterator[TestClient]:
+    from .conftest import OPERATOR_EMAIL, OPERATOR_PASSWORD
+
     app = create_app(serve_dashboard=False)
     with TestClient(app) as c:
         # Log in once so subsequent calls ride the cookie.
         c.post(
             "/api/auth/login",
-            json={"user": "admin", "password": "correct-horse-battery-staple"},
+            json={"email": OPERATOR_EMAIL, "password": OPERATOR_PASSWORD},
         )
         yield c
 
@@ -63,7 +65,7 @@ def test_status_never_leaks_secrets(client: TestClient) -> None:
         assert forbidden not in body, f"/status leaked {forbidden}"
 
 
-def test_status_auth_required(auth_enabled) -> None:
+def test_status_auth_required(operator_user) -> None:
     """Without a session, /status returns 401 (middleware gate)."""
     app = create_app(serve_dashboard=False)
     with TestClient(app) as c:
@@ -103,7 +105,7 @@ def test_status_slack_mode_off_when_unconfigured(client: TestClient, monkeypatch
 
 @pytest.mark.asyncio
 async def test_list_installations_returns_public_shape(
-    client: TestClient, auth_enabled
+    client: TestClient, operator_user
 ) -> None:
     """Seed one installation directly and verify bot_token is never in the response."""
     # Use a fresh session to write the fixture — the TestClient's session
@@ -134,7 +136,7 @@ async def test_list_installations_returns_public_shape(
     assert "xoxb" not in resp.text
 
 
-def test_list_installations_requires_auth(auth_enabled) -> None:
+def test_list_installations_requires_auth(operator_user) -> None:
     app = create_app(serve_dashboard=False)
     with TestClient(app) as c:
         resp = c.get("/api/channels/slack/installations")
@@ -142,7 +144,7 @@ def test_list_installations_requires_auth(auth_enabled) -> None:
 
 
 @pytest.mark.asyncio
-async def test_uninstall_removes_row(client: TestClient, auth_enabled) -> None:
+async def test_uninstall_removes_row(client: TestClient, operator_user) -> None:
     from awaithumans.server.db.connection import get_async_session_factory
 
     factory = get_async_session_factory()

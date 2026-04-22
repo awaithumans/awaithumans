@@ -5,7 +5,7 @@ which channels are configured, whether encryption is on, which mode of
 Slack is active. No secrets, no keys, no passwords ever leave the server.
 
 Gated by the dashboard auth middleware — probes from the public internet
-return 401 when `DASHBOARD_PASSWORD` is set.
+return 401 unless they carry a valid session cookie or admin bearer token.
 """
 
 from __future__ import annotations
@@ -28,11 +28,14 @@ def _slack_mode() -> str:
 
 @router.get("", response_model=SystemStatus)
 async def get_status() -> SystemStatus:
+    # `auth_enabled` stays in the payload (dashboard still reads it)
+    # but is always True now — we left it in place so the dashboard
+    # doesn't need redeployment just to drop a field.
     return SystemStatus(
         version="0.1.0",
         environment=settings.ENVIRONMENT,
         public_url=settings.PUBLIC_URL,
-        auth_enabled=bool(settings.DASHBOARD_PASSWORD),
+        auth_enabled=True,
         payload_encryption_enabled=bool(settings.PAYLOAD_KEY),
         admin_token_enabled=bool(settings.ADMIN_API_TOKEN),
         slack_mode=_slack_mode(),
