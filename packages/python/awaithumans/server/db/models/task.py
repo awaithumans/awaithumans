@@ -10,12 +10,21 @@ from sqlmodel import JSON, Column, Field, SQLModel
 
 from awaithumans.server.db.models.base import new_id, utc_now
 from awaithumans.types import TaskStatus
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 # Partial unique index — only ACTIVE tasks have unique idempotency keys.
-# After a task reaches a terminal state, another task with the same key can
-# be created. This lets developers retry failed/timed-out tasks with the
-# same content without hitting a duplicate-key error.
-_TERMINAL_STATUS_VALUES = "('completed', 'timed_out', 'cancelled', 'verification_exhausted')"
+# After a task reaches a terminal state, another task with the same key
+# can be created. This lets developers retry failed/timed-out tasks
+# with the same content without hitting a duplicate-key error.
+#
+# SQLAlchemy stores enum columns as the enum's NAME (uppercase),
+# not .value (lowercase). The WHERE clause has to match, or the
+# partial index never filters anything and the "retry after terminal"
+# story silently fails with a raw UNIQUE violation. Derive the names
+# from TERMINAL_STATUSES_SET so this can't drift.
+_TERMINAL_STATUS_VALUES = (
+    "(" + ", ".join(f"'{s.name}'" for s in sorted(TERMINAL_STATUSES_SET, key=lambda s: s.name)) + ")"
+)
 _ACTIVE_IDEMPOTENCY_WHERE = f"status NOT IN {_TERMINAL_STATUS_VALUES}"
 
 
