@@ -53,6 +53,11 @@ class Task(SQLModel, table=True):
     # Routing
     assign_to: dict[str, Any] | None = Field(sa_column=Column(JSON), default=None)
     assigned_to_email: str | None = Field(default=None, index=True)
+    # Resolved user ID after the task router picks a match. Stable across
+    # email changes and populated even for Slack-only users (where
+    # `assigned_to_email` stays null). Correlates tasks to the user
+    # directory without requiring an email lookup.
+    assigned_to_user_id: str | None = Field(default=None, index=True)
 
     # Notification
     notify: list[str] | None = Field(sa_column=Column(JSON), default=None)

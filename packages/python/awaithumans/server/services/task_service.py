@@ -17,6 +17,7 @@ from awaithumans.server.services.exceptions import (
     TaskAlreadyTerminalError,
     TaskNotFoundError,
 )
+from awaithumans.server.services.task_router import resolve_assign_to
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 
@@ -46,6 +47,12 @@ async def create_task(
     if existing is not None:
         return existing
 
+    # Route: resolve assign_to -> a specific user (or None for unassigned).
+    # The router bumps last_assigned_at on the picked user within this
+    # session; committing the task and the bump together keeps Option C
+    # fairness in step with task creation.
+    route = await resolve_assign_to(session, assign_to)
+
     # Create the task
     now = datetime.now(timezone.utc)
     new_task = Task(
@@ -57,6 +64,8 @@ async def create_task(
         timeout_seconds=timeout_seconds,
         idempotency_key=idempotency_key,
         assign_to=assign_to,
+        assigned_to_email=route.email,
+        assigned_to_user_id=route.user_id,
         notify=notify,
         verifier_config=verifier_config,
         redact_payload=redact_payload,
