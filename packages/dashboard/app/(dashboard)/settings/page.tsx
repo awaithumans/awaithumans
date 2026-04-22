@@ -1,6 +1,7 @@
 import { EmailIdentities } from "@/components/settings/email-identities";
 import { SlackWorkspaces } from "@/components/settings/slack-workspaces";
 import { SystemStatusCard } from "@/components/settings/system-status";
+import { UsersManagement } from "@/components/settings/users";
 
 export default function SettingsPage() {
 	return (
@@ -8,12 +9,13 @@ export default function SettingsPage() {
 			<div className="mb-8">
 				<h1 className="text-2xl font-bold">Settings</h1>
 				<p className="text-white/45 text-sm mt-1">
-					Channel configuration and server state.
+					Users, channel configuration, and server state.
 				</p>
 			</div>
 
 			<div className="space-y-10">
 				<SystemStatusCard />
+				<UsersManagement />
 				<SlackWorkspaces />
 				<EmailIdentities />
 			</div>

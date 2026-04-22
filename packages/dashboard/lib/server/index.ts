@@ -45,3 +45,15 @@ export {
 } from "./stats";
 export { fetchSystemStatus, type SystemStatus } from "./status";
 export { cancelTask, completeTask, fetchTask, fetchTasks } from "./tasks";
+export {
+	clearUserPassword,
+	createUser,
+	deleteUser,
+	fetchUsers,
+	setUserPassword,
+	updateUser,
+	type CreateUserRequest,
+	type UpdateUserRequest,
+	type User,
+	type UserListFilters,
+} from "./users";
