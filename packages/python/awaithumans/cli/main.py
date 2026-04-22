@@ -15,6 +15,9 @@ except ImportError:
 
 from awaithumans.cli.commands.add_user import add_user
 from awaithumans.cli.commands.dev import dev
+from awaithumans.cli.commands.list_users import list_users_cmd
+from awaithumans.cli.commands.remove_user import remove_user
+from awaithumans.cli.commands.set_password import set_password_cmd
 from awaithumans.cli.commands.version import version
 
 app = typer.Typer(
@@ -24,7 +27,10 @@ app = typer.Typer(
 )
 
 app.command()(dev)
-app.command()(add_user)
+app.command("add-user")(add_user)
+app.command("list-users")(list_users_cmd)
+app.command("remove-user")(remove_user)
+app.command("set-password")(set_password_cmd)
 app.command()(version)
 
 if __name__ == "__main__":
