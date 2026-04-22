@@ -151,3 +151,24 @@ class InvalidSetupTokenError(ServiceError):
             "Invalid setup token. The token is printed to the server log on "
             "startup; restart the server to generate a fresh one."
         )
+
+
+class LastOperatorError(ServiceError):
+    """Tried to delete / demote / deactivate the only active operator.
+
+    Prevents locking everyone out of dashboard admin — the last
+    operator standing has to stay reachable. Recovery from a full
+    lockout requires CLI (bootstrap-operator on empty DB) or the
+    admin bearer token, both of which are operator-level already."""
+
+    status_code = 409
+    error_code = "LAST_OPERATOR"
+    docs_path = "last-operator"
+
+    def __init__(self, action: str) -> None:
+        self.action = action
+        super().__init__(
+            f"Can't {action} the last active operator — at least one "
+            "operator must remain so the dashboard stays manageable. "
+            "Promote another user to operator first."
+        )

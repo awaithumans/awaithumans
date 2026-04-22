@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from awaithumans.server.core.password import hash_password
 from awaithumans.server.db.models import User
 from awaithumans.server.services.exceptions import (
+    LastOperatorError,
     UserAlreadyExistsError,
     UserNoAddressError,
     UserNotFoundError,
@@ -164,10 +165,23 @@ async def update_user(
     (service never stores plaintext). Pass `password_hash=<str>`
     directly at your peril — that's an escape hatch for migrations,
     not normal use.
+
+    Refuses to demote (`is_operator=False`) or deactivate
+    (`active=False`) the last active operator; see `LastOperatorError`.
     """
     row = await get_user(session, user_id)
     if row is None:
         raise UserNotFoundError(user_id)
+
+    # Pre-flight last-operator guard. Run BEFORE applying the changes
+    # so we don't mutate the row and then refuse to commit — leaves
+    # the session in a clean state for the caller's next query.
+    if row.is_operator and row.active:
+        demoting = changes.get("is_operator") is False
+        deactivating = changes.get("active") is False
+        if demoting or deactivating:
+            action = "demote" if demoting else "deactivate"
+            await _ensure_not_last_active_operator(session, row.id, action=action)
 
     if "password" in changes:
         pw = changes.pop("password")
@@ -210,7 +224,18 @@ async def set_password(
 
 
 async def delete_user(session: AsyncSession, user_id: str) -> bool:
-    """Hard delete. Returns True if a row was removed, False if not found."""
+    """Hard delete. Returns True if a row was removed, False if not found.
+
+    Refuses to remove the last active operator (see `LastOperatorError`).
+    Without this guard a well-meaning operator could lock themselves
+    out of the dashboard."""
+    row = await get_user(session, user_id)
+    if row is None:
+        return False
+
+    if row.is_operator and row.active:
+        await _ensure_not_last_active_operator(session, row.id, action="delete")
+
     result = await session.execute(delete(User).where(User.id == user_id))
     await session.commit()
     return result.rowcount > 0
@@ -223,3 +248,26 @@ async def count_users(session: AsyncSession) -> int:
 
     result = await session.execute(select(func.count()).select_from(User))
     return int(result.scalar_one())
+
+
+async def _count_active_operators(session: AsyncSession) -> int:
+    from sqlalchemy import func
+
+    result = await session.execute(
+        select(func.count())
+        .select_from(User)
+        .where(User.is_operator == True)  # noqa: E712 — SQLAlchemy idiom
+        .where(User.active == True)  # noqa: E712
+    )
+    return int(result.scalar_one())
+
+
+async def _ensure_not_last_active_operator(
+    session: AsyncSession, user_id: str, *, action: str
+) -> None:
+    """Raise `LastOperatorError` if removing/demoting this user would
+    leave zero active operators. Used by `delete_user` + `update_user`
+    to prevent accidental full lockout."""
+    active_ops = await _count_active_operators(session)
+    if active_ops <= 1:
+        raise LastOperatorError(action)

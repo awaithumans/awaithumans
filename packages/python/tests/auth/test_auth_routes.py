@@ -155,27 +155,34 @@ def test_admin_token_wrong_value_401(client: TestClient, monkeypatch) -> None:
 
 def test_inactive_user_cannot_login(client: TestClient, monkeypatch) -> None:
     """Deactivating a user blocks new logins (existing sessions keep
-    working until expiry — tradeoff for no DB hit per request)."""
+    working until expiry — tradeoff for no DB hit per request).
+
+    Uses a non-operator user since the last-active-operator guard
+    (post-security-audit) refuses to deactivate the only operator.
+    """
     import asyncio
 
     from awaithumans.server.db.connection import get_async_session_factory
-    from awaithumans.server.services.user_service import update_user
+    from awaithumans.server.services.user_service import create_user, update_user
 
     factory = get_async_session_factory()
+    other_email = "regular@example.com"
+    other_password = "other-password-xyz"
 
-    async def _deactivate() -> None:
+    async def _seed_and_deactivate() -> None:
         async with factory() as session:
-            # Look the user up by email and flip active=False.
-            from awaithumans.server.services.user_service import get_user_by_email
-
-            u = await get_user_by_email(session, OPERATOR_EMAIL)
-            assert u is not None
+            u = await create_user(
+                session,
+                email=other_email,
+                display_name="Regular user",
+                password=other_password,
+            )
             await update_user(session, u.id, active=False)
 
-    asyncio.get_event_loop().run_until_complete(_deactivate())
+    asyncio.get_event_loop().run_until_complete(_seed_and_deactivate())
 
     resp = client.post(
         "/api/auth/login",
-        json={"email": OPERATOR_EMAIL, "password": OPERATOR_PASSWORD},
+        json={"email": other_email, "password": other_password},
     )
     assert resp.status_code == 401
