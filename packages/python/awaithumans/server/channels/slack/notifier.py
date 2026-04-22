@@ -50,7 +50,10 @@ async def notify_task(
         return
 
     form = _parse_form(form_definition)
-    review_url = f"{settings.PUBLIC_URL.rstrip('/')}/tasks/{task_id}"
+    # The dashboard moved to `/task?id=…` for static-export compatibility
+    # (dynamic segments don't survive `output: "export"`). Old `/tasks/{id}`
+    # 404s.
+    review_url = f"{settings.PUBLIC_URL.rstrip('/')}/task?id={task_id}"
     offenders = unsupported_fields(form, "slack") if form is not None else None
     fallback_text = f"New task: {task_title}"
 

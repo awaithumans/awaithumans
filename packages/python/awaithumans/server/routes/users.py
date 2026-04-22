@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.core.admin_auth import require_admin
 from awaithumans.server.db.connection import get_session
+from awaithumans.server.db.models import User
 from awaithumans.server.schemas.users import (
     SetPasswordRequest,
     UserCreateRequest,
@@ -35,27 +36,25 @@ router = APIRouter(prefix="/admin/users", tags=["admin"])
 logger = logging.getLogger("awaithumans.server.routes.users")
 
 
-def _to_public(row: object) -> UserResponse:
-    """Convert a User model row to its public view. Computes
-    `has_password` from the hash presence so callers can tell
-    whether the user can log in without seeing the hash."""
-    # `row` is a User but typed loosely so the module doesn't import
-    # the model unnecessarily — we only read attributes.
+def _to_public(row: User) -> UserResponse:
+    """Convert a User model row to its public view. `has_password` is
+    derived from the hash presence so callers can tell whether the
+    user can log in without seeing the hash itself."""
     return UserResponse(
-        id=row.id,  # type: ignore[attr-defined]
-        display_name=row.display_name,  # type: ignore[attr-defined]
-        email=row.email,  # type: ignore[attr-defined]
-        slack_team_id=row.slack_team_id,  # type: ignore[attr-defined]
-        slack_user_id=row.slack_user_id,  # type: ignore[attr-defined]
-        role=row.role,  # type: ignore[attr-defined]
-        access_level=row.access_level,  # type: ignore[attr-defined]
-        pool=row.pool,  # type: ignore[attr-defined]
-        is_operator=row.is_operator,  # type: ignore[attr-defined]
-        has_password=bool(row.password_hash),  # type: ignore[attr-defined]
-        active=row.active,  # type: ignore[attr-defined]
-        last_assigned_at=row.last_assigned_at,  # type: ignore[attr-defined]
-        created_at=row.created_at,  # type: ignore[attr-defined]
-        updated_at=row.updated_at,  # type: ignore[attr-defined]
+        id=row.id,
+        display_name=row.display_name,
+        email=row.email,
+        slack_team_id=row.slack_team_id,
+        slack_user_id=row.slack_user_id,
+        role=row.role,
+        access_level=row.access_level,
+        pool=row.pool,
+        is_operator=row.is_operator,
+        has_password=bool(row.password_hash),
+        active=row.active,
+        last_assigned_at=row.last_assigned_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 

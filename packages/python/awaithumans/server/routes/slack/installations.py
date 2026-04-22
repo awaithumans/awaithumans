@@ -10,12 +10,14 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import Response
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.channels.slack.client import get_client_for_team
 from awaithumans.server.db.connection import get_session
-from awaithumans.server.schemas.slack import SlackInstallationResponse
+from awaithumans.server.schemas.slack import (
+    SlackInstallationResponse,
+    SlackMemberResponse,
+)
 from awaithumans.server.services.slack_installation_service import (
     delete_installation,
     list_installations,
@@ -23,19 +25,6 @@ from awaithumans.server.services.slack_installation_service import (
 
 router = APIRouter()
 logger = logging.getLogger("awaithumans.server.routes.slack.installations")
-
-
-class SlackMemberResponse(BaseModel):
-    """A member of a Slack workspace — enough to render a picker.
-
-    We deliberately don't forward the full Slack profile; dashboard
-    only needs enough to label the row and record the stable ID."""
-
-    id: str            # Slack user ID (U… / W…)
-    name: str          # @handle ("alice")
-    real_name: str | None
-    display_name: str | None
-    is_admin: bool
 
 
 def _to_public(row) -> SlackInstallationResponse:

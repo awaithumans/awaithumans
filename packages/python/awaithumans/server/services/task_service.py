@@ -137,6 +137,7 @@ async def claim_task(
     task_id: str,
     user_id: str,
     user_email: str | None = None,
+    claimed_via_channel: str | None = None,
 ) -> Task:
     """Claim a broadcast task (first-writer-wins).
 
@@ -145,6 +146,10 @@ async def claim_task(
     assigned_to_user_id IS NULL` — second clicker sees
     `TaskAlreadyClaimedError` and the caller surfaces an ephemeral
     "already claimed by X" to them.
+
+    `claimed_via_channel` is a free-form string ("slack", "dashboard",
+    "email") mirroring `completed_via_channel` so audit trails stay
+    consistent across lifecycle events.
 
     Raises `TaskNotFoundError` if no such task, `TaskAlreadyTerminalError`
     if it's already completed/cancelled/timed-out (a stale message from
@@ -191,7 +196,7 @@ async def claim_task(
         action="claimed",
         actor_type="human",
         actor_email=user_email,
-        channel="slack",
+        channel=claimed_via_channel,
         extra_data={"user_id": user_id},
     )
     session.add(audit)

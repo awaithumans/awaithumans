@@ -12,9 +12,9 @@ the same root key never signs two primitives.
 Session validation is two-step:
 - `verify_session(cookie)` checks HMAC, expiry, and payload shape —
   no DB hit. Returns a `SessionClaims` dataclass.
-- Routes that need fresh user data use the `require_session` FastAPI
-  dep, which looks up the user by ID (enabling later "invalidate on
-  password change" via a session_version field).
+- Routes that need fresh user data read `request.state.auth_claims` and
+  call the user service. The admin API gate (`core/admin_auth.py`)
+  already handles operator-vs-bearer resolution.
 
 An operator password change or row deletion doesn't invalidate
 outstanding sessions until they expire. Acceptable for v1. Post-launch
@@ -40,7 +40,7 @@ from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from fastapi import HTTPException, Request, status
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -226,24 +226,3 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         )
 
 
-# ─── FastAPI deps ───────────────────────────────────────────────────────
-
-
-def require_session(request: Request) -> SessionClaims:
-    """Dep for routes that need the caller's user_id. Covers cookie-auth
-    only — routes that accept the admin bearer token use `require_admin`
-    from `core/admin_auth.py` instead."""
-    claims = getattr(request.state, "auth_claims", None)
-    if not isinstance(claims, SessionClaims):
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    return claims
-
-
-def require_operator_session(request: Request) -> SessionClaims:
-    """Dep for routes that require operator privileges via session auth
-    (not the admin bearer token). Admin routes typically use the looser
-    `require_admin` dep which accepts either."""
-    claims = require_session(request)
-    if not claims.is_operator:
-        raise HTTPException(status_code=403, detail="Operator privileges required.")
-    return claims

@@ -40,13 +40,20 @@ export function UserForm({
 	onSaved: () => Promise<void>;
 	onError: (msg: string) => void;
 }) {
+	// ── Form state ──
 	const [displayName, setDisplayName] = useState(editing?.display_name ?? "");
 	const [email, setEmail] = useState(editing?.email ?? "");
 	const [slackTeamId, setSlackTeamId] = useState(editing?.slack_team_id ?? "");
 	const [slackUserId, setSlackUserId] = useState(editing?.slack_user_id ?? "");
+	const [role, setRole] = useState(editing?.role ?? "");
+	const [accessLevel, setAccessLevel] = useState(editing?.access_level ?? "");
+	const [pool, setPool] = useState(editing?.pool ?? "");
+	const [isOperator, setIsOperator] = useState(editing?.is_operator ?? false);
+	const [password, setPassword] = useState("");
+	const [submitting, setSubmitting] = useState(false);
 
-	// Slack workspace picker — loaded lazily on mount; silently disabled
-	// if no workspaces are installed.
+	// ── Slack workspace picker — loaded lazily on mount; silently
+	// disabled if no workspaces are installed. ──
 	const [installations, setInstallations] = useState<SlackInstallation[]>([]);
 	const [members, setMembers] = useState<SlackMember[] | null>(null);
 	const [loadingMembers, setLoadingMembers] = useState(false);
@@ -77,12 +84,6 @@ export function UserForm({
 			)
 			.finally(() => setLoadingMembers(false));
 	}, [slackTeamId, installations]);
-	const [role, setRole] = useState(editing?.role ?? "");
-	const [accessLevel, setAccessLevel] = useState(editing?.access_level ?? "");
-	const [pool, setPool] = useState(editing?.pool ?? "");
-	const [isOperator, setIsOperator] = useState(editing?.is_operator ?? false);
-	const [password, setPassword] = useState("");
-	const [submitting, setSubmitting] = useState(false);
 
 	const hasEmail = email.trim().length > 0;
 	const hasSlackTeam = slackTeamId.trim().length > 0;

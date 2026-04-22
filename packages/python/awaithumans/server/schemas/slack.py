@@ -21,3 +21,16 @@ class SlackInstallationResponse(BaseModel):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class SlackMemberResponse(BaseModel):
+    """A member of a Slack workspace — enough to render a picker.
+
+    We deliberately don't forward the full Slack profile; dashboard
+    only needs enough to label the row and record the stable ID."""
+
+    id: str            # Slack user ID (U… / W…)
+    name: str          # @handle ("alice")
+    real_name: str | None
+    display_name: str | None
+    is_admin: bool
