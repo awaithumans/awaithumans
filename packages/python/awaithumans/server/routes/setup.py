@@ -18,14 +18,22 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.core import bootstrap
 from awaithumans.server.core.auth import sign_session
 from awaithumans.server.core.config import settings
 from awaithumans.server.db.connection import get_session
+from awaithumans.server.schemas.setup import (
+    CreateOperatorRequest,
+    CreateOperatorResponse,
+    SetupStatusResponse,
+)
+from awaithumans.server.services.exceptions import (
+    InvalidSetupTokenError,
+    SetupAlreadyCompletedError,
+)
 from awaithumans.server.services.user_service import count_users, create_user
 from awaithumans.utils.constants import (
     DASHBOARD_SESSION_COOKIE_NAME,
@@ -34,24 +42,6 @@ from awaithumans.utils.constants import (
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 logger = logging.getLogger("awaithumans.server.routes.setup")
-
-
-class SetupStatusResponse(BaseModel):
-    """Tells the dashboard which landing page to show."""
-
-    needs_setup: bool
-    # `token_active` is true only on the server's own loopback — the
-    # actual token is never returned; operators read it from the server
-    # log. This field just lets the /setup page show a "server is
-    # ready, paste your token" state vs. "setup already done" state.
-    token_active: bool
-
-
-class CreateOperatorRequest(BaseModel):
-    token: str = Field(min_length=1)
-    email: str = Field(min_length=1, max_length=320)
-    password: str = Field(min_length=8)
-    display_name: str | None = None
 
 
 @router.get("/status", response_model=SetupStatusResponse)
@@ -67,13 +57,14 @@ async def setup_status(
 
 @router.post(
     "/operator",
+    response_model=CreateOperatorResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_first_operator(
     body: CreateOperatorRequest,
     response: Response,
     session: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
+) -> CreateOperatorResponse:
     """Create the first operator and issue their session in one shot.
 
     The dashboard posts here after the operator pastes the setup token
@@ -88,14 +79,11 @@ async def create_first_operator(
     # cleaner error.
     if await count_users(session) > 0:
         bootstrap.mark_complete()
-        raise HTTPException(
-            status_code=409,
-            detail="Setup has already been completed. Use /api/auth/login.",
-        )
+        raise SetupAlreadyCompletedError()
 
     if not bootstrap.verify_token(body.token):
         logger.info("Rejected setup token (mismatch or already completed)")
-        raise HTTPException(status_code=403, detail="Invalid setup token.")
+        raise InvalidSetupTokenError()
 
     user = await create_user(
         session,
@@ -118,4 +106,4 @@ async def create_first_operator(
         samesite="lax",
         path="/",
     )
-    return {"user_id": user.id, "email": user.email or ""}
+    return CreateOperatorResponse(user_id=user.id, email=user.email or "")

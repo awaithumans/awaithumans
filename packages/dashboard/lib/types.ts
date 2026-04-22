@@ -19,6 +19,7 @@ export interface Task {
 	status: TaskStatus;
 	assign_to: Record<string, unknown> | null;
 	assigned_to_email: string | null;
+	assigned_to_user_id: string | null;
 	response: Record<string, unknown> | null;
 	verifier_result: Record<string, unknown> | null;
 	verification_attempt: number;

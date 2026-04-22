@@ -18,10 +18,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:  # pragma: no cover
+    from slack_sdk.web.async_client import AsyncWebClient
 
 from awaithumans.forms import FormDefinition
 from awaithumans.server.channels.slack.blocks import (
@@ -241,6 +244,7 @@ async def _handle_claim(
             task_id=task_id,
             user_id=directory_user.id,
             user_email=directory_user.email,
+            claimed_via_channel="slack",
         )
     except TaskAlreadyClaimedError as exc:
         claimer_display = await _display_for_user_id(session, exc.claimed_by_user_id)
@@ -271,7 +275,7 @@ async def _handle_claim(
         if slack_user_id
         else directory_user.display_name or directory_user.email or "a user"
     )
-    review_url = f"{settings.PUBLIC_URL.rstrip('/')}/tasks/{task.id}"
+    review_url = f"{settings.PUBLIC_URL.rstrip('/')}/task?id={task.id}"
     if channel and message_ts:
         try:
             await client.chat_update(
@@ -312,7 +316,7 @@ async def _display_for_user_id(
 
 async def _ephemeral_reply(
     *,
-    client: Any,
+    client: AsyncWebClient,
     channel: str | None,
     user_id: str,
     response_url: str | None,

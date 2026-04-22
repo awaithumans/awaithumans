@@ -16,7 +16,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.core.auth import (
@@ -27,6 +26,7 @@ from awaithumans.server.core.auth import (
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.password import verify_password
 from awaithumans.server.db.connection import get_session
+from awaithumans.server.schemas.auth import LoginRequest, MeResponse
 from awaithumans.server.services.user_service import get_user, get_user_by_email
 from awaithumans.utils.constants import (
     DASHBOARD_SESSION_COOKIE_NAME,
@@ -35,19 +35,6 @@ from awaithumans.utils.constants import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger("awaithumans.server.routes.auth")
-
-
-class LoginRequest(BaseModel):
-    email: str = Field(min_length=1, max_length=320, description="User's email address.")
-    password: str = Field(min_length=1, max_length=200)
-
-
-class MeResponse(BaseModel):
-    authenticated: bool
-    user_id: str | None = None
-    email: str | None = None
-    display_name: str | None = None
-    is_operator: bool = False
 
 
 @router.post("/login", status_code=status.HTTP_204_NO_CONTENT)

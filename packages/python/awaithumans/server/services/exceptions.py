@@ -120,3 +120,34 @@ class UserNoAddressError(ServiceError):
             "or a (slack_team_id, slack_user_id) pair. Rows with neither "
             "can't be reached by any channel."
         )
+
+
+# ─── Setup / bootstrap errors ─────────────────────────────────────────
+
+
+class SetupAlreadyCompletedError(ServiceError):
+    """Tried to run /setup after a user already exists. One-shot."""
+
+    status_code = 409
+    error_code = "SETUP_ALREADY_COMPLETED"
+    docs_path = "setup-already-completed"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "First-run setup has already been completed. Sign in with your "
+            "operator credentials via /api/auth/login instead."
+        )
+
+
+class InvalidSetupTokenError(ServiceError):
+    """Bootstrap token didn't match the in-memory value."""
+
+    status_code = 403
+    error_code = "INVALID_SETUP_TOKEN"
+    docs_path = "invalid-setup-token"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Invalid setup token. The token is printed to the server log on "
+            "startup; restart the server to generate a fresh one."
+        )
