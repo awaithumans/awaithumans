@@ -61,6 +61,17 @@ server = [
     "aiosqlite>=0.20.0",
     "asyncpg>=0.30.0",
     "slack-sdk>=3.33.0",
+    # slack_sdk has no runtime deps of its own — the async client
+    # imports aiohttp lazily, so without this listed explicitly a fresh
+    # `pip install awaithumans[server]` succeeds but any async Slack call
+    # raises ModuleNotFoundError at runtime. List it directly.
+    "aiohttp>=3.10.0",
+    # Starlette only parses `application/x-www-form-urlencoded` /
+    # `multipart/form-data` bodies when python-multipart is installed.
+    # Slack sends interaction payloads as form-encoded, so without this
+    # every interactions webhook 500s with an AssertionError. Not a
+    # transitive dep of fastapi/starlette — must be declared.
+    "python-multipart>=0.0.12",
     "resend>=2.0.0",
     "typer>=0.13.0",
     "cryptography>=43.0.0",
