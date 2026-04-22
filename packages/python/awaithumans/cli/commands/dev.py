@@ -27,25 +27,34 @@ def _ensure_dev_payload_key(db_path: str) -> None:
     Cached in `<.awaithumans dir>/payload.key` so sessions survive
     restarts. File is 0600. Production must still set the env var
     explicitly (this function only writes when env is unset).
+
+    Also mutates the already-loaded `settings` singleton — the Settings
+    object was instantiated at import time, before this function ran,
+    so setting only the env var wouldn't feed back into `settings.PAYLOAD_KEY`.
     """
-    if os.environ.get("AWAITHUMANS_PAYLOAD_KEY"):
+    from awaithumans.server.core import encryption
+    from awaithumans.server.core.config import settings
+
+    if os.environ.get("AWAITHUMANS_PAYLOAD_KEY") or settings.PAYLOAD_KEY:
         return
 
     key_path = Path(db_path).parent / "payload.key"
     key_path.parent.mkdir(parents=True, exist_ok=True)
 
     if key_path.exists():
-        os.environ["AWAITHUMANS_PAYLOAD_KEY"] = key_path.read_text().strip()
-        return
+        key = key_path.read_text().strip()
+    else:
+        key = secrets.token_urlsafe(32)
+        key_path.write_text(key)
+        try:
+            key_path.chmod(0o600)
+        except OSError:
+            pass  # Windows or exotic filesystems — best-effort
+        logger.info("Generated dev PAYLOAD_KEY at %s (0600)", key_path)
 
-    key = secrets.token_urlsafe(32)
-    key_path.write_text(key)
-    try:
-        key_path.chmod(0o600)
-    except OSError:
-        pass  # Windows or exotic filesystems — best-effort
     os.environ["AWAITHUMANS_PAYLOAD_KEY"] = key
-    logger.info("Generated dev PAYLOAD_KEY at %s (0600)", key_path)
+    settings.PAYLOAD_KEY = key
+    encryption.reset_key_cache()
 
 
 def _is_port_available(host: str, port: int) -> bool:
