@@ -96,6 +96,7 @@ class WireTransfer(BaseModel):
 
 class Decision(BaseModel):
     approved: bool
+    reason: str  # short-answer field — the reviewer explains their call
 
 print("→ creating task — go to the dashboard to review and complete it")
 
@@ -107,7 +108,8 @@ result = await_human_sync(
     timeout_seconds=900,
 )
 
-print("✓ approved" if result.approved else "✗ rejected")`,
+verdict = "approved" if result.approved else "rejected"
+print(f"✓ Transfer {verdict}. Reason: {result.reason}")`,
 						typescript: `import { awaitHuman } from "awaithumans";
 import { z } from "zod";
 
@@ -118,6 +120,8 @@ const WireTransfer = z.object({
 
 const Decision = z.object({
   approved: z.boolean(),
+  // short-answer field — the reviewer explains their call
+  reason: z.string(),
 });
 
 async function main() {
@@ -131,7 +135,8 @@ async function main() {
     timeoutMs: 900_000,
   });
 
-  console.log(result.approved ? "✓ approved" : "✗ rejected");
+  const verdict = result.approved ? "approved" : "rejected";
+  console.log(\`✓ Transfer \${verdict}. Reason: \${result.reason}\`);
 }
 
 main();`,

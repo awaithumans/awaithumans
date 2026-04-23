@@ -35,12 +35,12 @@ class RefundRequest(BaseModel):
 
 class Decision(BaseModel):
     """Structured response the human fills out. `approved` drives a
-    switch (toggle); `note` renders as an optional long-text field."""
+    switch (toggle); `reason` renders as a short-answer text field."""
 
     approved: bool = Field(..., description="Approve the refund?")
-    note: str | None = Field(
-        default=None,
-        description="Optional message to send to the customer.",
+    reason: str = Field(
+        ...,
+        description="Why did you approve / reject? Short answer.",
     )
 
 
@@ -62,9 +62,9 @@ def main() -> None:
     )
 
     if decision.approved:
-        print(f"✓ Refund approved. Note: {decision.note or '(none)'}")
+        print(f"✓ Refund approved. Reason: {decision.reason}")
     else:
-        print(f"✗ Refund rejected. Note: {decision.note or '(none)'}")
+        print(f"✗ Refund rejected. Reason: {decision.reason}")
 
 
 if __name__ == "__main__":

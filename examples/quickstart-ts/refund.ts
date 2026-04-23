@@ -29,13 +29,10 @@ const RefundRequest = z.object({
 });
 
 // Structured response the human fills out. `approved` drives a toggle;
-// `note` renders as an optional long-text field.
+// `reason` renders as a short-answer text field.
 const Decision = z.object({
 	approved: z.boolean().describe("Approve the refund?"),
-	note: z
-		.string()
-		.optional()
-		.describe("Optional message to send to the customer."),
+	reason: z.string().describe("Why did you approve / reject? Short answer."),
 });
 
 async function main(): Promise<void> {
@@ -56,9 +53,9 @@ async function main(): Promise<void> {
 	});
 
 	if (decision.approved) {
-		console.log(`✓ Refund approved. Note: ${decision.note ?? "(none)"}`);
+		console.log(`✓ Refund approved. Reason: ${decision.reason}`);
 	} else {
-		console.log(`✗ Refund rejected. Note: ${decision.note ?? "(none)"}`);
+		console.log(`✗ Refund rejected. Reason: ${decision.reason}`);
 	}
 }
 
