@@ -46,7 +46,7 @@ export {
 	type TaskStatsByDay,
 } from "./stats";
 export { fetchSystemStatus, type SystemStatus } from "./status";
-export { cancelTask, completeTask, fetchTask, fetchTasks } from "./tasks";
+export { cancelTask, completeTask, deleteTask, fetchTask, fetchTasks } from "./tasks";
 export {
 	clearUserPassword,
 	createUser,

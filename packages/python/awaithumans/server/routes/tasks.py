@@ -11,6 +11,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.channels.email import notify_task as notify_task_email
@@ -24,8 +25,11 @@ from awaithumans.server.schemas import (
     PollResponse,
     TaskResponse,
 )
+from awaithumans.server.core.admin_auth import require_admin
+from awaithumans.server.services.exceptions import TaskNotFoundError
 from awaithumans.server.services.task_service import (
     cancel_task,
+    delete_task,
     complete_task,
     create_task,
     get_audit_trail,
@@ -159,6 +163,27 @@ async def cancel_task_route(
     """Cancel a task."""
     task = await cancel_task(session, task_id)
     return _task_to_response(task)
+
+
+@router.delete(
+    "/{task_id}",
+    status_code=204,
+    response_class=Response,
+    dependencies=[Depends(require_admin)],
+)
+async def delete_task_route(
+    task_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Hard delete a task. Operator-only surface.
+
+    Unlike `/cancel` (which keeps the row with status=CANCELLED),
+    this removes the row entirely. Audit entries aren't cascaded —
+    they persist as a historical record of what happened, orphaned.
+    """
+    if not await delete_task(session, task_id):
+        raise TaskNotFoundError(task_id)
+    return Response(status_code=204)
 
 
 @router.get("/{task_id}/poll", response_model=PollResponse)

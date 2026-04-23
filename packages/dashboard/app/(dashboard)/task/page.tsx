@@ -7,6 +7,7 @@ import {
 	fetchAuditTrail,
 	completeTask,
 	cancelTask,
+	deleteTask,
 	type Task,
 	type AuditEntry,
 } from "@/lib/server";
@@ -104,6 +105,21 @@ function TaskDetailPageInner() {
 		}
 	};
 
+	const handleDelete = async () => {
+		if (!task) return;
+		const confirmed = window.confirm(
+			`Delete this task? The row will be removed from the DB. ` +
+				`Audit entries stay as a historical record.`,
+		);
+		if (!confirmed) return;
+		try {
+			await deleteTask(task.id);
+			router.push("/");
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to delete");
+		}
+	};
+
 	const isTerminal = task?.status
 		? TERMINAL_STATUSES.includes(task.status)
 		: false;
@@ -134,15 +150,24 @@ function TaskDetailPageInner() {
 						<span className="text-white/30 text-xs font-mono">{task.id}</span>
 					</div>
 				</div>
-				{!isTerminal && (
+				<div className="flex items-center gap-2">
+					{!isTerminal && (
+						<button
+							type="button"
+							onClick={handleCancel}
+							className="px-3 py-1.5 text-sm rounded-md border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-colors"
+						>
+							Cancel Task
+						</button>
+					)}
 					<button
 						type="button"
-						onClick={handleCancel}
-						className="px-3 py-1.5 text-sm rounded-md border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-colors"
+						onClick={handleDelete}
+						className="px-3 py-1.5 text-sm rounded-md border border-white/15 text-white/50 hover:text-red-400 hover:border-red-400/40 hover:bg-red-400/5 transition-colors"
 					>
-						Cancel Task
+						Delete
 					</button>
-				)}
+				</div>
 			</div>
 
 			{error && <ErrorBanner message={error} />}
