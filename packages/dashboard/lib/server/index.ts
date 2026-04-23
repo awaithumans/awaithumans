@@ -23,7 +23,7 @@ export {
 	type MeResponse,
 	type SetupStatusResponse,
 } from "./auth";
-export { apiFetch, UnauthorizedError } from "./client";
+export { ApiError, apiFetch, UnauthorizedError } from "./client";
 export {
 	createEmailIdentity,
 	deleteEmailIdentity,
