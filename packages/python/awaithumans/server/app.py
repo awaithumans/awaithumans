@@ -14,10 +14,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
-from starlette.staticfiles import StaticFiles
-
 from awaithumans.server.core.auth import DashboardAuthMiddleware
 from awaithumans.server.core.config import settings
+from awaithumans.server.core.dashboard_static import DashboardStaticFiles
 from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
@@ -186,16 +185,16 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     # ── Dashboard static files ───────────────────────────────────────
     # The bundled dashboard lives inside the package
     # (`awaithumans/dashboard_dist/`) so hatchling includes it in the
-    # wheel. `StaticFiles(html=True)` serves `index.html` for directory
-    # paths and exact-file matches; the `NotFoundFallback` wrapper adds
-    # SPA-style catch-all so deep-links like `/task?id=…` work after
-    # a full-page reload.
+    # wheel. `DashboardStaticFiles` extends Starlette's `StaticFiles`
+    # with a `<path>.html` fallback so Next's static-export output
+    # (`/setup` → `setup.html`, `/settings` → `settings.html`, etc.)
+    # resolves on direct URL hits, not just client-side navigation.
     if serve_dashboard:
         dashboard_dist = Path(__file__).parent.parent / "dashboard_dist"
         if dashboard_dist.exists():
             app.mount(
                 "/",
-                StaticFiles(directory=str(dashboard_dist), html=True),
+                DashboardStaticFiles(directory=str(dashboard_dist), html=True),
                 name="dashboard",
             )
         else:
