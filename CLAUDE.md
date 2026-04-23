@@ -159,7 +159,7 @@ The API server and Python SDK follow these rules:
 - **Ruff** for linting and formatting. Not flake8. Not black. One tool.
 - Run `ruff check . && ruff format .` before every commit.
 - Line length: 100.
-- Target: Python 3.9+.
+- Target: Python 3.10+ (PEP 604 `X | None` union syntax is used throughout).
 - Use `from __future__ import annotations` in every file.
 
 ### Type Safety
