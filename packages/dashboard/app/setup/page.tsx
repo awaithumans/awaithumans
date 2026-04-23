@@ -369,14 +369,19 @@ class Decision(BaseModel):
     approved: bool
     reason: str  # short-answer field — the reviewer explains their call
 
+order_id = "A-4721"
+
 print("→ creating task — go to the dashboard to review and complete it")
 
 decision = await_human_sync(
     task="Approve refund",
     payload_schema=RefundRequest,
-    payload=RefundRequest(order_id="A-4721", amount_usd=180),
+    payload=RefundRequest(order_id=order_id, amount_usd=180),
     response_schema=Decision,
     timeout_seconds=900,
+    # Tie retries to the business event. If your agent restarts, the
+    # same order re-uses the same task instead of creating duplicates.
+    idempotency_key=f"refund:{order_id}",
 )
 
 verdict = "approved" if decision.approved else "rejected"
@@ -397,14 +402,19 @@ const Decision = z.object({
 });
 
 async function main() {
+  const orderId = "A-4721";
+
   console.log("→ creating task — go to the dashboard to review and complete it");
 
   const decision = await awaitHuman({
     task: "Approve refund",
     payloadSchema: RefundRequest,
-    payload: { orderId: "A-4721", amountUsd: 180 },
+    payload: { orderId, amountUsd: 180 },
     responseSchema: Decision,
     timeoutMs: 900_000,
+    // Tie retries to the business event. If your agent restarts, the
+    // same order re-uses the same task instead of creating duplicates.
+    idempotencyKey: \`refund:\${orderId}\`,
   });
 
   const verdict = decision.approved ? "approved" : "rejected";

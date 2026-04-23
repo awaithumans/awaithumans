@@ -48,17 +48,26 @@ def main() -> None:
     print("→ creating task on the awaithumans server...")
     print("  Open http://localhost:3001 to review.\n")
 
+    order_id = "A-4721"
+
     decision = await_human_sync(
         task="Approve refund request",
         payload_schema=RefundRequest,
         payload=RefundRequest(
-            order_id="A-4721",
+            order_id=order_id,
             customer="jane@example.com",
             amount_usd=180.00,
             reason="Item arrived damaged",
         ),
         response_schema=Decision,
         timeout_seconds=900,  # 15 minutes — plenty of time to walk to the kitchen
+        # Ties retries of the same order to the same task. If the agent
+        # crashes after creating the task and the orchestrator retries,
+        # the server returns the existing task instead of stacking
+        # duplicates. Without an explicit key the SDK auto-hashes
+        # (task, payload) — fine for dev, but tie to your real business
+        # event (order_id, transfer_id, request_id) in production.
+        idempotency_key=f"refund:{order_id}",
     )
 
     if decision.approved:

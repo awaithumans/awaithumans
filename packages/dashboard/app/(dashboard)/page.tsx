@@ -91,6 +91,7 @@ export default function TaskQueuePage() {
 from pydantic import BaseModel
 
 class WireTransfer(BaseModel):
+    transfer_id: str
     amount: float
     to: str
 
@@ -98,14 +99,19 @@ class Decision(BaseModel):
     approved: bool
     reason: str  # short-answer field — the reviewer explains their call
 
+transfer_id = "WT-2026-0042"
+
 print("→ creating task — go to the dashboard to review and complete it")
 
 result = await_human_sync(
     task="Approve this wire transfer",
     payload_schema=WireTransfer,
-    payload=WireTransfer(amount=50_000, to="acme.inc"),
+    payload=WireTransfer(transfer_id=transfer_id, amount=50_000, to="acme.inc"),
     response_schema=Decision,
     timeout_seconds=900,
+    # Tie retries to the business event. If your agent restarts, the
+    # same transfer re-uses the same task instead of creating duplicates.
+    idempotency_key=f"transfer:{transfer_id}",
 )
 
 verdict = "approved" if result.approved else "rejected"
@@ -114,6 +120,7 @@ print(f"✓ Transfer {verdict}. Reason: {result.reason}")`,
 import { z } from "zod";
 
 const WireTransfer = z.object({
+  transferId: z.string(),
   amount: z.number(),
   to: z.string(),
 });
@@ -125,14 +132,19 @@ const Decision = z.object({
 });
 
 async function main() {
+  const transferId = "WT-2026-0042";
+
   console.log("→ creating task — go to the dashboard to review and complete it");
 
   const result = await awaitHuman({
     task: "Approve this wire transfer",
     payloadSchema: WireTransfer,
-    payload: { amount: 50_000, to: "acme.inc" },
+    payload: { transferId, amount: 50_000, to: "acme.inc" },
     responseSchema: Decision,
     timeoutMs: 900_000,
+    // Tie retries to the business event. If your agent restarts, the
+    // same transfer re-uses the same task instead of creating duplicates.
+    idempotencyKey: \`transfer:\${transferId}\`,
   });
 
   const verdict = result.approved ? "approved" : "rejected";
