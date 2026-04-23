@@ -73,6 +73,45 @@ def _ensure_dev_payload_key(db_path: str) -> None:
     encryption.reset_key_cache()
 
 
+def _ensure_dev_admin_token(db_path: str) -> str:
+    """Generate a local ADMIN_API_TOKEN for dev if one isn't set in env.
+
+    The SDK reads this (via the discovery file or env var) and sends
+    it as `Authorization: Bearer <token>` on every request. Without
+    it, `await_human()` hits the auth middleware and 401s — which is
+    the correct behavior in prod, but a DX wall in dev.
+
+    Cached in `<.awaithumans dir>/admin.token` so the token is stable
+    across restarts — agents hold onto it between runs, and the dev
+    workflow stays zero-config.
+
+    Returns the token so the caller can put it in the discovery file
+    (SDK auto-pickup) in the same pass.
+    """
+    from awaithumans.server.core.config import settings
+
+    if os.environ.get("AWAITHUMANS_ADMIN_API_TOKEN") or settings.ADMIN_API_TOKEN:
+        return settings.ADMIN_API_TOKEN or os.environ["AWAITHUMANS_ADMIN_API_TOKEN"]
+
+    token_path = Path(db_path).parent / "admin.token"
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if token_path.exists():
+        token = token_path.read_text().strip()
+    else:
+        token = secrets.token_urlsafe(32)
+        token_path.write_text(token)
+        try:
+            token_path.chmod(0o600)
+        except OSError:
+            pass
+        logger.info("Generated dev ADMIN_API_TOKEN at %s (0600)", token_path)
+
+    os.environ["AWAITHUMANS_ADMIN_API_TOKEN"] = token
+    settings.ADMIN_API_TOKEN = token
+    return token
+
+
 def _is_port_available(host: str, port: int) -> bool:
     """Check if a port is available for binding."""
     try:
@@ -136,8 +175,14 @@ def dev(
     # Ensure a PAYLOAD_KEY exists for local dev (cached in .awaithumans/)
     _ensure_dev_payload_key(db_path)
 
-    # Write discovery file so SDKs and the dashboard can auto-find us
-    write_discovery(host=host, port=actual_port)
+    # Ensure an ADMIN_API_TOKEN exists so agents can reach the authed
+    # /api/tasks endpoints without the operator configuring anything.
+    admin_token = _ensure_dev_admin_token(db_path)
+
+    # Write discovery file so SDKs and the dashboard can auto-find us.
+    # The admin token rides along so the Python SDK picks it up
+    # automatically — agents on the same machine need zero config.
+    write_discovery(host=host, port=actual_port, admin_token=admin_token)
     atexit.register(delete_discovery)
 
     logger.info("Starting awaithumans server on http://%s:%d", host, actual_port)

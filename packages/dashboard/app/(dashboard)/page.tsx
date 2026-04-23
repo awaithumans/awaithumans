@@ -85,25 +85,47 @@ export default function TaskQueuePage() {
 			) : tasks.length === 0 ? (
 				<ShellEmptyState
 					heading="await_human — waiting for your first task"
-					note="Save this as refund.py / refund.ts and run it. A task appears below the moment the agent calls await_human()."
+					note="Save as refund.py / refund.ts, run it. A task appears the moment await_human() is called."
 					snippet={{
 						python: `from awaithumans import await_human_sync
+from pydantic import BaseModel
+
+class WireTransfer(BaseModel):
+    amount: float
+    to: str
+
+class Decision(BaseModel):
+    approved: bool
 
 result = await_human_sync(
     task="Approve this wire transfer",
-    payload={"amount": 50_000, "to": "acme.inc"},
+    payload_schema=WireTransfer,
+    payload=WireTransfer(amount=50_000, to="acme.inc"),
+    response_schema=Decision,
     timeout_seconds=900,
 )
-print(result)`,
+print("approved" if result.approved else "rejected")`,
 						typescript: `import { awaitHuman } from "awaithumans";
+import { z } from "zod";
+
+const WireTransfer = z.object({
+  amount: z.number(),
+  to: z.string(),
+});
+
+const Decision = z.object({
+  approved: z.boolean(),
+});
 
 async function main() {
   const result = await awaitHuman({
     task: "Approve this wire transfer",
+    payloadSchema: WireTransfer,
     payload: { amount: 50_000, to: "acme.inc" },
+    responseSchema: Decision,
     timeoutMs: 900_000,
   });
-  console.log(result);
+  console.log(result.approved ? "approved" : "rejected");
 }
 
 main();`,
