@@ -393,17 +393,21 @@ const Decision = z.object({
   note: z.string().optional(),
 });
 
-const decision = await awaitHuman({
-  task: "Approve refund",
-  payloadSchema: RefundRequest,
-  payload: { orderId: "A-4721", amountUsd: 180 },
-  responseSchema: Decision,
-  timeoutMs: 900_000,
-});
+async function main() {
+  const decision = await awaitHuman({
+    task: "Approve refund",
+    payloadSchema: RefundRequest,
+    payload: { orderId: "A-4721", amountUsd: 180 },
+    responseSchema: Decision,
+    timeoutMs: 900_000,
+  });
 
-if (decision.approved) {
-  console.log("Refund approved:", decision.note ?? "(no note)");
-}`;
+  if (decision.approved) {
+    console.log("Refund approved:", decision.note ?? "(no note)");
+  }
+}
+
+main();`;
 
 // ─── Shared layout pieces ────────────────────────────────────────────
 

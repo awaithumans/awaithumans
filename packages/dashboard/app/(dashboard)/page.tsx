@@ -85,22 +85,28 @@ export default function TaskQueuePage() {
 			) : tasks.length === 0 ? (
 				<ShellEmptyState
 					heading="await_human — waiting for your first task"
-					note="Tasks appear here the moment an agent calls await_human() against this server."
+					note="Save this as refund.py / refund.ts and run it. A task appears below the moment the agent calls await_human()."
 					snippet={{
-						python: `from awaithumans import await_human
+						python: `from awaithumans import await_human_sync
 
-result = await await_human(
+result = await_human_sync(
     task="Approve this wire transfer",
     payload={"amount": 50_000, "to": "acme.inc"},
     timeout_seconds=900,
-)`,
+)
+print(result)`,
 						typescript: `import { awaitHuman } from "awaithumans";
 
-const result = await awaitHuman({
-  task: "Approve this wire transfer",
-  payload: { amount: 50_000, to: "acme.inc" },
-  timeoutMs: 900_000,
-});`,
+async function main() {
+  const result = await awaitHuman({
+    task: "Approve this wire transfer",
+    payload: { amount: 50_000, to: "acme.inc" },
+    timeoutMs: 900_000,
+  });
+  console.log(result);
+}
+
+main();`,
 					}}
 				/>
 			) : (
