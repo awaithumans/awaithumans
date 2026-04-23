@@ -45,12 +45,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
     logger.info("Database initialized")
 
-    await _emit_first_run_banner_if_empty()
+    # Capture whether this is first-run inside the lifespan (the DB
+    # session is ready here). The banner itself prints after uvicorn
+    # logs "Application startup complete" so it's the LAST thing the
+    # operator sees — not buried between alembic migrations and the
+    # "Running on http://..." line.
+    setup_url = await _first_run_setup_url()
 
     scheduler_task = asyncio.create_task(run_timeout_scheduler())
+    banner_task: asyncio.Task[None] | None = None
+    if setup_url:
+        banner_task = asyncio.create_task(_print_banner_after_startup(setup_url))
 
     yield
 
+    if banner_task and not banner_task.done():
+        banner_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await banner_task
     scheduler_task.cancel()
     with suppress(asyncio.CancelledError):
         await scheduler_task
@@ -58,9 +70,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Server shut down")
 
 
-async def _emit_first_run_banner_if_empty() -> None:
-    """If zero users exist in the DB, generate a bootstrap token and
-    log the /setup URL so the operator can complete first-run setup."""
+async def _first_run_setup_url() -> str | None:
+    """Return the setup URL if the DB has no users (first run), else None.
+
+    Generating the bootstrap token here keeps the token inside the
+    server process from the moment first-run is detected.
+    """
     from awaithumans.server.core import bootstrap
     from awaithumans.server.db.connection import get_async_session_factory
 
@@ -68,10 +83,22 @@ async def _emit_first_run_banner_if_empty() -> None:
     async with factory() as session:
         n = await count_users(session)
 
-    if n == 0:
-        token = bootstrap.ensure_token()
-        setup_url = f"{settings.PUBLIC_URL.rstrip('/')}/setup?token={token}"
-        bootstrap.log_setup_banner(setup_url)
+    if n != 0:
+        return None
+
+    token = bootstrap.ensure_token()
+    return f"{settings.PUBLIC_URL.rstrip('/')}/setup?token={token}"
+
+
+async def _print_banner_after_startup(setup_url: str) -> None:
+    """Wait briefly so uvicorn's startup-complete log lands first,
+    then print the setup banner. Short sleep is intentional — we want
+    the banner to be the last thing the operator sees when reading
+    the startup output."""
+    from awaithumans.server.core import bootstrap
+
+    await asyncio.sleep(0.4)
+    bootstrap.log_setup_banner(setup_url)
 
 
 def create_app(*, serve_dashboard: bool = True) -> FastAPI:

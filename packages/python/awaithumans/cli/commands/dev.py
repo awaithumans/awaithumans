@@ -16,6 +16,22 @@ from awaithumans.utils.discovery import delete_discovery, write_discovery
 logger = logging.getLogger("awaithumans.cli")
 
 
+def _ensure_dev_public_url(port: int) -> None:
+    """Default PUBLIC_URL to the actual loopback URL for dev.
+
+    Mutates the already-loaded settings singleton AND sets the env
+    var, matching the PAYLOAD_KEY fix pattern — settings reads env at
+    import time, which already happened before this CLI code runs."""
+    from awaithumans.server.core.config import settings
+
+    if os.environ.get("AWAITHUMANS_PUBLIC_URL"):
+        return  # Operator-supplied — respect it
+
+    url = f"http://localhost:{port}"
+    os.environ["AWAITHUMANS_PUBLIC_URL"] = url
+    settings.PUBLIC_URL = url
+
+
 def _ensure_dev_payload_key(db_path: str) -> None:
     """Generate a local PAYLOAD_KEY for dev if one isn't set in env.
 
@@ -109,6 +125,13 @@ def dev(
     os.environ.setdefault("AWAITHUMANS_LOG_LEVEL", log_level)
     os.environ.setdefault("AWAITHUMANS_HOST", host)
     os.environ.setdefault("AWAITHUMANS_PORT", str(actual_port))
+
+    # PUBLIC_URL drives the setup banner, Slack OAuth callbacks, email
+    # magic links, and everything else that needs an externally-visible
+    # URL. If the operator didn't set it explicitly, default to
+    # `http://localhost:<actual_port>` — not the bind host, which is
+    # often 0.0.0.0 and not usable in a browser.
+    _ensure_dev_public_url(actual_port)
 
     # Ensure a PAYLOAD_KEY exists for local dev (cached in .awaithumans/)
     _ensure_dev_payload_key(db_path)
