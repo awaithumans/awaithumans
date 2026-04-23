@@ -197,9 +197,10 @@ function Field({
  * in priority order:
  *   - UnauthorizedError (401 from apiFetch): wrong credentials
  *   - TypeError (fetch network failure): server unreachable
- *   - API error with a status code: server returned something other
- *     than 200/204/401 (e.g. 503 when misconfigured)
- *   - Anything else: generic fallback
+ *   - Anything else with a message (ApiError for 5xx, generic Error):
+ *     show the server's own message verbatim — it's already written
+ *     for humans by the server's ServiceError handler
+ *   - Anything without a message: generic fallback
  */
 function describeLoginError(err: unknown): string {
 	if (err instanceof UnauthorizedError) {
@@ -209,7 +210,7 @@ function describeLoginError(err: unknown): string {
 		return "Can't reach the server. Is `awaithumans dev` still running?";
 	}
 	if (err instanceof Error) {
-		return `Sign-in failed: ${err.message}`;
+		return err.message;
 	}
 	return "Sign-in failed. Please try again.";
 }

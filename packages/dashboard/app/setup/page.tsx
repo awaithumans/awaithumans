@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import { LogoMark } from "@/components/logo";
 import { TerminalSpinner } from "@/components/terminal-spinner";
-import { createFirstOperator, fetchSetupStatus } from "@/lib/server";
+import { ApiError, createFirstOperator, fetchSetupStatus } from "@/lib/server";
 import { cn } from "@/lib/utils";
 
 /**
@@ -89,16 +89,25 @@ function SetupPageInner() {
 			// Server sets the session cookie on 201 — show onboarding step.
 			setState("created");
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg.includes("403")) {
+			// Match on typed errors instead of string-sniffing status
+			// codes (same brittle pattern we removed from /login).
+			if (err instanceof ApiError && err.status === 403) {
 				setError(
 					"Setup token rejected. Check the server log for the latest token.",
 				);
-			} else if (msg.includes("409")) {
+			} else if (err instanceof ApiError && err.status === 409) {
 				setError("Setup is already complete. Please sign in instead.");
 				setState("already-done");
+			} else if (err instanceof TypeError) {
+				setError("Can't reach the server. Is `awaithumans dev` still running?");
+			} else if (err instanceof Error) {
+				// ApiError with other statuses, or anything else that
+				// already carries a readable message (server message
+				// via ApiError, validation errors, etc.) — show it
+				// verbatim, no "Setup failed:" prefix muddying it.
+				setError(err.message);
 			} else {
-				setError(`Setup failed: ${msg}`);
+				setError("Setup failed. Please try again.");
 			}
 		} finally {
 			setSubmitting(false);
