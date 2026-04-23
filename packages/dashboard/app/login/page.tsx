@@ -5,7 +5,12 @@ import { Suspense, useEffect, useState } from "react";
 
 import { LogoMark } from "@/components/logo";
 import { TerminalSpinner } from "@/components/terminal-spinner";
-import { fetchMe, fetchSetupStatus, login } from "@/lib/server";
+import {
+	UnauthorizedError,
+	fetchMe,
+	fetchSetupStatus,
+	login,
+} from "@/lib/server";
 
 /**
  * Wrapping the search-params reader in Suspense is required for
@@ -69,11 +74,7 @@ function LoginPageInner() {
 			await login(email, password);
 			router.replace(next);
 		} catch (err) {
-			setError(
-				err instanceof Error && err.message.includes("401")
-					? "Invalid credentials."
-					: "Sign-in failed. Check the server is reachable.",
-			);
+			setError(describeLoginError(err));
 		} finally {
 			setSubmitting(false);
 		}
@@ -189,4 +190,26 @@ function Field({
 			/>
 		</label>
 	);
+}
+
+/**
+ * Turn a login-endpoint error into a user-facing message. Four cases,
+ * in priority order:
+ *   - UnauthorizedError (401 from apiFetch): wrong credentials
+ *   - TypeError (fetch network failure): server unreachable
+ *   - API error with a status code: server returned something other
+ *     than 200/204/401 (e.g. 503 when misconfigured)
+ *   - Anything else: generic fallback
+ */
+function describeLoginError(err: unknown): string {
+	if (err instanceof UnauthorizedError) {
+		return "Invalid credentials. Check your email and password.";
+	}
+	if (err instanceof TypeError) {
+		return "Can't reach the server. Is `awaithumans dev` still running?";
+	}
+	if (err instanceof Error) {
+		return `Sign-in failed: ${err.message}`;
+	}
+	return "Sign-in failed. Please try again.";
 }
