@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import sys
 from typing import TypeVar
 
 import httpx
@@ -50,6 +51,30 @@ def _auth_headers(api_key: str | None) -> dict[str, str]:
     if api_key:
         return {"Authorization": f"Bearer {api_key}"}
     return {}
+
+
+def _print_waiting_banner(*, base_url: str, task_id: str, timeout_seconds: int) -> None:
+    """Tell the user their script is now blocking on a human.
+
+    Uses `print(..., file=sys.stderr)` directly rather than the logger:
+    a plain `python refund.py` has no logging handlers configured, so
+    `logger.info` messages vanish and the script looks frozen to the
+    operator. stderr keeps stdout clean for anyone piping the return
+    value downstream.
+
+    The dashboard URL points at `/task?id=…`, the task-detail route.
+    Pre-0.1.1 code pointed at `/api/tasks/{id}` (the raw JSON
+    endpoint) — that confused early testers who clicked the link
+    expecting the review form.
+    """
+    dashboard_url = f"{base_url}/task?id={task_id}"
+    print(f"\n✓ Task created: {task_id}", file=sys.stderr)
+    print(f"  Review at: {dashboard_url}", file=sys.stderr)
+    print(
+        f"  Waiting for human (timeout: {timeout_seconds}s). Ctrl-C to abort.",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 async def await_human(
@@ -145,9 +170,9 @@ async def await_human(
 
         task_data = resp.json()
         task_id = task_data["id"]
-        logger.info("Task created: %s", task_id)
-        logger.info("  View at the dashboard or: %s/api/tasks/%s", base_url, task_id)
-        logger.info("  Waiting for human...")
+        _print_waiting_banner(
+            base_url=base_url, task_id=task_id, timeout_seconds=timeout_seconds
+        )
 
     # ── Long-poll until completion or timeout ────────────────────────
     result = await _poll_until_terminal(
