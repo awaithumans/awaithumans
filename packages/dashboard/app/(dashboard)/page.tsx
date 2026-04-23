@@ -86,14 +86,22 @@ export default function TaskQueuePage() {
 				<ShellEmptyState
 					heading="await_human — waiting for your first task"
 					note="Tasks appear here the moment an agent calls await_human() against this server."
-					snippet={`from awaithumans import await_human
+					snippet={{
+						python: `from awaithumans import await_human
 
 result = await await_human(
     task="Approve this wire transfer",
     payload={"amount": 50_000, "to": "acme.inc"},
     timeout_seconds=900,
-)`}
-					language="python"
+)`,
+						typescript: `import { awaitHuman } from "awaithumans";
+
+const result = await awaitHuman({
+  task: "Approve this wire transfer",
+  payload: { amount: 50_000, to: "acme.inc" },
+  timeoutMs: 900_000,
+});`,
+					}}
 				/>
 			) : (
 				<div className="border border-white/10 rounded-lg overflow-hidden">

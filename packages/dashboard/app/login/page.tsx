@@ -100,7 +100,7 @@ function LoginPageInner() {
 				<div className="border border-white/10 rounded-lg p-6 bg-white/[0.02]">
 					<h1 className="text-lg font-semibold mb-1">Sign in</h1>
 					<p className="text-white/40 text-xs mb-5">
-						Sign in with your dashboard credentials.
+						Use the operator credentials you created during first-run setup.
 					</p>
 
 					<form onSubmit={handleSubmit} className="space-y-4">
@@ -135,6 +135,16 @@ function LoginPageInner() {
 							{submitting ? "Signing in…" : "Sign in"}
 						</button>
 					</form>
+
+					<div className="mt-5 pt-4 border-t border-white/5">
+						<p className="text-white/35 text-[11px] leading-relaxed">
+							<span className="text-white/50">Forgot your password?</span>{" "}
+							Reset it from the terminal:
+						</p>
+						<pre className="mt-2 text-[11px] font-mono text-white/60 bg-black/30 border border-white/10 rounded px-2.5 py-1.5 overflow-x-auto">
+							<code>awaithumans set-password your@email.com</code>
+						</pre>
+					</div>
 				</div>
 
 				<p className="text-center text-white/25 text-xs mt-6">
