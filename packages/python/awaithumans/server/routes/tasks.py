@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,9 @@ from awaithumans.server.schemas import (
     TaskResponse,
 )
 from awaithumans.server.core.admin_auth import require_admin
+from awaithumans.server.core.auth import SessionClaims
 from awaithumans.server.services.exceptions import TaskNotFoundError
+from awaithumans.server.services.user_service import get_user
 from awaithumans.server.services.task_service import (
     cancel_task,
     delete_task,
@@ -138,21 +140,46 @@ async def get_task_route(
 async def complete_task_route(
     task_id: str,
     body: CompleteTaskRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
     """Complete a task with the human's response.
 
     First-writer-wins: if the task is already terminal, returns 409 Conflict
     (handled by the centralized ServiceError handler).
+
+    If the request didn't explicitly supply `completed_by_email` (the
+    dashboard form doesn't — why would the browser lie about who it is)
+    we read the logged-in user from the session cookie and record their
+    email. That's the correct attribution: client can't fake it, server
+    authoritatively stamps who clicked submit.
     """
+    completer_email = body.completed_by_email
+    if not completer_email:
+        completer_email = await _session_user_email(request, session)
+
     task = await complete_task(
         session,
         task_id=task_id,
         response=body.response,
-        completed_by_email=body.completed_by_email,
+        completed_by_email=completer_email,
         completed_via_channel=body.completed_via_channel,
     )
     return _task_to_response(task)
+
+
+async def _session_user_email(request: Request, session: AsyncSession) -> str | None:
+    """Look up the logged-in user's email from the session cookie claims.
+
+    Returns None when the caller isn't using a cookie (admin bearer
+    token, magic-link email flow, etc.) — those callers already supply
+    `completed_by_email` themselves through channel-specific paths.
+    """
+    claims = getattr(request.state, "auth_claims", None)
+    if not isinstance(claims, SessionClaims):
+        return None
+    user = await get_user(session, claims.user_id)
+    return user.email if user else None
 
 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)
