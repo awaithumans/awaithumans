@@ -369,6 +369,8 @@ class Decision(BaseModel):
     approved: bool
     note: str | None = None
 
+print("→ creating task — go to the dashboard to review and complete it")
+
 decision = await_human_sync(
     task="Approve refund",
     payload_schema=RefundRequest,
@@ -378,7 +380,9 @@ decision = await_human_sync(
 )
 
 if decision.approved:
-    print("Refund approved:", decision.note or "(no note)")`;
+    print("✓ Refund approved:", decision.note or "(no note)")
+else:
+    print("✗ Refund rejected:", decision.note or "(no note)")`;
 
 const TYPESCRIPT_EXAMPLE = `import { awaitHuman } from "awaithumans";
 import { z } from "zod";
@@ -394,6 +398,8 @@ const Decision = z.object({
 });
 
 async function main() {
+  console.log("→ creating task — go to the dashboard to review and complete it");
+
   const decision = await awaitHuman({
     task: "Approve refund",
     payloadSchema: RefundRequest,
@@ -403,7 +409,9 @@ async function main() {
   });
 
   if (decision.approved) {
-    console.log("Refund approved:", decision.note ?? "(no note)");
+    console.log("✓ Refund approved:", decision.note ?? "(no note)");
+  } else {
+    console.log("✗ Refund rejected:", decision.note ?? "(no note)");
   }
 }
 
