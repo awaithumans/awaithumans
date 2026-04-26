@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
+import { CopyButton } from "@/components/copy-button";
 import { LogoMark } from "@/components/logo";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 import { ApiError, createFirstOperator, fetchSetupStatus } from "@/lib/server";
@@ -246,11 +247,13 @@ function OnboardingPanel({ onContinue }: { onContinue: () => void }) {
 					<div className="mt-4 space-y-4">
 						<div>
 							<Label>1. Install</Label>
-							<CodeBlock>
-								{lang === "python"
-									? "pip install awaithumans"
-									: "npm install awaithumans zod"}
-							</CodeBlock>
+							<CodeBlock
+								code={
+									lang === "python"
+										? "pip install awaithumans"
+										: "npm install awaithumans zod"
+								}
+							/>
 						</div>
 
 						<div>
@@ -260,16 +263,19 @@ function OnboardingPanel({ onContinue }: { onContinue: () => void }) {
 									{lang === "python" ? "refund.py" : "refund.ts"}
 								</span>
 							</Label>
-							<CodeBlock multiline>
-								{lang === "python" ? PYTHON_EXAMPLE : TYPESCRIPT_EXAMPLE}
-							</CodeBlock>
+							<CodeBlock
+								multiline
+								code={lang === "python" ? PYTHON_EXAMPLE : TYPESCRIPT_EXAMPLE}
+							/>
 						</div>
 
 						<div>
 							<Label>3. Run</Label>
-							<CodeBlock>
-								{lang === "python" ? "python refund.py" : "npx tsx refund.ts"}
-							</CodeBlock>
+							<CodeBlock
+								code={
+									lang === "python" ? "python refund.py" : "npx tsx refund.ts"
+								}
+							/>
 						</div>
 					</div>
 
@@ -337,22 +343,36 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 
 function CodeBlock({
-	children,
+	code,
 	multiline,
 }: {
-	children: React.ReactNode;
+	code: string;
 	multiline?: boolean;
 }) {
 	return (
-		<pre
-			className={cn(
-				"bg-black/40 border border-white/10 rounded-md px-3 py-2.5 text-xs overflow-x-auto font-mono text-white/80",
-				multiline ? "leading-relaxed" : "",
-			)}
-		>
-			{!multiline && <span className="text-white/30 mr-2">$</span>}
-			<code>{children}</code>
-		</pre>
+		<div className="relative group">
+			<pre
+				className={cn(
+					"bg-black/40 border border-white/10 rounded-md px-3 py-2.5 pr-14 text-xs overflow-x-auto font-mono text-white/80",
+					multiline ? "leading-relaxed" : "",
+				)}
+			>
+				{!multiline && <span className="text-white/30 mr-2">$</span>}
+				<code>{code}</code>
+			</pre>
+			<div
+				className={cn(
+					"absolute top-1.5 right-1.5 transition-opacity",
+					// On multi-line snippets the button is always visible (the
+					// reader expects to copy a long block). On single-line shell
+					// commands it fades in on hover so the prompt isn't crowded
+					// by chrome at rest.
+					multiline ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+				)}
+			>
+				<CopyButton code={code} />
+			</div>
+		</div>
 	);
 }
 
