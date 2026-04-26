@@ -257,12 +257,20 @@ function OnboardingPanel({ onContinue }: { onContinue: () => void }) {
 						</div>
 
 						<div>
-							<Label>
-								2. Save as{" "}
-								<span className="text-white/60 font-mono">
+							{/* Inline this row so the filename keeps its real case.
+							    The shared <Label> applies `uppercase` via CSS;
+							    wrapping `refund.py` inside it would render
+							    "REFUND.PY" — wrong on case-sensitive filesystems
+							    and confusing on macOS where the OS quietly
+							    cooperates. */}
+							<div className="mb-1.5 flex items-baseline gap-1.5">
+								<span className="text-[10px] uppercase tracking-wider text-white/40 font-medium">
+									2. Save as
+								</span>
+								<span className="text-[11px] font-mono text-white/60">
 									{lang === "python" ? "refund.py" : "refund.ts"}
 								</span>
-							</Label>
+							</div>
 							<CodeBlock
 								multiline
 								code={lang === "python" ? PYTHON_EXAMPLE : TYPESCRIPT_EXAMPLE}
