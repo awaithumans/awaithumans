@@ -91,8 +91,15 @@ class Settings(BaseSettings):
     PAYLOAD_KEY: str | None = None  # AES-256-GCM encryption key
     MAX_PAYLOAD_SIZE_MB: int = 5
 
-    # ── Webhook ──────────────────────────────────────────────────────
-    WEBHOOK_SECRET: str = "awaithumans-dev-secret"  # HMAC signing secret
+    # NOTE: We deliberately do NOT carry a `WEBHOOK_SECRET` setting any
+    # more. An earlier version had `WEBHOOK_SECRET: str =
+    # "awaithumans-dev-secret"` — unused but a footgun: as soon as any
+    # outbound-webhook signing code referenced it, every deployment
+    # that didn't override the env var would HMAC with a value
+    # publicly visible in the GitHub repo. If outbound webhook signing
+    # is reintroduced, declare the field as `str | None = None` and
+    # fail-fast in `app.py` when the dependent code path runs without
+    # an explicit operator-set value, mirroring the PAYLOAD_KEY guard.
 
     model_config = {
         "env_prefix": "AWAITHUMANS_",
