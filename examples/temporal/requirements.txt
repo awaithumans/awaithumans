@@ -1,0 +1,16 @@
+# Run from the repo root with:
+#   pip install -r examples/temporal/requirements.txt
+# Or in a fresh venv:
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r examples/temporal/requirements.txt
+
+# Local dev: install the in-tree adapter from this checkout. Pre-PyPI
+# this gets you the Temporal adapter import. Post-launch users can
+# replace this line with `awaithumans[temporal]>=0.1.0`.
+-e ../../packages/python[temporal]
+
+# FastAPI + uvicorn for the callback server. The awaithumans package
+# itself depends on FastAPI when installed with [server], but the
+# callback receiver here is a separate process — pin its own deps.
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
