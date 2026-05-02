@@ -19,7 +19,6 @@ from awaithumans.types.routing import (
     UserAssignment,
 )
 from awaithumans.types.task import (
-    TERMINAL_STATUSES,
     AwaitHumanOptions,
     TaskRecord,
     TaskStatus,
@@ -43,7 +42,6 @@ __all__ = [
     "RoleAssignment",
     "TaskRecord",
     "TaskStatus",
-    "TERMINAL_STATUSES",
     "UserAssignment",
     "VerificationContext",
     "VerifierConfig",

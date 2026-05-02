@@ -28,6 +28,7 @@ from awaithumans.server.services.slack_installation_service import (
     delete_installation,
     list_installations,
 )
+from awaithumans.utils.constants import SLACK_TEAM_ID_MAX_LENGTH
 
 # Every route in this module is operator-only — these are
 # infrastructure-management surfaces (uninstall a workspace, list
@@ -139,7 +140,7 @@ async def get_static_workspace() -> SlackStaticWorkspaceResponse:
     response_class=Response,
 )
 async def uninstall_slack_workspace(
-    team_id: str = Path(..., min_length=1, max_length=50),
+    team_id: str = Path(..., min_length=1, max_length=SLACK_TEAM_ID_MAX_LENGTH),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     ok = await delete_installation(session, team_id)
@@ -154,7 +155,7 @@ async def uninstall_slack_workspace(
     response_model=list[SlackMemberResponse],
 )
 async def list_workspace_members(
-    team_id: str = Path(..., min_length=1, max_length=50),
+    team_id: str = Path(..., min_length=1, max_length=SLACK_TEAM_ID_MAX_LENGTH),
     session: AsyncSession = Depends(get_session),
 ) -> list[SlackMemberResponse]:
     """List non-bot, active members of a Slack workspace.

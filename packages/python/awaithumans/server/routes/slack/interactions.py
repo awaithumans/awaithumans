@@ -52,6 +52,7 @@ from awaithumans.server.services.user_service import get_user, get_user_by_slack
 from awaithumans.utils.constants import (
     SLACK_ACTION_CLAIM_TASK,
     SLACK_ACTION_OPEN_REVIEW,
+    SLACK_RESPONSE_URL_TIMEOUT_SECONDS,
 )
 
 router = APIRouter()
@@ -418,7 +419,7 @@ async def _ephemeral_reply(
 
     if response_url:
         try:
-            async with httpx.AsyncClient(timeout=5.0) as http:
+            async with httpx.AsyncClient(timeout=SLACK_RESPONSE_URL_TIMEOUT_SECONDS) as http:
                 resp = await http.post(
                     response_url,
                     json={"response_type": "ephemeral", "text": text},

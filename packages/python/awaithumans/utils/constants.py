@@ -76,6 +76,41 @@ SLACK_NOTIFY_PREFIX = "slack:"
 # more than this long to complete the install consent.
 SLACK_OAUTH_STATE_MAX_AGE_SECONDS = 600  # 10 minutes
 
+# Cap on Slack team_id strings used as path params (DELETE / list-members).
+# Real Slack IDs top out around 11 chars (T123ABC456); 50 leaves headroom
+# for enterprise prefixes without inviting an unbounded path scan.
+SLACK_TEAM_ID_MAX_LENGTH = 50
+
+# Maximum length we'll echo back as `?slack_oauth_error=...` on the
+# redirect URL when something goes wrong during install. Long enough
+# for a clear error code, short enough that nobody can stuff a 4KB
+# query string into the redirect target.
+SLACK_OAUTH_ERROR_PARAM_MAX_LENGTH = 100
+
+# Timeout for the HTTPS exchange against Slack's OAuth `oauth.v2.access`
+# endpoint. Slack itself responds within ~1s in practice; 10s gives
+# headroom for a slow operator network without making the install
+# UX feel hung.
+SLACK_OAUTH_HTTP_TIMEOUT_SECONDS = 10
+
+# Timeout for ephemeral-reply POSTs against the per-interaction
+# `response_url`. These are best-effort UX courtesies (the modal /
+# completion already happened); 5s keeps a flaky network from
+# blocking the route's main path.
+SLACK_RESPONSE_URL_TIMEOUT_SECONDS = 5
+
+# Default timeout for the SDK's `POST /api/tasks` create call. Long
+# enough to absorb a slow first-request DB warmup; short enough that
+# misconfigured `server_url` fails fast with a clear unreachable
+# error rather than hanging.
+SDK_CREATE_TIMEOUT_SECONDS = 30
+
+# Long-poll request timeout for the SDK. The server holds the
+# connection up to POLL_INTERVAL_SECONDS; the client adds a small
+# buffer so the underlying httpx call doesn't fire its own timeout
+# right at the boundary.
+SDK_POLL_TIMEOUT_BUFFER_SECONDS = 10
+
 # Bot scopes we request during OAuth install. Kept in sync with
 # channels/slack/app_manifest.yaml. Used as the default value for
 # SLACK_OAUTH_SCOPES when the env var isn't overridden.

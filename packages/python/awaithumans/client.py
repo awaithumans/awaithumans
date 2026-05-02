@@ -30,6 +30,8 @@ from awaithumans.utils.constants import (
     MAX_TIMEOUT_SECONDS,
     MIN_TIMEOUT_SECONDS,
     POLL_INTERVAL_SECONDS,
+    SDK_CREATE_TIMEOUT_SECONDS,
+    SDK_POLL_TIMEOUT_BUFFER_SECONDS,
 )
 from awaithumans.utils.discovery import resolve_admin_token, resolve_server_url
 
@@ -149,7 +151,7 @@ async def await_human(
     form_definition = extract_form(response_schema).model_dump(mode="json")
 
     # ── Create task on the server ────────────────────────────────────
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=SDK_CREATE_TIMEOUT_SECONDS) as client:
         create_body = {
             "task": task,
             "payload": payload.model_dump(mode="json"),
@@ -205,7 +207,9 @@ async def _poll_until_terminal(
     The server's poll endpoint holds the connection for up to 25 seconds
     per request.
     """
-    async with httpx.AsyncClient(timeout=POLL_INTERVAL_SECONDS + 10) as client:
+    async with httpx.AsyncClient(
+        timeout=POLL_INTERVAL_SECONDS + SDK_POLL_TIMEOUT_BUFFER_SECONDS,
+    ) as client:
         while True:
             resp = await client.get(
                 f"{base_url}/api/tasks/{task_id}/poll",
