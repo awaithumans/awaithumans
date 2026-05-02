@@ -158,3 +158,9 @@ python_version = "3.10"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    # `slow` covers tests that boot a real subprocess (Temporal
+    # server, etc.). Skipped during fast iteration via
+    # `pytest -m 'not slow'`; run by default in CI.
+    "slow: tests that boot heavy fixtures (Temporal harness, etc.)",
+]
