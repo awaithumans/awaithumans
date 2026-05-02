@@ -8,6 +8,7 @@ For TaskStatus enum, import from awaithumans.types.
 """
 
 from awaithumans.server.db.models.audit import AuditEntry
+from awaithumans.server.db.models.consumed_email_token import ConsumedEmailToken
 from awaithumans.server.db.models.email_sender_identity import EmailSenderIdentity
 from awaithumans.server.db.models.slack_installation import SlackInstallation
 from awaithumans.server.db.models.task import Task
@@ -16,6 +17,7 @@ from awaithumans.types import TaskStatus
 
 __all__ = [
     "AuditEntry",
+    "ConsumedEmailToken",
     "EmailSenderIdentity",
     "SlackInstallation",
     "Task",

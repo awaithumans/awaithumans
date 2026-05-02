@@ -6,12 +6,18 @@ per-option URLs like:
     {PUBLIC_URL}/api/channels/email/action/{token}
 
 where `token` is a self-verifying blob carrying (task_id, field_name,
-value, expiry). The route verifies the HMAC + expiry and, on POST,
-completes the task with a single-field response.
+value, expiry, jti). The route verifies the HMAC + expiry and, on
+POST, completes the task with a single-field response.
 
 Anti-prefetch: GET shows a confirmation page with a POST form. Bots
 and mail clients (Outlook SafeLinks, Google image proxy) that prefetch
 GET never accidentally submit the response.
+
+Single-use: every token carries a random `jti`. After successful
+POST → completion, the route inserts that jti into the
+`consumed_email_tokens` table; a second POST with the same token
+sees a primary-key conflict and is rejected. Without this, a forwarded
+email or leaked URL is replayable for the entire TTL window.
 
 HMAC key: HKDF-derived from PAYLOAD_KEY with a channel-specific salt.
 Using the encryption key directly for HMAC would blur two different
@@ -26,6 +32,7 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
 import time
 from typing import Any
 
@@ -40,6 +47,12 @@ from awaithumans.utils.constants import (
     MAGIC_LINK_HKDF_SALT,
     MAGIC_LINK_MAX_AGE_SECONDS,
 )
+
+# Length of the jti — 16 random bytes encoded as 22-char urlsafe-b64.
+# 128 bits of entropy is plenty: collisions are infeasible and the
+# table primary key is the same string. Stays well under the column's
+# max_length=64.
+_JTI_BYTES = 16
 
 logger = logging.getLogger("awaithumans.server.channels.email.magic_links")
 
@@ -69,14 +82,21 @@ def sign_action_token(
     field_name: str,
     value: Any,
     ttl_seconds: int | None = None,
+    jti: str | None = None,
 ) -> str:
-    """Produce a signed token encoding (task_id, field_name, value, expiry)."""
+    """Produce a signed token encoding (task_id, field_name, value, expiry, jti).
+
+    `jti` is a random unique identifier the route uses to enforce
+    single-use. Pass an explicit value only in tests where determinism
+    helps; production callers leave it None and we generate a fresh
+    random one per token."""
     ttl = ttl_seconds if ttl_seconds is not None else MAGIC_LINK_MAX_AGE_SECONDS
     payload = {
         "t": task_id,
         "f": field_name,
         "v": value,
         "e": int(time.time()) + ttl,
+        "j": jti or secrets.token_urlsafe(_JTI_BYTES),
     }
     body = _canonical(payload)
     mac = hmac.new(_hmac_key(), body, hashlib.sha256).digest()
@@ -113,6 +133,7 @@ def verify_action_token(token: str) -> ActionClaim:
         field_name = str(payload["f"])
         value = payload["v"]
         expires_at = int(payload["e"])
+        jti = str(payload["j"])
     except (KeyError, TypeError, ValueError) as exc:
         raise InvalidActionTokenError(f"missing fields: {exc}") from exc
 
@@ -124,4 +145,5 @@ def verify_action_token(token: str) -> ActionClaim:
         field_name=field_name,
         value=value,
         expires_at=expires_at,
+        jti=jti,
     )

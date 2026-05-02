@@ -23,6 +23,30 @@ def test_roundtrip_boolean_value() -> None:
     assert claim.task_id == "t1"
     assert claim.field_name == "approve"
     assert claim.value is True
+    # Single-use enforcement carries jti through the wire.
+    assert claim.jti and len(claim.jti) >= 16
+
+
+def test_each_signed_token_gets_a_fresh_jti() -> None:
+    """Two calls to `sign_action_token` with identical args produce
+    different tokens because the jti is randomised. Without that,
+    two emails sent for the same option would share a jti and the
+    second couldn't be consumed even if the first hadn't been."""
+    a = sign_action_token(task_id="t1", field_name="approve", value=True)
+    b = sign_action_token(task_id="t1", field_name="approve", value=True)
+    assert a != b
+    claim_a = verify_action_token(a)
+    claim_b = verify_action_token(b)
+    assert claim_a.jti != claim_b.jti
+
+
+def test_explicit_jti_overrides_random() -> None:
+    """The `jti=` kwarg lets tests pin a known value for assertions."""
+    token = sign_action_token(
+        task_id="t1", field_name="approve", value=True, jti="fixed-jti-x"
+    )
+    claim = verify_action_token(token)
+    assert claim.jti == "fixed-jti-x"
 
 
 def test_roundtrip_string_value() -> None:
