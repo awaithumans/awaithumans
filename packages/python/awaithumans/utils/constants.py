@@ -187,6 +187,28 @@ VERIFIER_MAX_OUTPUT_TOKENS = 1024
 # error-debug surface so a stable, descriptive name helps.
 VERIFIER_OUTPUT_SCHEMA_NAME = "verifier_verdict"
 
+# ─── Outbound webhooks (callback_url) ────────────────────────────────────
+
+# HKDF parameters for deriving the webhook-signing HMAC key from
+# PAYLOAD_KEY. Channel-scoped salt mirrors the session + magic-link
+# pattern so the same root key never signs two distinct primitives.
+# Bumping `info` is a versioned breaking change — old signatures
+# stop verifying, callers must migrate.
+WEBHOOK_HKDF_SALT = b"awaithumans-webhook-v1"
+WEBHOOK_HKDF_INFO = b"v1"
+
+# Header name carrying the body's HMAC signature. Format is
+# `sha256=<hex>` so receivers can future-proof for an algorithm
+# upgrade by inspecting the prefix.
+WEBHOOK_SIGNATURE_HEADER = "X-Awaithumans-Signature"
+
+# Timeout for the outbound POST. The receiver's job is "verify HMAC,
+# enqueue, return 200" — under 1s in practice. 10s gives headroom
+# for a slow-starting Lambda; long enough that flaky receivers
+# don't always fail, short enough not to stack BackgroundTasks
+# during an outage.
+WEBHOOK_DELIVERY_TIMEOUT_SECONDS = 10
+
 # ─── Dashboard Auth ──────────────────────────────────────────────────────
 
 # Name of the dashboard session cookie. Set by POST /api/auth/login,
