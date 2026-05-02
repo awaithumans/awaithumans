@@ -275,21 +275,25 @@ async def complete_task(
         # sensitive, and the verifier prompt would carry that same
         # payload off-server. Skip verification for redacted tasks;
         # the submission is treated as if no verifier were configured.
+
+        # Snapshot the fields the verifier needs into a detached
+        # `Task` instance BEFORE releasing the session, then commit to
+        # release the DB connection back to the pool. Verifier round-
+        # trips can take 5-30s; holding the connection in a transaction
+        # would exhaust the pool on a moderately-loaded instance.
         #
-        # Release the DB connection before the LLM call. Verifier
-        # round-trips can take 5-30s; holding the connection in a
-        # transaction would exhaust the pool on any moderately-loaded
-        # instance. We commit (rather than rollback) because the
-        # session factory pins `expire_on_commit=False` — that keeps
-        # the loaded `task` ORM attributes live across the boundary so
-        # we can read them inside `evaluate_submission` without
-        # re-querying. Rollback would expire them (SQLAlchemy default
-        # `expire_on_rollback=True`) and break attr access. There are
-        # no writes pending; commit is effectively just "close the
-        # current transaction." The atomic UPDATE below re-acquires a
-        # fresh connection from the pool.
+        # Snapshotting (rather than reading task attrs after commit)
+        # decouples the verifier-path correctness from
+        # `expire_on_commit` / `expire_on_rollback` session config.
+        # Anyone flipping those flags in `db/connection.py` or in a
+        # test fixture can no longer silently break this code path —
+        # the verifier sees a frozen copy of the task as it was at
+        # submission time.
+        task_snapshot = _snapshot_task_for_verifier(task)
         await session.commit()
-        verifier_outcome = await evaluate_submission(task, response=response, raw_input=raw_input)
+        verifier_outcome = await evaluate_submission(
+            task_snapshot, response=response, raw_input=raw_input
+        )
         if verifier_outcome.parsed_response is not None:
             # NL parse path — the structured value the agent receives is
             # whatever the verifier extracted, not the raw form data
@@ -467,6 +471,40 @@ async def get_audit_trail(session: AsyncSession, task_id: str) -> list[AuditEntr
         .order_by(AuditEntry.created_at.asc())
     )
     return list(result.scalars().all())
+
+
+def _snapshot_task_for_verifier(task: Task) -> Task:
+    """Build a detached `Task` carrying only the fields the verifier
+    reads.
+
+    The verifier path commits/closes the session before running the
+    LLM call (see `complete_task`). After the commit, accessing
+    attributes on the original ORM instance is technically still safe
+    because the session factory pins `expire_on_commit=False`, but
+    that's a fragile coupling — anyone flipping the flag in
+    `db/connection.py` or a test fixture would silently break this
+    code path. Snapshotting decouples the two concerns: we read the
+    fields once while the session is unambiguously alive, then pass a
+    plain Python object across the LLM-call boundary.
+
+    Fields included match what `task_verifier.evaluate_submission`
+    actually reads (verifier_config, payload, schemas, attempt
+    counter, prior verifier_result, status, id, task description).
+    """
+    return Task(
+        id=task.id,
+        idempotency_key=task.idempotency_key,
+        task=task.task,
+        payload=task.payload,
+        payload_schema=task.payload_schema,
+        response_schema=task.response_schema,
+        status=task.status,
+        verifier_config=task.verifier_config,
+        verifier_result=task.verifier_result,
+        verification_attempt=task.verification_attempt,
+        timeout_seconds=task.timeout_seconds,
+        redact_payload=task.redact_payload,
+    )
 
 
 async def _find_active_task_by_idempotency_key(
