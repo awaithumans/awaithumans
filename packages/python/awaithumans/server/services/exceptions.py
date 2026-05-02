@@ -209,6 +209,26 @@ class VerifierAPIKeyMissingError(ServiceError):
         )
 
 
+class VerifierEndpointMissingError(ServiceError):
+    """A vendor endpoint env var wasn't set (Azure OpenAI requires both
+    a key and an endpoint URL).
+
+    Distinct from VERIFIER_API_KEY_MISSING so the operator-facing error
+    points at the right thing — saying 'API key missing' when the key
+    is set but the endpoint URL isn't is a 30-minute debugging detour."""
+
+    status_code = 500
+    error_code = "VERIFIER_ENDPOINT_MISSING"
+    docs_path = "verifier-endpoint-missing"
+
+    def __init__(self, env_var: str) -> None:
+        self.env_var = env_var
+        super().__init__(
+            f"Verifier endpoint URL not configured. Set the '{env_var}' "
+            "environment variable on the awaithumans server."
+        )
+
+
 class VerifierConfigInvalidError(ServiceError):
     """A task's stored `verifier_config` JSON doesn't match the current
     VerifierConfig schema.

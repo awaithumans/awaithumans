@@ -267,6 +267,20 @@ async def complete_task(
         # sensitive, and the verifier prompt would carry that same
         # payload off-server. Skip verification for redacted tasks;
         # the submission is treated as if no verifier were configured.
+        #
+        # Release the DB connection before the LLM call. Verifier
+        # round-trips can take 5-30s; holding the connection in a
+        # transaction would exhaust the pool on any moderately-loaded
+        # instance. We commit (rather than rollback) because the
+        # session factory pins `expire_on_commit=False` — that keeps
+        # the loaded `task` ORM attributes live across the boundary so
+        # we can read them inside `evaluate_submission` without
+        # re-querying. Rollback would expire them (SQLAlchemy default
+        # `expire_on_rollback=True`) and break attr access. There are
+        # no writes pending; commit is effectively just "close the
+        # current transaction." The atomic UPDATE below re-acquires a
+        # fresh connection from the pool.
+        await session.commit()
         verifier_outcome = await evaluate_submission(task, response=response, raw_input=raw_input)
         if verifier_outcome.parsed_response is not None:
             # NL parse path — the structured value the agent receives is

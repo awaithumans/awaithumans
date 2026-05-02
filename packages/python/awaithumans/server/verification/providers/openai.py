@@ -18,7 +18,9 @@ from awaithumans.server.verification.prompt import (
     VERIFIER_OUTPUT_SCHEMA,
     build_system_prompt,
     build_user_prompt,
+    to_openai_strict_schema,
 )
+from awaithumans.server.verification.providers import sanitize_provider_error_detail
 from awaithumans.types import VerificationContext, VerifierConfig, VerifierResult
 from awaithumans.utils.constants import (
     VERIFIER_MAX_OUTPUT_TOKENS,
@@ -43,10 +45,10 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
     model = config.model or VERIFIER_OPENAI_DEFAULT_MODEL
 
     # OpenAI's JSON-schema response_format requires `additionalProperties:
-    # false` and every property listed in `required`. Our shared schema
-    # leaves parsed_response optional (not all tasks need NL parsing) so
-    # we transform once here rather than polluting the shared schema.
-    strict_schema = _to_strict_schema(VERIFIER_OUTPUT_SCHEMA)
+    # false` and every property listed in `required`. The shared
+    # VERIFIER_OUTPUT_SCHEMA leaves parsed_response optional (not all
+    # tasks need NL parsing); `to_openai_strict_schema()` adapts it.
+    strict_schema = to_openai_strict_schema(VERIFIER_OUTPUT_SCHEMA)
 
     try:
         response = await client.chat.completions.create(
@@ -66,7 +68,7 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
             max_tokens=VERIFIER_MAX_OUTPUT_TOKENS,
         )
     except Exception as exc:  # noqa: BLE001
-        raise VerifierProviderError("openai", str(exc)) from exc
+        raise VerifierProviderError("openai", sanitize_provider_error_detail(str(exc))) from exc
 
     content = response.choices[0].message.content
     if not content:
@@ -82,26 +84,3 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
         reason=str(payload.get("reason", "")),
         parsed_response=payload.get("parsed_response"),
     )
-
-
-def _to_strict_schema(schema: dict) -> dict:
-    """Adapt the shared output schema for OpenAI's strict mode.
-
-    Strict mode requires every property be in `required` and the object
-    set `additionalProperties: false`. We promote `parsed_response` into
-    `required` and let the model emit `null` when there's no NL parsing
-    to do — strict mode allows nulls when the type union includes them."""
-    strict = json.loads(json.dumps(schema))  # deep copy
-    strict["additionalProperties"] = False
-    strict["required"] = list(strict.get("properties", {}).keys())
-    # Allow parsed_response to be null; it's optional in spirit.
-    if "parsed_response" in strict.get("properties", {}):
-        strict["properties"]["parsed_response"]["type"] = [
-            "object",
-            "string",
-            "number",
-            "boolean",
-            "array",
-            "null",
-        ]
-    return strict

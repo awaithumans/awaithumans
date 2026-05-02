@@ -123,3 +123,31 @@ def _dump(value: Any) -> str:
         return json.dumps(value, indent=2, default=str, ensure_ascii=False)
     except (TypeError, ValueError):
         return repr(value)
+
+
+def to_openai_strict_schema(schema: dict) -> dict:
+    """Adapt VERIFIER_OUTPUT_SCHEMA for OpenAI / Azure strict mode.
+
+    OpenAI's `response_format: json_schema` strict mode requires every
+    property be in `required` and the object set
+    `additionalProperties: false`. We promote `parsed_response` into
+    `required` and widen its type to include `null` so the model can
+    emit null when no NL parsing is needed — strict mode allows nulls
+    when the type union includes them.
+
+    Lives here (next to VERIFIER_OUTPUT_SCHEMA) rather than in any one
+    provider so OpenAI and Azure both consume the same shape without
+    cross-provider imports."""
+    strict = json.loads(json.dumps(schema))  # deep copy
+    strict["additionalProperties"] = False
+    strict["required"] = list(strict.get("properties", {}).keys())
+    if "parsed_response" in strict.get("properties", {}):
+        strict["properties"]["parsed_response"]["type"] = [
+            "object",
+            "string",
+            "number",
+            "boolean",
+            "array",
+            "null",
+        ]
+    return strict

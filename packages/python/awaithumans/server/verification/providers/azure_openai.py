@@ -19,6 +19,7 @@ import os
 
 from awaithumans.server.services.exceptions import (
     VerifierAPIKeyMissingError,
+    VerifierEndpointMissingError,
     VerifierProviderError,
     VerifierProviderUnavailableError,
 )
@@ -26,8 +27,9 @@ from awaithumans.server.verification.prompt import (
     VERIFIER_OUTPUT_SCHEMA,
     build_system_prompt,
     build_user_prompt,
+    to_openai_strict_schema,
 )
-from awaithumans.server.verification.providers.openai import _to_strict_schema
+from awaithumans.server.verification.providers import sanitize_provider_error_detail
 from awaithumans.types import VerificationContext, VerifierConfig, VerifierResult
 from awaithumans.utils.constants import (
     VERIFIER_AZURE_DEFAULT_API_KEY_ENV,
@@ -53,7 +55,7 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
     endpoint_env = metadata.get("endpoint_env", VERIFIER_AZURE_DEFAULT_ENDPOINT_ENV)
     endpoint = os.environ.get(endpoint_env)
     if not endpoint:
-        raise VerifierAPIKeyMissingError(endpoint_env)
+        raise VerifierEndpointMissingError(endpoint_env)
 
     api_version = metadata.get("api_version", VERIFIER_AZURE_DEFAULT_API_VERSION)
     deployment = metadata.get("deployment") or config.model
@@ -70,7 +72,7 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
         api_version=api_version,
     )
 
-    strict_schema = _to_strict_schema(VERIFIER_OUTPUT_SCHEMA)
+    strict_schema = to_openai_strict_schema(VERIFIER_OUTPUT_SCHEMA)
 
     try:
         response = await client.chat.completions.create(
@@ -90,7 +92,7 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
             max_tokens=VERIFIER_MAX_OUTPUT_TOKENS,
         )
     except Exception as exc:  # noqa: BLE001
-        raise VerifierProviderError("azure", str(exc)) from exc
+        raise VerifierProviderError("azure", sanitize_provider_error_detail(str(exc))) from exc
 
     content = response.choices[0].message.content
     if not content:

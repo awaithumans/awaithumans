@@ -22,6 +22,7 @@ from awaithumans.server.verification.prompt import (
     build_system_prompt,
     build_user_prompt,
 )
+from awaithumans.server.verification.providers import sanitize_provider_error_detail
 from awaithumans.types import VerificationContext, VerifierConfig, VerifierResult
 from awaithumans.utils.constants import (
     VERIFIER_CLAUDE_DEFAULT_API_KEY_ENV,
@@ -61,7 +62,7 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
             tool_choice={"type": "tool", "name": VERIFIER_CLAUDE_TOOL_NAME},
         )
     except Exception as exc:  # noqa: BLE001 — vendor SDK exceptions vary
-        raise VerifierProviderError("claude", str(exc)) from exc
+        raise VerifierProviderError("claude", sanitize_provider_error_detail(str(exc))) from exc
 
     # The forced tool_choice guarantees a tool_use block. Defensive parse
     # anyway — if Anthropic ever changes the contract we want a clear
