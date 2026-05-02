@@ -5,7 +5,12 @@ import { Suspense, useEffect, useState } from "react";
 
 import { LogoMark } from "@/components/logo";
 import { TerminalSpinner } from "@/components/terminal-spinner";
-import { fetchMe, fetchSetupStatus, login } from "@/lib/server";
+import {
+	UnauthorizedError,
+	fetchMe,
+	fetchSetupStatus,
+	login,
+} from "@/lib/server";
 
 /**
  * Wrapping the search-params reader in Suspense is required for
@@ -69,11 +74,7 @@ function LoginPageInner() {
 			await login(email, password);
 			router.replace(next);
 		} catch (err) {
-			setError(
-				err instanceof Error && err.message.includes("401")
-					? "Invalid credentials."
-					: "Sign-in failed. Check the server is reachable.",
-			);
+			setError(describeLoginError(err));
 		} finally {
 			setSubmitting(false);
 		}
@@ -100,7 +101,7 @@ function LoginPageInner() {
 				<div className="border border-white/10 rounded-lg p-6 bg-white/[0.02]">
 					<h1 className="text-lg font-semibold mb-1">Sign in</h1>
 					<p className="text-white/40 text-xs mb-5">
-						Sign in with your dashboard credentials.
+						Use the operator credentials you created during first-run setup.
 					</p>
 
 					<form onSubmit={handleSubmit} className="space-y-4">
@@ -135,6 +136,16 @@ function LoginPageInner() {
 							{submitting ? "Signing in…" : "Sign in"}
 						</button>
 					</form>
+
+					<div className="mt-5 pt-4 border-t border-white/5">
+						<p className="text-white/35 text-[11px] leading-relaxed">
+							<span className="text-white/50">Forgot your password?</span>{" "}
+							Reset it from the terminal:
+						</p>
+						<pre className="mt-2 text-[11px] font-mono text-white/60 bg-black/30 border border-white/10 rounded px-2.5 py-1.5 overflow-x-auto">
+							<code>awaithumans set-password your@email.com</code>
+						</pre>
+					</div>
 				</div>
 
 				<p className="text-center text-white/25 text-xs mt-6">
@@ -179,4 +190,27 @@ function Field({
 			/>
 		</label>
 	);
+}
+
+/**
+ * Turn a login-endpoint error into a user-facing message. Four cases,
+ * in priority order:
+ *   - UnauthorizedError (401 from apiFetch): wrong credentials
+ *   - TypeError (fetch network failure): server unreachable
+ *   - Anything else with a message (ApiError for 5xx, generic Error):
+ *     show the server's own message verbatim — it's already written
+ *     for humans by the server's ServiceError handler
+ *   - Anything without a message: generic fallback
+ */
+function describeLoginError(err: unknown): string {
+	if (err instanceof UnauthorizedError) {
+		return "Invalid credentials. Check your email and password.";
+	}
+	if (err instanceof TypeError) {
+		return "Can't reach the server. Is `awaithumans dev` still running?";
+	}
+	if (err instanceof Error) {
+		return err.message;
+	}
+	return "Sign-in failed. Please try again.";
 }

@@ -12,11 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from awaithumans.server.channels.slack.client import get_client_for_team
+from awaithumans.server.channels.slack.client import (
+    get_client_for_team,
+    get_env_client,
+)
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.slack import (
     SlackInstallationResponse,
     SlackMemberResponse,
+    SlackStaticWorkspaceResponse,
 )
 from awaithumans.server.services.slack_installation_service import (
     delete_installation,
@@ -25,6 +29,13 @@ from awaithumans.server.services.slack_installation_service import (
 
 router = APIRouter()
 logger = logging.getLogger("awaithumans.server.routes.slack.installations")
+
+# Cached static-token workspace info. `auth.test` is a network call we
+# don't want to repeat on every dashboard mount — the bot token rarely
+# changes during a process's lifetime, and the team_id behind it is
+# stable. Cleared on process restart, which is the right invalidation
+# (env vars only change between restarts anyway).
+_static_workspace_cache: SlackStaticWorkspaceResponse | None = None
 
 
 def _to_public(row) -> SlackInstallationResponse:
@@ -46,6 +57,67 @@ async def list_slack_installations(
 ) -> list[SlackInstallationResponse]:
     rows = await list_installations(session)
     return [_to_public(r) for r in rows]
+
+
+@router.get(
+    "/static-workspace",
+    response_model=SlackStaticWorkspaceResponse,
+)
+async def get_static_workspace() -> SlackStaticWorkspaceResponse:
+    """Surface the workspace behind `SLACK_BOT_TOKEN` for the dashboard.
+
+    Static-token mode doesn't write to `slack_installations`, so the
+    "Slack workspaces" Settings panel had no way to display which
+    workspace the integration was connected to. This endpoint calls
+    Slack's `auth.test` to fetch team_id + team_name for the env
+    token and returns them as a read-only entry.
+
+    404 when not in static-token mode (i.e. `SLACK_BOT_TOKEN` unset)
+    so the dashboard can branch on the absence cleanly. 502 if Slack
+    rejects the token (revoked, malformed) — same shape as the
+    member-list endpoint for consistency.
+    """
+    global _static_workspace_cache
+    if _static_workspace_cache is not None:
+        return _static_workspace_cache
+
+    client = get_env_client()
+    if client is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No static bot token configured. Set SLACK_BOT_TOKEN to "
+                "use single-workspace mode, or install the app via OAuth."
+            ),
+        )
+
+    try:
+        resp = await client.auth_test()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Slack auth.test failed for static token: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Slack rejected auth.test for the static bot token. "
+                "Token may be revoked or malformed — verify "
+                "SLACK_BOT_TOKEN and reinstall the app if needed."
+            ),
+        ) from exc
+
+    data = resp.data  # type: ignore[attr-defined]
+    info = SlackStaticWorkspaceResponse(
+        team_id=str(data.get("team_id") or ""),
+        team_name=data.get("team") or None,
+        bot_user_id=data.get("user_id") or data.get("bot_id") or None,
+    )
+    if not info.team_id:
+        raise HTTPException(
+            status_code=502,
+            detail="Slack auth.test returned no team_id — token shape unexpected.",
+        )
+
+    _static_workspace_cache = info
+    return info
 
 
 @router.delete(

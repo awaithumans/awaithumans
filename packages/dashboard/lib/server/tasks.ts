@@ -40,3 +40,9 @@ export async function cancelTask(taskId: string): Promise<Task> {
 		method: "POST",
 	});
 }
+
+export async function deleteTask(taskId: string): Promise<void> {
+	await apiFetch<void>(`/api/tasks/${encodeURIComponent(taskId)}`, {
+		method: "DELETE",
+	});
+}

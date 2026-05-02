@@ -61,6 +61,65 @@ export class UnauthorizedError extends Error {
 	}
 }
 
+/**
+ * Thrown on any non-ok response that isn't 401. `.message` is the
+ * server's human-facing `message` field (e.g. "A user with this email
+ * already exists.") — safe to drop into a UI banner directly, with no
+ * further processing. `errorCode` and `docsUrl` surface the structured
+ * fields for callers who want to link out or switch on the error.
+ *
+ * The server's centralized exception handler always shapes error
+ * responses as `{error, message, docs}` (see
+ * `server/core/exceptions.py::service_error_handler`). When a response
+ * doesn't match — e.g. a 502 from a misbehaving proxy — we fall back
+ * to a generic status-code message so `.message` is still readable.
+ */
+export class ApiError extends Error {
+	readonly status: number;
+	readonly errorCode: string | null;
+	readonly docsUrl: string | null;
+
+	constructor(
+		status: number,
+		message: string,
+		errorCode: string | null = null,
+		docsUrl: string | null = null,
+	) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+		this.errorCode = errorCode;
+		this.docsUrl = docsUrl;
+	}
+}
+
+interface ServerErrorBody {
+	error?: unknown;
+	message?: unknown;
+	detail?: unknown;
+	docs?: unknown;
+}
+
+async function buildApiError(res: Response): Promise<ApiError> {
+	let body: ServerErrorBody | null = null;
+	try {
+		body = (await res.json()) as ServerErrorBody;
+	} catch {
+		// Response wasn't JSON (proxy HTML page, truncated body, etc.).
+	}
+
+	const message =
+		typeof body?.message === "string" && body.message
+			? body.message
+			: typeof body?.detail === "string" && body.detail
+				? body.detail
+				: `Request failed with status ${res.status}.`;
+
+	const errorCode = typeof body?.error === "string" ? body.error : null;
+	const docsUrl = typeof body?.docs === "string" ? body.docs : null;
+	return new ApiError(res.status, message, errorCode, docsUrl);
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 	let base = await resolveApiBase();
 
@@ -91,8 +150,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 	}
 
 	if (!res.ok) {
-		const body = await res.text();
-		throw new Error(`API error ${res.status}: ${body}`);
+		throw await buildApiError(res);
 	}
 
 	// 204 No Content and similar — caller isn't expecting a body.

@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import sys
 from typing import TypeVar
 
 import httpx
@@ -27,11 +28,53 @@ from awaithumans.utils.constants import (
     MIN_TIMEOUT_SECONDS,
     POLL_INTERVAL_SECONDS,
 )
-from awaithumans.utils.discovery import resolve_server_url
+from awaithumans.utils.discovery import resolve_admin_token, resolve_server_url
 
 logger = logging.getLogger("awaithumans.client")
 
 T = TypeVar("T", bound=BaseModel)
+
+
+def _auth_headers(api_key: str | None) -> dict[str, str]:
+    """Build the request headers for API calls.
+
+    The server's auth middleware (added in PR A3) gates every /api/*
+    route except a fixed public-prefix list. Task endpoints aren't
+    in that list — they require either a session cookie (dashboard
+    users) or an admin bearer token (automation, which is us).
+
+    `api_key` comes from `resolve_admin_token()`: explicit arg →
+    env var → discovery file → None. When None, skip the header
+    entirely and let the server produce a proper 401 the SDK can
+    surface as a config error.
+    """
+    if api_key:
+        return {"Authorization": f"Bearer {api_key}"}
+    return {}
+
+
+def _print_waiting_banner(*, base_url: str, task_id: str, timeout_seconds: int) -> None:
+    """Tell the user their script is now blocking on a human.
+
+    Uses `print(..., file=sys.stderr)` directly rather than the logger:
+    a plain `python refund.py` has no logging handlers configured, so
+    `logger.info` messages vanish and the script looks frozen to the
+    operator. stderr keeps stdout clean for anyone piping the return
+    value downstream.
+
+    The dashboard URL points at `/task?id=…`, the task-detail route.
+    Pre-0.1.1 code pointed at `/api/tasks/{id}` (the raw JSON
+    endpoint) — that confused early testers who clicked the link
+    expecting the review form.
+    """
+    dashboard_url = f"{base_url}/task?id={task_id}"
+    print(f"\n✓ Task created: {task_id}", file=sys.stderr)
+    print(f"  Review at: {dashboard_url}", file=sys.stderr)
+    print(
+        f"  Waiting for human (timeout: {timeout_seconds}s). Ctrl-C to abort.",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 async def await_human(
@@ -47,6 +90,7 @@ async def await_human(
     idempotency_key: str | None = None,
     redact_payload: bool = False,
     server_url: str | None = None,
+    api_key: str | None = None,
 ) -> T:
     """
     Delegate a task to a human and await the result (async).
@@ -73,8 +117,10 @@ async def await_human(
     # ── Generate idempotency key ─────────────────────────────────────
     key = idempotency_key or _generate_idempotency_key(task, payload)
 
-    # ── Resolve server URL ───────────────────────────────────────────
+    # ── Resolve server URL + admin token ────────────────────────────
     base_url = resolve_server_url(explicit_url=server_url)
+    resolved_token = resolve_admin_token(explicit_token=api_key)
+    auth_headers = _auth_headers(resolved_token)
 
     # ── Serialize assign_to for the wire ─────────────────────────────
     assign_to_dict = None
@@ -109,7 +155,11 @@ async def await_human(
             "redact_payload": redact_payload,
         }
 
-        resp = await client.post(f"{base_url}/api/tasks", json=create_body)
+        resp = await client.post(
+            f"{base_url}/api/tasks",
+            json=create_body,
+            headers=auth_headers,
+        )
         if resp.status_code not in (200, 201):
             raise AwaitHumansError(
                 code="TASK_CREATE_FAILED",
@@ -120,12 +170,14 @@ async def await_human(
 
         task_data = resp.json()
         task_id = task_data["id"]
-        logger.info("Task created: %s", task_id)
-        logger.info("  View at the dashboard or: %s/api/tasks/%s", base_url, task_id)
-        logger.info("  Waiting for human...")
+        _print_waiting_banner(
+            base_url=base_url, task_id=task_id, timeout_seconds=timeout_seconds
+        )
 
     # ── Long-poll until completion or timeout ────────────────────────
-    result = await _poll_until_terminal(base_url, task_id, task, timeout_seconds, response_schema)
+    result = await _poll_until_terminal(
+        base_url, task_id, task, timeout_seconds, response_schema, auth_headers
+    )
     return result
 
 
@@ -135,6 +187,7 @@ async def _poll_until_terminal(
     task_description: str,
     timeout_seconds: int,
     response_schema: type[T],
+    auth_headers: dict[str, str],
 ) -> T:
     """Long-poll the server until the task reaches a terminal state.
 
@@ -147,6 +200,7 @@ async def _poll_until_terminal(
             resp = await client.get(
                 f"{base_url}/api/tasks/{task_id}/poll",
                 params={"timeout": POLL_INTERVAL_SECONDS},
+                headers=auth_headers,
             )
 
             if resp.status_code == 404:
@@ -215,6 +269,7 @@ def await_human_sync(
     idempotency_key: str | None = None,
     redact_payload: bool = False,
     server_url: str | None = None,
+    api_key: str | None = None,
 ) -> T:
     """
     Delegate a task to a human and block until the result (sync).
@@ -235,6 +290,7 @@ def await_human_sync(
             idempotency_key=idempotency_key,
             redact_payload=redact_payload,
             server_url=server_url,
+            api_key=api_key,
         )
     )
 

@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
 	Activity,
 	BarChart3,
 	ListChecks,
+	LogOut,
 	Settings as SettingsIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { APP_VERSION, DOCS_BASE_URL, GITHUB_URL } from "@/lib/constants";
+import { fetchMe, logout, type MeResponse } from "@/lib/server";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "./logo";
 
@@ -30,6 +33,29 @@ const NAV: NavItem[] = [
 
 export function Sidebar() {
 	const pathname = usePathname();
+	const router = useRouter();
+	const [me, setMe] = useState<MeResponse | null>(null);
+	const [signingOut, setSigningOut] = useState(false);
+
+	useEffect(() => {
+		fetchMe()
+			.then(setMe)
+			.catch(() => setMe(null));
+	}, []);
+
+	const handleSignOut = async () => {
+		setSigningOut(true);
+		try {
+			await logout();
+		} finally {
+			// Always bounce to login, even if the logout call errored —
+			// the session is effectively gone the moment we cleared
+			// local state, and leaving the operator stuck on the
+			// dashboard after clicking "Sign out" is worse than a
+			// best-effort logout that can't reach the server.
+			router.replace("/login");
+		}
+	};
 
 	return (
 		// Sticky + h-screen keeps the sidebar pinned to the viewport while
@@ -67,6 +93,30 @@ export function Sidebar() {
 					);
 				})}
 			</nav>
+
+			{/* User + sign out */}
+			{me?.authenticated && (
+				<div className="px-3 py-3 border-t border-white/10">
+					<div className="px-2 pb-2">
+						<div className="text-[11px] text-white/70 font-medium truncate">
+							{me.display_name || me.email || me.user_id}
+						</div>
+						<div className="text-[10px] text-white/35 truncate">
+							{me.is_operator ? "operator" : "user"}
+							{me.email && me.display_name ? ` · ${me.email}` : null}
+						</div>
+					</div>
+					<button
+						type="button"
+						onClick={handleSignOut}
+						disabled={signingOut}
+						className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs text-white/55 hover:text-white hover:bg-white/[0.03] disabled:opacity-40 transition-colors"
+					>
+						<LogOut size={14} />
+						<span>{signingOut ? "Signing out…" : "Sign out"}</span>
+					</button>
+				</div>
+			)}
 
 			{/* Footer */}
 			<div className="px-5 py-4 border-t border-white/10 text-xs">

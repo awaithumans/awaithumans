@@ -29,36 +29,42 @@ const RefundRequest = z.object({
 });
 
 // Structured response the human fills out. `approved` drives a toggle;
-// `note` renders as an optional long-text field.
+// `reason` renders as a short-answer text field.
 const Decision = z.object({
 	approved: z.boolean().describe("Approve the refund?"),
-	note: z
-		.string()
-		.optional()
-		.describe("Optional message to send to the customer."),
+	reason: z.string().describe("Why did you approve / reject? Short answer."),
 });
 
 async function main(): Promise<void> {
 	console.log("→ creating task on the awaithumans server...");
 	console.log("  Open http://localhost:3001 to review.\n");
 
+	const orderId = "A-4721";
+
 	const decision = await awaitHuman({
 		task: "Approve refund request",
 		payloadSchema: RefundRequest,
 		payload: {
-			orderId: "A-4721",
+			orderId,
 			customer: "jane@example.com",
 			amountUsd: 180.0,
 			reason: "Item arrived damaged",
 		},
 		responseSchema: Decision,
 		timeoutMs: 900_000, // 15 minutes — plenty of time to walk to the kitchen
+		// Ties retries of the same order to the same task. If the agent
+		// crashes after creating the task and the orchestrator retries,
+		// the server returns the existing task instead of stacking
+		// duplicates. Without an explicit key the SDK auto-hashes
+		// (task, payload) — fine for dev, but tie to your real business
+		// event (orderId, transferId, requestId) in production.
+		idempotencyKey: `refund:${orderId}`,
 	});
 
 	if (decision.approved) {
-		console.log(`✓ Refund approved. Note: ${decision.note ?? "(none)"}`);
+		console.log(`✓ Refund approved. Reason: ${decision.reason}`);
 	} else {
-		console.log(`✗ Refund rejected. Note: ${decision.note ?? "(none)"}`);
+		console.log(`✗ Refund rejected. Reason: ${decision.reason}`);
 	}
 }
 

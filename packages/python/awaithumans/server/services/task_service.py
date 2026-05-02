@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -339,6 +339,22 @@ async def cancel_task(session: AsyncSession, task_id: str) -> Task:
 
     await session.refresh(task)
     return task
+
+
+async def delete_task(session: AsyncSession, task_id: str) -> bool:
+    """Hard delete a task row. Operator-only surface.
+
+    Unlike `cancel_task` (which moves the task to a terminal CANCELLED
+    state but keeps the row for history), this actually removes the row
+    from the table. Audit entries are left in place, orphaned — they're
+    a historical record of what happened to a task that no longer exists,
+    and dropping them would erase evidence the operator may later need.
+
+    Returns True if a row was removed, False if the task_id didn't exist.
+    """
+    result = await session.execute(delete(Task).where(Task.id == task_id))
+    await session.commit()
+    return result.rowcount > 0
 
 
 async def get_audit_trail(session: AsyncSession, task_id: str) -> list[AuditEntry]:

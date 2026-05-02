@@ -33,11 +33,19 @@ from __future__ import annotations
 import hmac
 import logging
 import secrets
+import sys
 import threading
 
 logger = logging.getLogger("awaithumans.server.core.bootstrap")
 
 _BOOTSTRAP_TOKEN_BYTES = 32
+
+# ANSI escape codes. Empty strings when not writing to a TTY so the
+# banner still reads cleanly in logs, CI output, Docker compose, etc.
+_ANSI_RESET = "\033[0m"
+_ANSI_BOLD = "\033[1m"
+_ANSI_GREEN = "\033[32m"
+_ANSI_DIM = "\033[2m"
 
 _lock = threading.Lock()
 _token: str | None = None
@@ -82,9 +90,47 @@ def is_active() -> bool:
 
 
 def log_setup_banner(setup_url: str) -> None:
-    """Emit the first-run setup URL to the log in a visually loud
-    format. Called at startup when count_users == 0 so operators
-    can't miss it in the server output.
+    """Print the first-run setup URL to stdout in a visually dominant
+    format — uncolored fallback when stdout isn't a TTY (CI, Docker).
+
+    Writes directly to stdout instead of going through the logger. The
+    banner has to survive log-level filters, piped redirection
+    (`awaithumans dev > log.txt`), and any operator who skims past
+    alembic chatter. Logger output can be suppressed; a direct stdout
+    write can't.
+
+    The URL already contains the token — operators copy the whole
+    line into their browser. The wording says "Copy this URL" so no
+    one mistakes the token for a placeholder.
     """
-    banner = "━" * 60
-    logger.warning("\n%s\nFirst-run setup:\n  → %s\n%s\n", banner, setup_url, banner)
+    use_color = sys.stdout.isatty()
+    bold = _ANSI_BOLD if use_color else ""
+    green = _ANSI_GREEN if use_color else ""
+    dim = _ANSI_DIM if use_color else ""
+    reset = _ANSI_RESET if use_color else ""
+
+    width = 72
+    divider = "═" * width
+
+    lines = [
+        "",
+        "",
+        f"{bold}{divider}{reset}",
+        f"  {bold}First-run setup — create your operator account{reset}",
+        "",
+        "  Open this URL in your browser:",
+        "",
+        f"    {green}{bold}{setup_url}{reset}",
+        "",
+        f"  {dim}(Contains a single-use token. Restart the server for a fresh one.){reset}",
+        f"{bold}{divider}{reset}",
+        "",
+        "",
+    ]
+    sys.stdout.write("\n".join(lines))
+    sys.stdout.flush()
+
+    # Also emit to the logger at WARNING level — without color — so
+    # anyone following logs via journalctl / Docker logs still sees
+    # the URL even if stdout was redirected. The duplicate is cheap.
+    logger.warning("First-run setup URL (copy into a browser): %s", setup_url)

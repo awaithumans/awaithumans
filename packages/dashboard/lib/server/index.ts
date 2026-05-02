@@ -23,7 +23,7 @@ export {
 	type MeResponse,
 	type SetupStatusResponse,
 } from "./auth";
-export { apiFetch, UnauthorizedError } from "./client";
+export { ApiError, apiFetch, UnauthorizedError } from "./client";
 export {
 	createEmailIdentity,
 	deleteEmailIdentity,
@@ -36,9 +36,11 @@ export { fetchHealth } from "./health";
 export {
 	fetchSlackInstallations,
 	fetchSlackWorkspaceMembers,
+	fetchStaticSlackWorkspace,
 	uninstallSlackWorkspace,
 	type SlackInstallation,
 	type SlackMember,
+	type SlackStaticWorkspace,
 } from "./slack";
 export {
 	fetchTaskStats,
@@ -46,7 +48,7 @@ export {
 	type TaskStatsByDay,
 } from "./stats";
 export { fetchSystemStatus, type SystemStatus } from "./status";
-export { cancelTask, completeTask, fetchTask, fetchTasks } from "./tasks";
+export { cancelTask, completeTask, deleteTask, fetchTask, fetchTasks } from "./tasks";
 export {
 	clearUserPassword,
 	createUser,

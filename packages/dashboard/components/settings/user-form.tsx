@@ -49,6 +49,10 @@ export function UserForm({
 	const [accessLevel, setAccessLevel] = useState(editing?.access_level ?? "");
 	const [pool, setPool] = useState(editing?.pool ?? "");
 	const [isOperator, setIsOperator] = useState(editing?.is_operator ?? false);
+	// New users default to active=true; existing users carry their current
+	// state. Toggling this off is the canonical way to revoke login + stop
+	// the router from picking the user without deleting their history.
+	const [active, setActive] = useState(editing?.active ?? true);
 	const [password, setPassword] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 
@@ -116,6 +120,7 @@ export function UserForm({
 				access_level: accessLevel || null,
 				pool: pool || null,
 				is_operator: isOperator,
+				active,
 				// Only send password if it's non-empty. Blank + edit
 				// means "don't touch the password."
 				...(password ? { password } : {}),
@@ -293,16 +298,42 @@ export function UserForm({
 					/>
 				</Field>
 
-				<div className="col-span-2 flex items-center gap-2 pt-1">
-					<input
-						type="checkbox"
-						id="is_operator"
-						checked={isOperator}
-						onChange={(e) => setIsOperator(e.target.checked)}
-						className="h-3.5 w-3.5 rounded border-white/20 bg-white/5"
-					/>
-					<label htmlFor="is_operator" className="text-xs text-white/70">
-						Operator — can manage users and see all tasks in the dashboard.
+				<div className="col-span-2 space-y-2 pt-1">
+					<label
+						htmlFor="is_active"
+						className="flex items-center gap-2 text-xs text-white/70 cursor-pointer"
+					>
+						<input
+							type="checkbox"
+							id="is_active"
+							checked={active}
+							onChange={(e) => setActive(e.target.checked)}
+							className="h-3.5 w-3.5 rounded border-white/20 bg-white/5"
+						/>
+						<span>
+							Active — can log in and receive task assignments.
+							{editing && !active && (
+								<span className="text-yellow-400/80 ml-1">
+									(currently inactive — login + routing blocked)
+								</span>
+							)}
+						</span>
+					</label>
+
+					<label
+						htmlFor="is_operator"
+						className="flex items-center gap-2 text-xs text-white/70 cursor-pointer"
+					>
+						<input
+							type="checkbox"
+							id="is_operator"
+							checked={isOperator}
+							onChange={(e) => setIsOperator(e.target.checked)}
+							className="h-3.5 w-3.5 rounded border-white/20 bg-white/5"
+						/>
+						<span>
+							Operator — can manage users and see all tasks in the dashboard.
+						</span>
 					</label>
 				</div>
 			</div>

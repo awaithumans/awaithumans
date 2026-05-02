@@ -85,15 +85,74 @@ export default function TaskQueuePage() {
 			) : tasks.length === 0 ? (
 				<ShellEmptyState
 					heading="await_human — waiting for your first task"
-					note="Tasks appear here the moment an agent calls await_human() against this server."
-					snippet={`from awaithumans import await_human
+					note="Save as refund.py / refund.ts, run it. A task will appear here — review and complete it in the dashboard to unblock your agent."
+					snippet={{
+						python: `from awaithumans import await_human_sync
+from pydantic import BaseModel
 
-result = await await_human(
+class WireTransfer(BaseModel):
+    transfer_id: str
+    amount: float
+    to: str
+
+class Decision(BaseModel):
+    approved: bool
+    reason: str  # short-answer field — the reviewer explains their call
+
+transfer_id = "WT-2026-0042"
+
+print("→ creating task — go to the dashboard to review and complete it")
+
+result = await_human_sync(
     task="Approve this wire transfer",
-    payload={"amount": 50_000, "to": "acme.inc"},
+    payload_schema=WireTransfer,
+    payload=WireTransfer(transfer_id=transfer_id, amount=50_000, to="acme.inc"),
+    response_schema=Decision,
     timeout_seconds=900,
-)`}
-					language="python"
+    # Tie retries to the business event. If your agent restarts, the
+    # same transfer re-uses the same task instead of creating duplicates.
+    idempotency_key=f"transfer:{transfer_id}",
+)
+
+verdict = "approved" if result.approved else "rejected"
+print(f"✓ Transfer {verdict}. Reason: {result.reason}")`,
+						typescript: `import { awaitHuman } from "awaithumans";
+import { z } from "zod";
+
+const WireTransfer = z.object({
+  transferId: z.string(),
+  amount: z.number(),
+  to: z.string(),
+});
+
+const Decision = z.object({
+  approved: z.boolean(),
+  // short-answer field — the reviewer explains their call
+  reason: z.string(),
+});
+
+async function main() {
+  const transferId = "WT-2026-0042";
+
+  console.log("→ creating task — go to the dashboard to review and complete it");
+
+  const result = await awaitHuman({
+    task: "Approve this wire transfer",
+    payloadSchema: WireTransfer,
+    payload: { transferId, amount: 50_000, to: "acme.inc" },
+    responseSchema: Decision,
+    timeoutMs: 900_000,
+    // Tie retries to the business event. If your agent restarts, the
+    // same transfer re-uses the same task instead of creating duplicates.
+    idempotencyKey: \`transfer:\${transferId}\`,
+  });
+
+  const verdict = result.approved ? "approved" : "rejected";
+  console.log(\`✓ Transfer \${verdict}. Reason: \${result.reason}\`);
+}
+
+main();`,
+					}}
 				/>
 			) : (
 				<div className="border border-white/10 rounded-lg overflow-hidden">

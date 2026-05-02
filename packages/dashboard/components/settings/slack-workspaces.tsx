@@ -6,9 +6,11 @@ import { useCallback, useEffect, useState } from "react";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 import {
 	fetchSlackInstallations,
+	fetchStaticSlackWorkspace,
 	fetchSystemStatus,
 	uninstallSlackWorkspace,
 	type SlackInstallation,
+	type SlackStaticWorkspace,
 	type SystemStatus,
 } from "@/lib/server";
 import { formatRelativeTime } from "@/lib/utils";
@@ -17,6 +19,8 @@ import { SettingsSection } from "./section";
 
 export function SlackWorkspaces() {
 	const [installs, setInstalls] = useState<SlackInstallation[] | null>(null);
+	const [staticWorkspace, setStaticWorkspace] =
+		useState<SlackStaticWorkspace | null>(null);
 	const [slackMode, setSlackMode] = useState<SystemStatus["slack_mode"] | null>(
 		null,
 	);
@@ -25,12 +29,16 @@ export function SlackWorkspaces() {
 
 	const load = useCallback(async () => {
 		try {
-			const [list, status] = await Promise.all([
+			const [list, status, staticWs] = await Promise.all([
 				fetchSlackInstallations(),
 				fetchSystemStatus(),
+				// Returns null when the server isn't in static-token mode
+				// — this branch is the common case in OAuth-mode setups.
+				fetchStaticSlackWorkspace(),
 			]);
 			setInstalls(list);
 			setSlackMode(status.slack_mode);
+			setStaticWorkspace(staticWs);
 			setError(null);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to load");
@@ -82,12 +90,37 @@ export function SlackWorkspaces() {
 				<div className="px-5 py-4">
 					<TerminalSpinner label="listing workspaces" />
 				</div>
-			) : installs.length === 0 ? (
+			) : installs.length === 0 && !staticWorkspace ? (
 				<div className="px-5 py-6 text-center text-white/35 text-sm">
 					No workspaces yet.
 				</div>
 			) : (
 				<ul className="divide-y divide-white/5">
+					{/* Static-token workspace — read-only pseudo-row. The
+					    "uninstall" path here is "drop the env var", not a
+					    button click, so we render a passive pill instead. */}
+					{staticWorkspace && (
+						<li
+							key={`static:${staticWorkspace.team_id}`}
+							className="px-5 py-3 flex items-center justify-between gap-4"
+						>
+							<div className="min-w-0">
+								<div className="text-sm font-medium truncate">
+									{staticWorkspace.team_name || staticWorkspace.team_id}
+								</div>
+								<div className="text-white/35 text-xs font-mono truncate">
+									{staticWorkspace.team_id}
+									{staticWorkspace.bot_user_id
+										? ` · bot ${staticWorkspace.bot_user_id}`
+										: ""}
+									{" · via SLACK_BOT_TOKEN env"}
+								</div>
+							</div>
+							<span className="text-[10px] uppercase tracking-wider text-white/40 font-mono px-2 py-1 border border-white/10 rounded">
+								env
+							</span>
+						</li>
+					)}
 					{installs.map((i) => (
 						<li
 							key={i.team_id}

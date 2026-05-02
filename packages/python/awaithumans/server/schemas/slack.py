@@ -23,6 +23,21 @@ class SlackInstallationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SlackStaticWorkspaceResponse(BaseModel):
+    """The workspace behind the env-configured `SLACK_BOT_TOKEN`.
+
+    Static-token mode skips the DB-backed `slack_installations` table
+    entirely — the token lives in an env var, not a row. The dashboard
+    still wants to confirm which team that token belongs to and let
+    operators use the member picker, so we surface team_id +
+    team_name via Slack's `auth.test` API on demand. Read-only —
+    uninstalling means dropping the env var, not calling the API."""
+
+    team_id: str
+    team_name: str | None
+    bot_user_id: str | None
+
+
 class SlackMemberResponse(BaseModel):
     """A member of a Slack workspace — enough to render a picker.
 

@@ -14,10 +14,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
-from starlette.staticfiles import StaticFiles
-
 from awaithumans.server.core.auth import DashboardAuthMiddleware
 from awaithumans.server.core.config import settings
+from awaithumans.server.core.dashboard_static import DashboardStaticFiles
 from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
@@ -45,12 +44,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
     logger.info("Database initialized")
 
-    await _emit_first_run_banner_if_empty()
+    # Capture whether this is first-run inside the lifespan (the DB
+    # session is ready here). The banner itself prints after uvicorn
+    # logs "Application startup complete" so it's the LAST thing the
+    # operator sees — not buried between alembic migrations and the
+    # "Running on http://..." line.
+    setup_url = await _first_run_setup_url()
 
     scheduler_task = asyncio.create_task(run_timeout_scheduler())
+    banner_task: asyncio.Task[None] | None = None
+    if setup_url:
+        banner_task = asyncio.create_task(_print_banner_after_startup(setup_url))
 
     yield
 
+    if banner_task and not banner_task.done():
+        banner_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await banner_task
     scheduler_task.cancel()
     with suppress(asyncio.CancelledError):
         await scheduler_task
@@ -58,9 +69,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Server shut down")
 
 
-async def _emit_first_run_banner_if_empty() -> None:
-    """If zero users exist in the DB, generate a bootstrap token and
-    log the /setup URL so the operator can complete first-run setup."""
+async def _first_run_setup_url() -> str | None:
+    """Return the setup URL if the DB has no users (first run), else None.
+
+    Generating the bootstrap token here keeps the token inside the
+    server process from the moment first-run is detected.
+    """
     from awaithumans.server.core import bootstrap
     from awaithumans.server.db.connection import get_async_session_factory
 
@@ -68,10 +82,22 @@ async def _emit_first_run_banner_if_empty() -> None:
     async with factory() as session:
         n = await count_users(session)
 
-    if n == 0:
-        token = bootstrap.ensure_token()
-        setup_url = f"{settings.PUBLIC_URL.rstrip('/')}/setup?token={token}"
-        bootstrap.log_setup_banner(setup_url)
+    if n != 0:
+        return None
+
+    token = bootstrap.ensure_token()
+    return f"{settings.PUBLIC_URL.rstrip('/')}/setup?token={token}"
+
+
+async def _print_banner_after_startup(setup_url: str) -> None:
+    """Wait briefly so uvicorn's startup-complete log lands first,
+    then print the setup banner. Short sleep is intentional — we want
+    the banner to be the last thing the operator sees when reading
+    the startup output."""
+    from awaithumans.server.core import bootstrap
+
+    await asyncio.sleep(0.4)
+    bootstrap.log_setup_banner(setup_url)
 
 
 def create_app(*, serve_dashboard: bool = True) -> FastAPI:
@@ -159,16 +185,16 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     # ── Dashboard static files ───────────────────────────────────────
     # The bundled dashboard lives inside the package
     # (`awaithumans/dashboard_dist/`) so hatchling includes it in the
-    # wheel. `StaticFiles(html=True)` serves `index.html` for directory
-    # paths and exact-file matches; the `NotFoundFallback` wrapper adds
-    # SPA-style catch-all so deep-links like `/task?id=…` work after
-    # a full-page reload.
+    # wheel. `DashboardStaticFiles` extends Starlette's `StaticFiles`
+    # with a `<path>.html` fallback so Next's static-export output
+    # (`/setup` → `setup.html`, `/settings` → `settings.html`, etc.)
+    # resolves on direct URL hits, not just client-side navigation.
     if serve_dashboard:
         dashboard_dist = Path(__file__).parent.parent / "dashboard_dist"
         if dashboard_dist.exists():
             app.mount(
                 "/",
-                StaticFiles(directory=str(dashboard_dist), html=True),
+                DashboardStaticFiles(directory=str(dashboard_dist), html=True),
                 name="dashboard",
             )
         else:
