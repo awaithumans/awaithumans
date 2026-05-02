@@ -10,6 +10,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import Response
+from slack_sdk.errors import SlackApiError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.channels.slack.client import (
@@ -99,7 +100,11 @@ async def get_static_workspace() -> SlackStaticWorkspaceResponse:
 
     try:
         resp = await client.auth_test()
-    except Exception as exc:  # noqa: BLE001
+    except SlackApiError as exc:
+        # Specific catch — bare `except Exception` would mask network
+        # / runtime errors as "token rejected." Slack's own auth
+        # failures all surface as SlackApiError; anything else is a
+        # genuine bug and should propagate to the central handler.
         logger.warning("Slack auth.test failed for static token: %s", exc)
         raise HTTPException(
             status_code=502,
@@ -176,7 +181,8 @@ async def list_workspace_members(
 
     try:
         resp = await client.users_list()
-    except Exception as exc:  # noqa: BLE001
+    except SlackApiError as exc:
+        # Specific catch — see auth.test above for rationale.
         logger.warning(
             "Slack users.list failed for team_id=%s: %s", team_id, exc
         )

@@ -21,6 +21,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from slack_sdk.errors import SlackApiError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -364,8 +365,12 @@ async def _handle_claim(
                     claimed_by_display=claimer_display,
                 ),
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("chat.update after claim failed: %s", exc)
+        except SlackApiError as exc:
+            # Slack-side failures (lost permissions, message deleted,
+            # missing scope) are best-effort — the modal still opens
+            # for the claimer so they can complete the task. Anything
+            # NOT a SlackApiError is a real bug and should propagate.
+            logger.warning("chat.update after claim failed: %s", exc.response.get("error", exc))
 
     # Pop the modal for the claimer so they can complete it immediately.
     await _open_modal_for_task(
@@ -420,7 +425,11 @@ async def _ephemeral_reply(
                 )
                 resp.raise_for_status()
             return
-        except Exception as exc:  # noqa: BLE001
+        except httpx.HTTPError as exc:
+            # response_url is a transient signed URL Slack provides;
+            # network issues / 4xx after expiry / Slack-side hiccups
+            # are expected operational noise. We catch httpx errors
+            # specifically so genuine bugs (TypeError, etc.) propagate.
             logger.warning("ephemeral via response_url failed: %s", exc)
 
     if channel:
@@ -428,8 +437,14 @@ async def _ephemeral_reply(
             await client.chat_postEphemeral(
                 channel=channel, user=user_id, text=text
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("chat.postEphemeral failed: %s", exc)
+        except SlackApiError as exc:
+            # `not_in_channel` / `missing_scope` / token revoked all
+            # surface here; the route still completes successfully
+            # (the ephemeral was best-effort).
+            logger.warning(
+                "chat.postEphemeral failed: %s",
+                exc.response.get("error", exc),
+            )
 
 
 # ─── view_submission — complete the task ────────────────────────────────
