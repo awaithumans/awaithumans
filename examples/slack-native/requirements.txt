@@ -1,0 +1,10 @@
+# Run from this directory:
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+
+# In-tree install of awaithumans + the Claude verifier extra. The
+# verifier is optional but the example demonstrates NL-thread-reply
+# parsing when ANTHROPIC_API_KEY is set, which needs the verifier.
+# Post-launch users replace this with:
+#   awaithumans[verifier-claude]>=0.1.0
+-e ../../packages/python[verifier-claude]
