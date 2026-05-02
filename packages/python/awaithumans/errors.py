@@ -106,3 +106,75 @@ class MarketplaceNotAvailableError(AwaitHumansError):
             ),
             docs_url=f"{DOCS_ROADMAP_URL}#marketplace",
         )
+
+
+# ─── Runtime errors returned by the server ──────────────────────────────
+#
+# These mirror the TypeScript SDK's error classes one-for-one (see
+# packages/typescript-sdk/src/errors.ts). Cross-language parity is a
+# CLAUDE.md §7 hard rule — Python users `except TaskNotFoundError`,
+# TypeScript users `catch (e instanceof TaskNotFoundError)`, both see
+# the same wire `code` field, both can write transport-specific recovery
+# without conditionals on string codes.
+
+
+class TaskNotFoundError(AwaitHumansError):
+    def __init__(self, task_id: str) -> None:
+        super().__init__(
+            code="TASK_NOT_FOUND",
+            message=f"Task '{task_id}' not found on the server.",
+            hint=(
+                "The task may have been deleted or the server was restarted "
+                "with a fresh database."
+            ),
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-not-found",
+        )
+
+
+class TaskCancelledError(AwaitHumansError):
+    def __init__(self, task: str) -> None:
+        super().__init__(
+            code="TASK_CANCELLED",
+            message=f"Task '{task}' was cancelled.",
+            hint=(
+                "The task was cancelled by an admin or another agent before a "
+                "human completed it."
+            ),
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-cancelled",
+        )
+
+
+class TaskCreateError(AwaitHumansError):
+    def __init__(self, status: int, server_body: str) -> None:
+        super().__init__(
+            code="TASK_CREATE_FAILED",
+            message=f"Failed to create task on the server (HTTP {status}).",
+            hint=f"Server response: {server_body[:500]}",
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-create-failed",
+        )
+
+
+class PollError(AwaitHumansError):
+    def __init__(self, task_id: str, status: int, server_body: str) -> None:
+        super().__init__(
+            code="POLL_FAILED",
+            message=f"Failed to poll task '{task_id}' (HTTP {status}).",
+            hint=f"Server response: {server_body[:500]}",
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#poll-failed",
+        )
+
+
+class ServerUnreachableError(AwaitHumansError):
+    def __init__(self, server_url: str, cause: object) -> None:
+        super().__init__(
+            code="SERVER_UNREACHABLE",
+            message=f"Could not reach the awaithumans server at {server_url}.",
+            hint=(
+                "Check:\n"
+                "  1. Is the server running? (awaithumans dev)\n"
+                "  2. Is the URL correct? Override with `server_url=` or "
+                "AWAITHUMANS_URL.\n"
+                f"  3. Underlying error: {cause!s}"
+            ),
+            docs_url=f"{DOCS_TROUBLESHOOTING_URL}#server-unreachable",
+        )
