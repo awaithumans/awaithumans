@@ -1,0 +1,10 @@
+# Run from the repo root with:
+#   pip install -r examples/langgraph/requirements.txt
+# Or in a fresh venv:
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r examples/langgraph/requirements.txt
+
+# Local dev: install the in-tree adapter from this checkout. Pre-PyPI
+# this gets you the LangGraph adapter import. Post-launch users can
+# replace this line with `awaithumans[langgraph]>=0.1.0`.
+-e ../../packages/python[langgraph]
