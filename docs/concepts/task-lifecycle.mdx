@@ -1,0 +1,105 @@
+---
+title: "Task lifecycle"
+description: "The state machine every task moves through, from creation to terminal status."
+---
+
+A task is a row in the awaithumans database. It moves through a small state machine driven by three actors: the **agent** (creates / cancels), the **human** (completes), and the **scheduler** (times out).
+
+```
+                 ┌─────────────┐
+                 │   CREATED   │  agent called await_human()
+                 └──────┬──────┘
+                        │ notify channels (slack, email, …)
+                        ▼
+                 ┌─────────────┐
+                 │  NOTIFIED   │  message posted, awaiting human
+                 └──────┬──────┘
+                        │ human opens in dashboard / slack / email
+                        ▼
+                 ┌─────────────┐
+                 │ IN_PROGRESS │  (optional intermediate)
+                 └──────┬──────┘
+                        │ human submits
+                        ▼
+              ┌──────────┴──────────┐
+              │                     │
+              ▼ verifier passes     ▼ verifier rejects
+       ┌──────────────┐      ┌─────────────┐
+       │  COMPLETED   │      │  REJECTED   │  ← non-terminal
+       └──────────────┘      └──────┬──────┘     (human gets to retry)
+        terminal                    │
+                                    │ exhausts max_attempts
+                                    ▼
+                         ┌─────────────────────────┐
+                         │ VERIFICATION_EXHAUSTED  │
+                         └─────────────────────────┘
+                                  terminal
+
+
+Side branches:
+
+  any non-terminal status ──▶  TIMED_OUT   (scheduler hit `timeout_at`)
+  any non-terminal status ──▶  CANCELLED   (agent or operator cancelled)
+```
+
+## Statuses
+
+| Status | Terminal? | Meaning |
+|---|---|---|
+| `CREATED` | no | Just inserted; channels haven't fired yet. |
+| `NOTIFIED` | no | At least one channel delivered the task. |
+| `IN_PROGRESS` | no | Human opened the task (best-effort tracking). |
+| `SUBMITTED` | no | Human clicked submit; verifier (if any) is running. |
+| `VERIFIED` | no | Verifier passed; commit imminent. |
+| `REJECTED` | no | Verifier rejected this attempt. Human can resubmit. |
+| `COMPLETED` | **yes** | Final response stored; agent unblocked. |
+| `TIMED_OUT` | **yes** | Scheduler fired `timeout_at` before completion. |
+| `CANCELLED` | **yes** | Agent or operator cancelled. |
+| `VERIFICATION_EXHAUSTED` | **yes** | Out of `max_attempts`; agent gets a typed error. |
+
+The "terminal" column matters: tasks in non-terminal statuses still answer to long-polling agents and dashboard refreshes; terminal statuses unblock the agent immediately.
+
+## What the agent sees
+
+The SDK's `await_human()` long-polls until the task is terminal, then maps the status to a typed return / exception:
+
+```python
+try:
+    decision = await_human_sync(...)        # blocks until terminal
+    # status was COMPLETED → decision is the typed response
+except TaskTimeoutError:
+    # status was TIMED_OUT
+except TaskCancelledError:
+    # status was CANCELLED
+except VerificationExhaustedError:
+    # status was VERIFICATION_EXHAUSTED
+```
+
+Same shape in TypeScript with `awaitHuman` and `instanceof` checks.
+
+## What the dashboard shows
+
+Each status renders with a distinct badge color so an operator scanning the queue sees at a glance which tasks need attention. `REJECTED` tasks (non-terminal but failed) get a yellow "needs attention" treatment so a reviewer doesn't think the verifier silently swallowed their submission.
+
+## Audit trail
+
+Every status transition writes a row to `audit_entries` with:
+
+- `from_status` → `to_status`
+- `action` (`created`, `completed`, `verified`, `rejected`, `timed_out`, `cancelled`)
+- `actor_type` (`agent`, `human`, `system`)
+- `actor_email` (when human-driven)
+- `channel` (where the action happened: `dashboard`, `slack`, `email`)
+- `extra_data` (response keys, verifier reason, etc.)
+
+The dashboard renders the trail at `/task/{id}/audit`. Operators use it to debug "what happened to this task" without joining tables.
+
+## Why REJECTED is non-terminal
+
+If the verifier rejects an attempt and we marked the task terminal, the human couldn't fix their answer. Instead, REJECTED keeps the task active, the verifier reason is shown to the reviewer ("notes contradict decision"), and they get another shot. The cycle ends when either:
+
+- A submission passes the verifier → `COMPLETED`
+- `max_attempts` is exhausted → `VERIFICATION_EXHAUSTED` (terminal)
+- Timeout fires → `TIMED_OUT` (terminal)
+
+This matches Stripe's idempotency-with-retry model: safe to retry, eventually settles.

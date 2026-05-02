@@ -1,0 +1,141 @@
+---
+title: "Verifier"
+description: "AI quality-check + NL parsing for human responses. One LLM call does both jobs."
+---
+
+The verifier runs server-side after a human submits, before the task lands in `COMPLETED`. It does two things in one LLM call:
+
+1. **Quality check** — was the response acceptable per your `instructions`?
+2. **NL parsing** (optional) — if the human replied in free text (Slack thread, email body), extract structured data into the response schema.
+
+If the verifier rejects, the task goes to `REJECTED` (non-terminal), the reason is shown to the reviewer, and they get to retry. After `max_attempts`, it's `VERIFICATION_EXHAUSTED` (terminal) and the agent gets a typed error.
+
+## Providers
+
+Built-in:
+
+| Provider | Install | Default model |
+|---|---|---|
+| `claude` | `pip install "awaithumans[verifier-claude]"` | `claude-sonnet-4-5` |
+| `openai` | `pip install "awaithumans[verifier-openai]"` | `gpt-4o-2024-11-20` |
+| `gemini` | `pip install "awaithumans[verifier-gemini]"` | `gemini-2.0-flash` |
+| `azure` | `pip install "awaithumans[verifier-azure]"` | (operator-supplied) |
+
+Each provider's API key reads from an env var on the awaithumans **server** (NOT the agent process). Defaults: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_API_KEY`. Override via `api_key_env=` in the config.
+
+## Quickstart
+
+```python
+from awaithumans import await_human_sync
+from awaithumans.verifiers.claude import claude_verifier
+
+decision = await_human_sync(
+    task="Approve $250 refund?",
+    payload_schema=RefundPayload,
+    payload=RefundPayload(amount_usd=250, customer_id="cus_demo"),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
+    verifier=claude_verifier(
+        instructions=(
+            "Reject if the notes contradict the decision (e.g. notes say "
+            "'looks fraudulent' but approved=true). For amounts over $1000, "
+            "require non-empty notes."
+        ),
+        max_attempts=3,
+    ),
+)
+```
+
+If the human submits with empty notes on a $1500 refund, the verifier rejects with the reason "Amount over $1000 requires notes." The dashboard shows the reason; the reviewer fills the field and resubmits.
+
+## Other providers
+
+```python
+from awaithumans.verifiers.openai import openai_verifier
+from awaithumans.verifiers.gemini import gemini_verifier
+from awaithumans.verifiers.azure_openai import azure_verifier
+
+# OpenAI
+verifier = openai_verifier(instructions="...", model="gpt-4o-2024-11-20")
+
+# Gemini
+verifier = gemini_verifier(instructions="...", model="gemini-2.0-flash")
+
+# Azure OpenAI (deployment-name addressing)
+verifier = azure_verifier(
+    instructions="...",
+    deployment="my-gpt4-deployment",
+    endpoint_env="AZURE_OPENAI_ENDPOINT",
+)
+```
+
+All four return a `VerifierConfig` you pass to `await_human(verifier=...)`.
+
+## NL parsing
+
+When the human replies in free text (Slack thread reply, email body), the verifier extracts structured data into the response schema. No code changes — the server detects raw text vs. structured form, runs the verifier in NL-parsing mode.
+
+Operator's `instructions` should anticipate the cases:
+
+```python
+verifier=claude_verifier(
+    instructions=(
+        "If the human's NL reply contains 'approve', 'yes', 'go ahead', "
+        "or similar affirmative phrasing, set approved=true. If 'reject', "
+        "'no', 'denied', or similar, set approved=false. If ambiguous, "
+        "reject with: 'Please answer with one of: approve, reject.'"
+    ),
+)
+```
+
+A reviewer can now reply to the Slack DM with "approve, looks legit" and the verifier turns that into `{approved: true, notes: "looks legit"}`.
+
+## redact_payload
+
+If the task's `redact_payload=True`, the verifier is **skipped entirely**. The operator marked the payload sensitive; we don't ship it to a third-party LLM regardless of verifier config.
+
+```python
+decision = await_human_sync(
+    # ...
+    payload=KYCPayload(ssn="123-45-6789", ...),
+    redact_payload=True,    # never sent to the verifier
+    verifier=claude_verifier(...),   # silently ignored
+)
+```
+
+The task still works — the human reviews via dashboard, submits, the response is stored. Just no AI verification.
+
+## Error handling
+
+Provider failures (vendor outage, missing API key, network blip) propagate as typed errors WITHOUT consuming a `max_attempts` slot. The human gets a fresh shot once the operator fixes config:
+
+```
+HTTP 500 VERIFIER_API_KEY_MISSING
+  → operator: set ANTHROPIC_API_KEY on the server
+HTTP 500 VERIFIER_PROVIDER_UNAVAILABLE
+  → operator: pip install "awaithumans[verifier-claude]"
+HTTP 502 VERIFIER_PROVIDER_ERROR
+  → vendor blip; submission will work on retry
+HTTP 422 VERIFIER_PROVIDER_UNKNOWN
+  → typo in config.provider; supported list in error message
+HTTP 422 VERIFIER_CONFIG_INVALID
+  → schema mismatch; older SDK or hand-written config
+```
+
+Each error has a docs URL the dashboard renders for the operator.
+
+## Best practices
+
+- **Keep instructions narrow.** "Reject if X" / "Require Y when Z" — not "be a good reviewer." Narrow rules are easier to debug when the verifier rejects something you didn't expect.
+- **Set `max_attempts` low.** Default is 3. For high-stakes decisions, lower (1) so a single rejection fails closed rather than letting the human grind through retries.
+- **Test the prompt.** Run a few representative submissions through it before relying on the verifier in production. The dashboard's audit trail records every verifier verdict so you can inspect them.
+
+## Cost
+
+The verifier fires on every submission. At ~1k input tokens + ~100 output per call:
+
+- Claude Sonnet: ~$0.005 / call
+- GPT-4o: ~$0.01 / call
+- Gemini 2.0 Flash: ~$0.0005 / call
+
+For most workloads this is negligible. For very high-volume queues, consider `gemini-2.0-flash`.

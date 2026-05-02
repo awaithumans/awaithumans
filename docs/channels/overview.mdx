@@ -1,0 +1,65 @@
+---
+title: "Channels"
+description: "How a task gets delivered to a human. Slack, email, dashboard."
+---
+
+A channel is "where does the human find out about the task and respond?" awaithumans ships with three:
+
+| Channel | Inbox | Response |
+|---|---|---|
+| [Dashboard](#dashboard) | `/queue` page (always on) | Form |
+| [Slack](/channels/slack) | Channel post or DM | Block Kit modal OR NL thread reply |
+| [Email](/channels/email) | Inbox message | Action buttons OR magic-link confirmation |
+
+You activate channels per-task via `notify=`:
+
+```python
+await_human_sync(
+    task="Approve refund?",
+    # ...
+    notify=[
+        "slack:#approvals",            # post to a channel
+        "email:reviews@acme.com",      # email a person
+    ],
+)
+```
+
+The dashboard always sees the task regardless of `notify=` — the queue is the operator's source of truth.
+
+## Notify-string format
+
+`notify=` is a list of strings, each prefixed by the channel:
+
+| Prefix | Example | Meaning |
+|---|---|---|
+| `slack:#` | `slack:#approvals` | Post to Slack channel (broadcast — first-claim wins) |
+| `slack:@` | `slack:@U01ABC...` | DM the Slack user (direct assignment) |
+| `email:` | `email:alice@acme.com` | Email this address |
+| `email+id:` | `email+acme:reviews@acme.com` | Email via the named sender identity |
+
+Multiple notifications fire in parallel — slow Slack API calls don't block email.
+
+## Dashboard
+
+Always on. Operators log in at `/login`, see their task queue, click in to fill the form. The dashboard reads the same task data the SDK created — there's nothing channel-specific about it.
+
+By default a non-operator user sees only tasks routed to them. Operators see everything.
+
+```
+http://localhost:3001/queue        ← operator's task queue
+http://localhost:3001/task?id=...  ← single task review form
+http://localhost:3001/audit?...    ← audit trail
+```
+
+## Why not webhooks-as-channels?
+
+We deliberately don't expose "raw webhook" as a channel — `notify=["webhook:https://..."]` isn't a thing. The reason: the channel layer owns the human-facing UI generation. A webhook destination has no UI to render; you'd be implementing one ad-hoc on the receiving end. If you want webhook delivery for a system (not a human), use the `callback_url=` parameter, which fires on every terminal status transition. That's how the [Temporal](/adapters/temporal) and LangGraph adapters get their signals.
+
+## Adding a custom channel
+
+Channels live in `server/channels/`. A channel module exports:
+
+- A `notify_task(task_id, task_title, notify, form_definition, ...)` function — called from `BackgroundTasks` after task creation
+- A webhook route under `/api/channels/<your-channel>/...` that handles inbound messages
+
+See `server/channels/slack/` and `server/channels/email/` for the canonical examples. New channels are a Phase-2 community contribution surface — see [the contribution guide](https://github.com/awaithumans/awaithumans/blob/main/CONTRIBUTING.md).

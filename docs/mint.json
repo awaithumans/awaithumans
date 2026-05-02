@@ -1,0 +1,124 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Await Humans",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#00E676",
+    "light": "#33EE99",
+    "dark": "#00B25A",
+    "background": {
+      "dark": "#0A0A0A",
+      "light": "#F5F5F5"
+    },
+    "anchors": {
+      "from": "#00E676",
+      "to": "#33EE99"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/awaithumans/awaithumans"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get started",
+    "url": "/quickstart"
+  },
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/awaithumans/awaithumans"
+    },
+    {
+      "name": "Discord",
+      "icon": "discord",
+      "url": "https://discord.gg/awaithumans"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Concepts",
+      "pages": [
+        "concepts/task-lifecycle",
+        "concepts/four-buckets",
+        "concepts/three-walls",
+        "concepts/idempotency"
+      ]
+    },
+    {
+      "group": "Adapters",
+      "pages": [
+        "adapters/temporal",
+        "adapters/langgraph",
+        "adapters/verifier"
+      ]
+    },
+    {
+      "group": "Channels",
+      "pages": [
+        "channels/overview",
+        "channels/slack",
+        "channels/email"
+      ]
+    },
+    {
+      "group": "Routing",
+      "pages": [
+        "routing/overview"
+      ]
+    },
+    {
+      "group": "Self-hosting",
+      "pages": [
+        "self-hosting/docker-compose",
+        "self-hosting/configuration",
+        "self-hosting/security"
+      ]
+    },
+    {
+      "group": "SDK reference",
+      "pages": [
+        "sdk/python",
+        "sdk/typescript"
+      ]
+    },
+    {
+      "group": "API reference",
+      "pages": [
+        "api/overview",
+        "api/create-task",
+        "api/poll-task",
+        "api/complete-task"
+      ]
+    },
+    {
+      "group": "Help",
+      "pages": [
+        "troubleshooting"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/awaithumans/awaithumans",
+    "x": "https://x.com/awaithumans"
+  },
+  "metadata": {
+    "og:site_name": "Await Humans",
+    "og:type": "website",
+    "twitter:card": "summary_large_image",
+    "twitter:site": "@awaithumans"
+  }
+}

@@ -1,0 +1,159 @@
+---
+title: "API overview"
+description: "REST API reference. Most users go through the SDK; this page is for edge cases."
+---
+
+The awaithumans server exposes a small REST API. Most users never touch it directly — the [Python](/sdk/python) and [TypeScript](/sdk/typescript) SDKs wrap every endpoint. This reference is for:
+
+- Operators debugging an issue
+- Building a non-SDK client (Go, Rust, etc.)
+- Wiring custom integrations
+
+## Base URL
+
+```
+http://localhost:3001/api      # dev
+https://reviews.acme.com/api   # production
+```
+
+All endpoints under `/api/`. Static dashboard files live at `/`, `/setup`, etc. — those aren't part of the REST API.
+
+## Authentication
+
+Two auth modes:
+
+**Admin bearer token** — for agents / automation:
+
+```
+Authorization: Bearer <AWAITHUMANS_ADMIN_API_TOKEN>
+```
+
+**Session cookie** — for the dashboard (set by `POST /api/auth/login`):
+
+```
+Cookie: awaithumans_session=<signed-cookie-value>
+```
+
+Public endpoints (no auth required): `/api/auth/*`, `/api/setup/*`, `/api/health`, channel webhook receivers (`/api/channels/slack/interactions`, `/api/channels/email/action/*`, etc.) — these self-authenticate via signed payloads.
+
+## Content types
+
+- Request bodies: `application/json` (except channel webhooks, which use `application/x-www-form-urlencoded` per their respective vendor specs)
+- Response bodies: `application/json`
+
+## Error format
+
+Every error response has the shape:
+
+```json
+{
+  "error_code": "TASK_NOT_FOUND",
+  "message": "Task 'tsk_abc' not found.",
+  "docs": "https://awaithumans.dev/docs/troubleshooting#task-not-found"
+}
+```
+
+The `error_code` is stable across versions; the message and docs URL may change.
+
+| Status | Meaning |
+|---|---|
+| 400 | Malformed request body |
+| 401 | Auth required or session invalid |
+| 403 | Authorized but not authorized (e.g. non-operator hitting admin endpoint) |
+| 404 | Task / user / identity not found |
+| 409 | Idempotency conflict, terminal state, or already-completed |
+| 410 | Magic-link token already consumed |
+| 422 | Validation error (schema mismatch, malformed config) |
+| 429 | Rate limit hit |
+| 500 | Server-side error (verifier provider unavailable, etc.) |
+| 502 | Vendor outage (Slack, OpenAI, etc.) |
+| 503 | Service not configured (e.g. Slack OAuth without credentials) |
+
+## OpenAPI spec
+
+Interactive OpenAPI docs at `/api/docs` (FastAPI's Swagger UI). The raw spec is at `/api/openapi.json`.
+
+For SDK code-gen against your own clients:
+
+```bash
+curl http://localhost:3001/api/openapi.json > openapi.json
+# Then feed to openapi-generator-cli or similar.
+```
+
+## Rate limits
+
+| Endpoint | Limit | Window | Key |
+|---|---|---|---|
+| `POST /api/auth/login` | 10 / 5min / IP | 5 min | IP |
+| `POST /api/auth/login` | 20 / 5min / email | 5 min | Email |
+| `POST /api/setup/operator` | 30 / 5min / IP | 5 min | IP |
+
+No rate limit on task routes — the bearer token holder is implicitly trusted. If you need to rate-limit your own agent's task creation, do it in your code (Stripe-style outbox pattern recommended).
+
+## Endpoints by resource
+
+### Tasks (admin / operator / assignee)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/tasks` | [Create a task](/api/create-task). Admin / operator only. |
+| `GET` | `/api/tasks` | List tasks. Operator: all. Assignee: scoped to own. |
+| `GET` | `/api/tasks/{id}` | [Get one task](/api/poll-task). Operator / admin / assignee. |
+| `POST` | `/api/tasks/{id}/complete` | [Submit response](/api/complete-task). Operator / admin / assignee. |
+| `POST` | `/api/tasks/{id}/cancel` | Cancel. Operator / admin only. |
+| `GET` | `/api/tasks/{id}/poll` | Long-poll until terminal. Operator / admin / assignee. |
+| `GET` | `/api/tasks/{id}/audit` | Audit trail. Operator / admin only. |
+| `DELETE` | `/api/tasks/{id}` | Hard delete. Operator / admin only. |
+
+### Auth
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/auth/login` | Email + password → session cookie. Public. |
+| `POST` | `/api/auth/logout` | Clear session cookie. |
+| `GET` | `/api/auth/me` | Session introspection. |
+
+### Setup (first-run bootstrap)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/setup/status` | Is first-run setup needed? |
+| `POST` | `/api/setup/operator` | Create first operator. One-shot. |
+
+### Users (admin / operator)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/users` | List directory users. |
+| `POST` | `/api/users` | Create. |
+| `GET` | `/api/users/{id}` | Get one. |
+| `PATCH` | `/api/users/{id}` | Update. |
+| `DELETE` | `/api/users/{id}` | Soft-delete (sets `active=false`). |
+
+### Channels
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/channels/slack/interactions` | Slack webhook (signed). |
+| `GET/POST` | `/api/channels/slack/oauth/*` | OAuth install flow. |
+| `GET/POST` | `/api/channels/slack/installations*` | OAuth install CRUD (admin). |
+| `GET/POST` | `/api/channels/email/identities*` | Sender identity CRUD (admin). |
+| `GET/POST` | `/api/channels/email/action/{token}` | Magic-link action page (signed). |
+
+### Stats
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/stats` | Task counts by status, completion rate, last 30d. Operator / admin. |
+
+### Health
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/health` | Readiness probe. Public. |
+
+## Cross-version stability
+
+- The `/api/tasks/*` shape is stable for v1.x — breaking changes are a v2 event.
+- Error codes (`error_code` field) are stable across all v0.x.
+- The dashboard and channel webhook routes are internal — third-party clients should NOT depend on their shapes.

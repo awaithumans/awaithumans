@@ -1,0 +1,160 @@
+---
+title: "Temporal"
+description: "Park a Temporal workflow for hours/days while waiting for a human. Zero compute idle. Survives worker restarts."
+---
+
+The Temporal adapter is signal-based. Inside a workflow, `await_human()` registers a signal handler and `workflow.wait_condition()` parks the workflow. Outside, your web server receives the awaithumans completion webhook and signals the workflow back to life.
+
+```
+┌──────────────────────────┐  POST /api/tasks   ┌──────────────────────┐
+│ Temporal worker          │ ──────────────────► awaithumans server     │
+│  ─ workflow await_human()│                    │                      │
+│    parks                 │                    │  notify human ──►    │
+│                          │   webhook (signed) │  human completes ──► │
+│                          │ ◄──────────────────│                      │
+└─────┬────────────────────┘                    └──────────────────────┘
+      │ Temporal signal
+      │ (via dispatch_signal)
+┌─────▼────────────────┐
+│ FastAPI receiver     │
+│ (your web server)    │
+└──────────────────────┘
+```
+
+## Install
+
+```bash
+pip install "awaithumans[temporal]"
+```
+
+## Workflow side
+
+```python
+from temporalio import workflow
+
+with workflow.unsafe.imports_passed_through():
+    from awaithumans.adapters.temporal import await_human
+
+
+@workflow.defn
+class RefundWorkflow:
+    @workflow.run
+    async def run(self, amount: int, customer_id: str) -> dict:
+        decision = await await_human(
+            task=f"Approve ${amount} refund for {customer_id}?",
+            payload_schema=RefundPayload,
+            payload=RefundPayload(amount_usd=amount, customer_id=customer_id),
+            response_schema=RefundDecision,
+            timeout_seconds=15 * 60,
+            callback_url=callback_url_for_workflow(workflow.info().workflow_id),
+            server_url="http://localhost:3001",
+            api_key=os.environ.get("AWAITHUMANS_ADMIN_API_TOKEN"),
+        )
+
+        if not decision.approved:
+            return {"refund_id": None, "outcome": "rejected"}
+
+        refund_id = await workflow.execute_activity(
+            process_refund, ..., start_to_close_timeout=timedelta(seconds=30)
+        )
+        return {"refund_id": refund_id, "outcome": "approved"}
+```
+
+The `workflow.unsafe.imports_passed_through()` context tells Temporal's sandbox the import is safe — required because the awaithumans adapter module imports things the sandbox would otherwise block.
+
+## Web-server side
+
+Your web server hosts the callback receiver. The awaithumans server POSTs there when the human completes; you signal the workflow back.
+
+```python
+# callback_server.py — runs alongside your Temporal worker, separate process
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request
+from temporalio.client import Client
+
+from awaithumans.adapters.temporal import dispatch_signal
+
+_client: Client | None = None
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    global _client
+    _client = await Client.connect("localhost:7233")
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.post("/awaithumans/callback")
+async def callback(request: Request, wf: str):
+    body = await request.body()
+    sig = request.headers.get("x-awaithumans-signature")
+
+    try:
+        await dispatch_signal(
+            temporal_client=_client,
+            workflow_id=wf,
+            body=body,
+            signature_header=sig,
+        )
+    except PermissionError:
+        raise HTTPException(401, "bad signature")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    return {"ok": True}
+```
+
+`dispatch_signal()` does the security-critical bits (HMAC verify, payload parse, signal routing). The route is just web-framework glue.
+
+## Constructing `callback_url`
+
+The workflow ID has to round-trip through the awaithumans server. The simplest pattern: bake it into the callback URL as a query param.
+
+```python
+def callback_url_for_workflow(workflow_id: str) -> str:
+    base = os.environ.get("AWAITHUMANS_CALLBACK_BASE", "http://localhost:8765")
+    return f"{base.rstrip('/')}/awaithumans/callback?wf={workflow_id}"
+```
+
+For local dev, expose the receiver via a tunnel so the awaithumans server can reach it:
+
+```bash
+ngrok http 8765
+export AWAITHUMANS_CALLBACK_BASE=https://<your-ngrok-id>.ngrok.io
+```
+
+## Error contract
+
+The adapter maps webhook status to typed Python exceptions:
+
+| Webhook status | Exception |
+|---|---|
+| `completed` | (return validated response) |
+| `timed_out` | `TaskTimeoutError` |
+| `cancelled` | `TaskCancelledError` |
+| `verification_exhausted` | `VerificationExhaustedError` |
+
+Catch them in the workflow body to recover (retry with a different reviewer, escalate, etc.).
+
+## Why this works under failure
+
+- **Worker dies during the await** — Temporal restarts the workflow; `await_human()` re-registers the signal handler with the same idempotency key. The awaithumans server returns the existing task (idempotency dedup). When the human eventually completes, the signal fires on the live worker.
+- **Callback server is down when the human submits** — the awaithumans server's outbound webhook fails-loudly in its logs but doesn't retry. The workflow times out at `timeout_seconds`, raises `TaskTimeoutError`, and the operator sees the abandoned task in the dashboard.
+- **awaithumans server restarts** — tasks are persisted; on restart the timeout scheduler resumes and the dashboard reconnects.
+
+## End-to-end example
+
+The `examples/temporal/` directory in the repo is runnable on a laptop in three terminal windows. See [the README in that folder](https://github.com/awaithumans/awaithumans/tree/main/examples/temporal) for the full setup.
+
+## Cross-language
+
+The TypeScript adapter at `awaithumans/temporal` produces the same wire format. A Python workflow can have its callback handler resume from a TypeScript web server and vice versa — the HMAC derivation is identical (HKDF over PAYLOAD_KEY with the same salt + info bytes).
+
+## Common gotchas
+
+- **`AWAITHUMANS_PAYLOAD_KEY` mismatch** — the HMAC signing key derives from this. If the awaithumans server and the callback receiver have different keys, signatures never verify. Use the same value on both processes.
+- **`callback_url` not reachable** — the awaithumans server logs show `Webhook delivery failed task=… url=…: …`. Most often a tunnel/firewall issue.
+- **Duplicate idempotency key** — two `await_human()` calls in the same workflow with the same `(task, payload)` get the same key by default. Pass `idempotency_key=` explicitly to disambiguate. See [Idempotency](/concepts/idempotency).

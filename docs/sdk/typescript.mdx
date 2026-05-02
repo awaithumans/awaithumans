@@ -1,0 +1,160 @@
+---
+title: "TypeScript SDK"
+description: "Reference for the awaithumans npm package."
+---
+
+```bash
+npm install awaithumans
+# or
+pnpm add awaithumans
+# or
+yarn add awaithumans
+```
+
+The base package has a single dep (`zod`) and works on Node, Bun, Deno, and edge runtimes — no `node:*` imports.
+
+## awaitHuman
+
+The primitive:
+
+```ts
+import { awaitHuman } from "awaithumans";
+import { z } from "zod";
+
+const RefundPayload = z.object({
+  amount_usd: z.number(),
+  customer_id: z.string(),
+});
+
+const RefundDecision = z.object({
+  approved: z.boolean(),
+  notes: z.string().optional(),
+});
+
+const decision = await awaitHuman({
+  task: "Approve refund?",
+  payloadSchema: RefundPayload,
+  payload: { amount_usd: 250, customer_id: "cus_demo" },
+  responseSchema: RefundDecision,
+  timeoutMs: 15 * 60 * 1000,
+});
+
+if (decision.approved) {
+  // decision is typed as { approved: boolean, notes?: string }
+}
+```
+
+### Options
+
+| Option | Type | Required | Description |
+|---|---|---|---|
+| `task` | `string` | yes | Human-readable task description. |
+| `payloadSchema` | `ZodType` | yes | Drives the UI the human sees. |
+| `payload` | matches `payloadSchema` | yes | Data sent to the human. |
+| `responseSchema` | `ZodType` | yes | Drives the response form. |
+| `timeoutMs` | `number` | yes | Min 60,000 (1 min), max 2,592,000,000 (30 days). |
+| `assignTo` | `AssignTo \| undefined` | no | Routing target. See [Routing](/routing/overview). |
+| `notify` | `string[] \| undefined` | no | Channel destinations. |
+| `verifier` | `VerifierConfig \| undefined` | no | Server-side LLM verification. |
+| `idempotencyKey` | `string \| undefined` | no | Default: deterministic from task + payload. |
+| `redactPayload` | `boolean \| undefined` | no | Default `false`. |
+| `serverUrl` | `string \| undefined` | no | Override `AWAITHUMANS_URL`. |
+| `apiKey` | `string \| undefined` | no | Override `AWAITHUMANS_ADMIN_API_TOKEN`. |
+
+### Returns
+
+`Promise<TResponse>` — typed against `responseSchema`. Zod-validated. Validation failure throws `SchemaValidationError`.
+
+### Throws
+
+| Error | When |
+|---|---|
+| `TaskTimeoutError` | Task hit timeout. |
+| `TaskCancelledError` | Cancelled by agent or operator. |
+| `VerificationExhaustedError` | Verifier rejected `maxAttempts` times. |
+| `SchemaValidationError` | Response didn't match schema. |
+| `TaskNotFoundError` | Task disappeared. |
+| `TaskCreateError` | Server rejected create. |
+| `PollError` | Long-poll non-200. |
+| `ServerUnreachableError` | Connection failure. |
+| `MarketplaceNotAvailableError` | Reserved for Phase 3. |
+
+All extend `AwaitHumansError`. Use `instanceof` to discriminate:
+
+```ts
+import {
+  awaitHuman,
+  TaskTimeoutError,
+  TaskCancelledError,
+} from "awaithumans";
+
+try {
+  const decision = await awaitHuman({ ... });
+} catch (e) {
+  if (e instanceof TaskTimeoutError) { ... }
+  else if (e instanceof TaskCancelledError) { ... }
+  else throw e;
+}
+```
+
+## Adapters
+
+### Temporal
+
+Subpath export:
+
+```ts
+import { awaitHuman } from "awaithumans/temporal";       // workflow side
+import { dispatchSignal } from "awaithumans/temporal";   // web server side
+```
+
+Requires peer deps:
+
+```bash
+npm install @temporalio/workflow @temporalio/client
+```
+
+See [Temporal](/adapters/temporal).
+
+### LangGraph
+
+```ts
+import { awaitHuman } from "awaithumans/langgraph";       // node side
+import { driveHumanLoop } from "awaithumans/langgraph";   // driver side
+```
+
+Requires peer dep:
+
+```bash
+npm install @langchain/langgraph
+```
+
+See [LangGraph](/adapters/langgraph).
+
+## Cross-language parity
+
+The TS SDK and the Python SDK speak the identical wire format and produce identical signed webhook signatures (HKDF parameters locked, asserted in cross-language tests). A Python workflow can hand off webhooks to a TS receiver and vice versa without code changes.
+
+## Configuration
+
+Reads in order (first match wins):
+
+1. Call args (`serverUrl`, `apiKey`)
+2. Environment variables — `globalThis.process?.env?.AWAITHUMANS_URL` / `AWAITHUMANS_ADMIN_API_TOKEN`
+3. Defaults (`http://localhost:3001`, no token)
+
+In edge runtimes without `process.env`, only call args + defaults are read. Set explicitly for production deployments to Cloudflare Workers, Deno Deploy, etc.
+
+## Type narrowing
+
+Zod's `z.infer<typeof Schema>` gives you the static type:
+
+```ts
+const Schema = z.object({ approved: z.boolean() });
+type Decision = z.infer<typeof Schema>;
+
+const decision: Decision = await awaitHuman({ ... responseSchema: Schema });
+//    ^? { approved: boolean }
+```
+
+The function's generic inference picks this up automatically; you rarely need to write the type by hand.

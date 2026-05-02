@@ -1,0 +1,163 @@
+---
+title: "Docker Compose"
+description: "Production deployment in one command. Server + Postgres + dashboard."
+---
+
+awaithumans is designed to be self-hostable in one command. The reference Docker Compose file boots:
+
+- The awaithumans server (with bundled dashboard)
+- Postgres for task storage
+- Health-check endpoints
+
+```bash
+docker compose up
+```
+
+Once up, point your DNS at the host. Done.
+
+## docker-compose.yml
+
+```yaml
+services:
+  server:
+    image: ghcr.io/awaithumans/awaithumans:latest
+    ports:
+      - "3001:3001"
+    environment:
+      AWAITHUMANS_PUBLIC_URL: https://reviews.your-company.com
+      AWAITHUMANS_DATABASE_URL: postgresql://awaithumans:${POSTGRES_PASSWORD}@db:5432/awaithumans
+      AWAITHUMANS_PAYLOAD_KEY: ${PAYLOAD_KEY}
+      AWAITHUMANS_ADMIN_API_TOKEN: ${ADMIN_API_TOKEN}
+      AWAITHUMANS_ENVIRONMENT: production
+
+      # Slack (static-token mode shown — see /channels/slack for OAuth)
+      AWAITHUMANS_SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      AWAITHUMANS_SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
+
+      # Email (Resend transport shown — see /channels/email for SMTP)
+      AWAITHUMANS_EMAIL_TRANSPORT: resend
+      AWAITHUMANS_EMAIL_FROM: notifications@your-company.com
+      AWAITHUMANS_EMAIL_FROM_NAME: "Acme Reviews"
+      AWAITHUMANS_RESEND_KEY: ${RESEND_KEY}
+
+      # Verifier (optional)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+
+      # Dashboard CORS — locked to your operator's domain
+      AWAITHUMANS_CORS_ORIGINS: https://reviews.your-company.com
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: awaithumans
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: awaithumans
+    volumes:
+      - awaithumans-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U awaithumans"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  awaithumans-data:
+```
+
+## Generate the secrets
+
+Two secrets you need to set yourself: `PAYLOAD_KEY` (the encryption root) and `ADMIN_API_TOKEN` (the bearer token your agent uses).
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+# tlR5UCElY4QIjThpO4TlL1GzTzXrQQJYa3BtvZ0FOBQ      ← PAYLOAD_KEY
+
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+# YrKxVj9FOaEP2UnVQWf1kT87Ld6sPmA9XgB3ZNzuIqs      ← ADMIN_API_TOKEN
+```
+
+Store them somewhere your container orchestrator can read. Both must NEVER be regenerated after first deploy:
+
+- Rotating `PAYLOAD_KEY` invalidates every session cookie + magic-link token + encrypted Slack OAuth row.
+- Rotating `ADMIN_API_TOKEN` breaks every running agent until you redeploy them with the new value.
+
+If you must rotate, do it during a planned maintenance window with a coordinated redeploy.
+
+## First-run setup
+
+On first boot the server detects an empty users table and prints a one-shot setup URL to the logs:
+
+```
+✓ Open the dashboard at:
+    https://reviews.your-company.com/setup?token=<32-byte-token>
+  (one-shot setup link — paste into your browser)
+```
+
+Open it within an hour, create your operator account. After that, the URL is dead — subsequent setups require an admin to add users via the dashboard.
+
+For automation: hit `POST /api/setup/operator` with the token + operator credentials in JSON. See [/api/overview](/api/overview).
+
+## TLS / HTTPS
+
+Production REQUIRES HTTPS (`AWAITHUMANS_PUBLIC_URL` starting with `https://`):
+
+- Slack OAuth tokens transit via redirect URLs
+- Session cookies are `Secure` flagged when `PUBLIC_URL` is HTTPS
+- Magic-link tokens go in URLs that mail clients log
+
+The recommended pattern is a reverse proxy (Caddy / nginx / traefik) terminating TLS in front of the awaithumans container. Caddy example:
+
+```caddy
+reviews.your-company.com {
+    reverse_proxy server:3001
+}
+```
+
+## Backups
+
+Two things matter:
+
+1. **Postgres data volume** (`awaithumans-data`) — daily snapshot is enough; an hour of lost task data is acceptable for most teams.
+2. **PAYLOAD_KEY** — without it, encrypted Slack OAuth rows can't be decrypted. Store it alongside your other root secrets (1Password, Vault, AWS Secrets Manager).
+
+The dashboard build is bundled into the server image; nothing to back up there.
+
+## Scaling
+
+The single-process design works up to ~10k tasks per hour without tuning. Beyond that:
+
+- Run multiple `server` replicas behind a load balancer
+- Use `PgBouncer` if you hit Postgres connection limits
+- Move the timeout scheduler to a single-leader pattern (currently it runs in every replica — fine at low scale, wasteful at high)
+
+Multi-replica deployments are a documented post-launch hardening pass. For v0.1, single replica is the supported config.
+
+## Health check
+
+```
+GET /api/health   →  {"ok": true, "version": "0.1.0", "db": "connected"}
+```
+
+Wire it to your orchestrator. The endpoint is unauthenticated (it has to be, for healthchecks).
+
+## Logs
+
+Structured JSON to stdout. Each log line carries:
+
+- `timestamp` (ISO8601)
+- `level`
+- `logger` (e.g. `awaithumans.server.routes.tasks`)
+- `message`
+- `request_id` (correlated across the lifetime of one HTTP request)
+
+Pipe to your aggregator of choice. The root logger has a built-in scrubber that redacts API keys, bearer tokens, password fields, and admin-token headers — even if upstream code accidentally logs them. See [Configuration](/self-hosting/configuration#logging).

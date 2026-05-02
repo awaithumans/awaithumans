@@ -1,0 +1,122 @@
+---
+title: "Security"
+description: "Cryptographic primitives, authorization model, and what NOT to expose."
+---
+
+awaithumans is designed to be self-hostable on infrastructure you control. The security model is deliberately conservative — sane defaults, fail-closed behavior, primitives chosen for the OWASP-recommended path.
+
+## Cryptographic primitives
+
+| Primitive | Algorithm | Used for |
+|---|---|---|
+| Password hashing | argon2id (RFC 9106 params) | Operator login |
+| Session cookies | HMAC-SHA256 over JSON body, urlsafe-b64 | Dashboard sessions |
+| Magic links | HMAC-SHA256 + jti for replay protection | Email action URLs |
+| Slack signature | HMAC-SHA256 (Slack's contract) | Inbound webhooks |
+| Outbound webhooks | HMAC-SHA256 with `X-Awaithumans-Signature` | Temporal/LangGraph callbacks |
+| At-rest encryption | AES-256-GCM | Slack OAuth bot tokens |
+
+All HMAC keys are HKDF-derived from a single root `PAYLOAD_KEY`, with channel-scoped salts so the same key never signs two different primitives. Compromising one downstream key can't be lifted to another.
+
+## Authorization model
+
+Two trust tiers:
+
+1. **Admin bearer token** (`AWAITHUMANS_ADMIN_API_TOKEN`). Highest trust. Held by the agent process. Allows everything.
+2. **Operator session** (dashboard login). High trust. Allows everything except things the admin gate enforces explicitly (e.g. server config).
+3. **Reviewer session** (non-operator user). Scoped to tasks they're assigned. Cannot list / read / complete tasks belonging to others.
+
+The task routes enforce this:
+
+| Route | Admin | Operator | Assignee | Other logged-in |
+|---|---|---|---|---|
+| `POST /api/tasks` | ✓ | ✓ | ✗ | ✗ |
+| `GET /api/tasks` | ✓ all | ✓ all | ✓ scoped | ✓ scoped |
+| `GET /api/tasks/{id}` | ✓ | ✓ | ✓ | ✗ |
+| `POST /api/tasks/{id}/complete` | ✓ | ✓ | ✓ | ✗ |
+| `POST /api/tasks/{id}/cancel` | ✓ | ✓ | ✗ | ✗ |
+| `GET /api/tasks/{id}/poll` | ✓ | ✓ | ✓ | ✗ |
+| `GET /api/tasks/{id}/audit` | ✓ | ✓ | ✗ | ✗ |
+| `DELETE /api/tasks/{id}` | ✓ | ✓ | ✗ | ✗ |
+
+For `GET /api/tasks` (list), non-operator sessions are server-side-scoped to `assigned_to_user_id == claims.user_id`. The client can't override the filter via query params.
+
+## Rate limiting
+
+`/api/auth/login` and `/api/setup/operator` both have in-process sliding-window limiters:
+
+| Endpoint | Limit | Window |
+|---|---|---|
+| Login per-IP | 10 attempts | 5 min |
+| Login per-email | 20 attempts | 5 min |
+| Setup per-IP | 30 attempts | 5 min |
+
+Successful login resets the per-email counter so legit users don't lock themselves out after fat-fingering their password.
+
+In-process means single-uvicorn-worker only; multi-replica deployments need a shared store (Redis) — planned post-launch.
+
+## Secret rotation
+
+| Secret | Can rotate? | Cost |
+|---|---|---|
+| `PAYLOAD_KEY` | NEVER without coordinated downtime | Invalidates every session, magic link, and Slack OAuth row |
+| `ADMIN_API_TOKEN` | Yes | All running agents must redeploy with the new value |
+| Slack bot token | Yes | Reinstall the app via Settings → Slack |
+| Resend / SMTP credentials | Yes | No data loss; new emails use new creds |
+| Verifier API keys | Yes | No data loss; new tasks use new keys |
+
+`PAYLOAD_KEY` rotation is a Phase-2 feature gated on a versioned-key derivation scheme. For v0.1, treat it as install-once-and-never-rotate.
+
+## Logs
+
+The root logger has a scrubber filter that redacts:
+
+- OpenAI / Anthropic style keys (`sk-...`)
+- Stripe-style scoped keys (`sk_live_...`)
+- Bearer tokens (`Bearer ...`)
+- Google API keys (`AIza...`)
+- Password fields in JSON / form-style serialization
+- `X-Admin-Token` and `X-Slack-Signature` header values
+
+Even if upstream code accidentally logs a credential, it gets `[REDACTED]` before egress. This is belt-and-braces with vendor-error scrubbing in the verifier subsystem.
+
+## CORS
+
+The middleware flips `allow_credentials` ON the moment the origin list isn't a bare `*`. To prevent operators from accidentally enabling credential-bearing CORS to unsafe origins:
+
+- Bare `*` is allowed (credentials forced off — read-only public access)
+- Explicit `https://` origins allowed
+- `http://localhost` / `http://127.0.0.1` allowed (dev only)
+- Plain `http://` to non-localhost: refused at boot
+- Mixed `*` + explicit: refused at boot
+
+This is enforced at startup via `_validate_cors_origins()`. Bad configs fail loud — the server won't start.
+
+## What NOT to expose
+
+- **The dashboard at `/`** is fine to expose; it requires login.
+- **`/api/setup/*`** is unauthenticated by design (first-run bootstrap). After setup completes (any user exists), it returns 409. Pre-setup, the bootstrap token gates it; rate-limited per-IP.
+- **`/api/health`** is unauthenticated. Wire it to your load balancer's health check.
+- **`/api/channels/slack/interactions`**, **`/api/channels/slack/oauth/*`**, **`/api/channels/email/action/*`** — all self-authenticate via signed payloads. Don't put behind your auth proxy; you'd break the integrations.
+
+Everything else requires either the admin token or an operator session.
+
+## Threat model
+
+awaithumans is designed for:
+
+- Small to medium teams (1–50 reviewers)
+- Single tenant (one team's tasks, no multi-customer isolation)
+- Self-hosted on infrastructure the operator trusts
+
+It is NOT designed for:
+
+- Public-internet multi-tenant SaaS (separate hosted product, post-launch)
+- Hostile insider threat (an operator with admin token can do anything)
+- Sub-second-latency review at >1k tasks/sec (single-process scheduler)
+
+For multi-tenant or large-scale deployments, the Phase-2 hosted product handles those constraints. For now, self-host on a network you control.
+
+## Reporting issues
+
+Found a security issue? Please report privately to **security@awaithumans.com** rather than opening a public GitHub issue. We aim to respond within 48 hours and ship fixes within 7 days for critical issues. See [SECURITY.md](https://github.com/awaithumans/awaithumans/blob/main/SECURITY.md) for the full disclosure policy.

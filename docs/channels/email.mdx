@@ -1,0 +1,120 @@
+---
+title: "Email"
+description: "Deliver tasks via email. Action buttons for simple types, magic-link confirmation for everything else."
+---
+
+The email channel sends an HTML email with the task description, payload context, and action buttons (or a "Review in dashboard" link for complex types). Recipients click → confirm on a small landing page → response is recorded.
+
+## Transport options
+
+Two transport implementations:
+
+| Transport | Best for | Setup |
+|---|---|---|
+| **Resend** | Quick start, good deliverability | API key only |
+| **SMTP** | Existing email infrastructure | Host, port, user, pass |
+
+Plus `logging` (echoes emails to logs — good for tests) and `noop`.
+
+## Quickstart with Resend
+
+### 1. Get a Resend API key
+
+Sign up at [resend.com](https://resend.com), create an API key, verify a sender domain.
+
+### 2. Configure the awaithumans server
+
+```bash
+export AWAITHUMANS_EMAIL_TRANSPORT=resend
+export AWAITHUMANS_EMAIL_FROM="notifications@yourcompany.com"
+export AWAITHUMANS_EMAIL_FROM_NAME="Acme Reviews"
+export AWAITHUMANS_RESEND_KEY=re_...
+```
+
+Restart `awaithumans dev`.
+
+### 3. Test it
+
+```python
+await_human_sync(
+    task="Approve $250 refund?",
+    # ...
+    notify=["email:reviewer@acme.com"],
+)
+```
+
+The reviewer gets an email. Click an action button or the "Review in dashboard" link, fill the form, submit. The script's `await_human` returns.
+
+## SMTP
+
+```bash
+export AWAITHUMANS_EMAIL_TRANSPORT=smtp
+export AWAITHUMANS_SMTP_HOST=smtp.gmail.com
+export AWAITHUMANS_SMTP_PORT=587
+export AWAITHUMANS_SMTP_USER=you@gmail.com
+export AWAITHUMANS_SMTP_PASSWORD="your-app-password"
+export AWAITHUMANS_SMTP_START_TLS=true
+export AWAITHUMANS_EMAIL_FROM="you@gmail.com"
+```
+
+For Gmail you need an [app password](https://myaccount.google.com/apppasswords) — regular passwords don't work with SMTP.
+
+## Sender identities (multi-tenant)
+
+If you serve multiple teams from one awaithumans server, each can have its own sender:
+
+```python
+notify=["email+acme:reviewer@acme.com"]    # send via the "acme" identity
+notify=["email+initech:bob@initech.com"]   # send via the "initech" identity
+```
+
+Identities are managed in Settings → Email → Identities (admin-only). Each identity has its own `from_email`, `from_name`, `reply_to`, and transport config.
+
+Plain `email:...` (no `+id`) uses the server's default identity (the env-configured one).
+
+## Action buttons
+
+For simple response shapes (`switch`, single-option `single_select`), the email includes per-option action buttons:
+
+```
+[ Approve ]    [ Reject ]
+```
+
+Clicking lands on a confirmation page. The two-step flow (GET shows confirm, POST submits) prevents Outlook SafeLinks / Google image proxy from accidentally completing tasks via prefetch.
+
+For complex schemas (multi-field forms, file uploads, etc.), the email includes a single "Review in dashboard" link.
+
+## Magic-link tokens
+
+Action button URLs encode the task ID, field, value, expiry, and a unique `jti` (replay protection):
+
+```
+https://YOUR-URL/api/channels/email/action/<token>
+```
+
+Each token:
+
+- Is HMAC-signed with a key HKDF-derived from `PAYLOAD_KEY` (constant-time compare on verify)
+- Expires in 24h by default
+- Is single-use — `consumed_email_tokens` table records each `jti` on first use; replays return 410 Gone
+
+Forwarded emails, leaked URLs, and SafeLinks fetches all become safe-to-have-in-logs after first use.
+
+## Authorization
+
+Anyone with the magic link can complete the task — the link IS the auth token. So:
+
+- Don't forward task emails. The recipient list is the authorization list.
+- For tasks with no specific assignee (`assign_to=None`), the email recipient is implicitly the assignee. Audit log records `completed_via_channel=email` so you can see this happened.
+
+For higher-stakes tasks, prefer Slack (which validates the submitter against the directory) or the dashboard (which requires a session).
+
+## Resending
+
+If the email is lost (spam folder, address typo, …), the dashboard's task-detail page has a "Resend email" button. Each resend issues a fresh magic-link token; the old one stays valid until it expires or is consumed.
+
+## Common gotchas
+
+- **No domain verification.** Resend / Gmail will silently drop emails from unverified senders. Check your transport's dashboard for delivery logs.
+- **Action button URLs not reachable.** The awaithumans server must be reachable from the recipient's mail client. Localhost-only servers can't be tested by sending real emails — use the `logging` transport.
+- **Token expired.** Default TTL is 24 hours. For long-running review windows, raise via `MAGIC_LINK_MAX_AGE_SECONDS` in `utils/constants.py` (operator override planned post-launch).

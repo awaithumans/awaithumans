@@ -1,0 +1,65 @@
+---
+title: "Introduction"
+description: "The human layer for AI agents. Your agents already await promises. Now they can await humans."
+---
+
+```python
+result = await_human_sync(
+    task="Approve this $250 refund?",
+    payload_schema=RefundPayload,
+    payload=RefundPayload(amount=250, customer_id="cus_demo"),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
+)
+
+if result.approved:
+    process_refund(...)
+```
+
+That's the whole product. One function call in your agent code; a real human in the loop on the other side, reviewing through Slack, email, or a web dashboard. Your agent waits — durably, idempotently — until they decide.
+
+## Why
+
+Agents are great at probabilistic tasks. They're terrible at three things:
+
+1. **Judgment** — when the right answer isn't in any prompt, only a domain expert knows.
+2. **System uncertainty** — when an upstream API just stopped responding and nobody knows whether the payment actually went through.
+3. **Embodiment** — when the task needs hands in the physical world.
+
+These don't go away with bigger models. Every production agent system needs a human-in-the-loop layer eventually. `awaithumans` is the primitive.
+
+## What you get
+
+- **One function** in [Python](/sdk/python) and [TypeScript](/sdk/typescript): `await_human()` / `awaitHuman()`.
+- **Channels**: deliver tasks to humans via [Slack](/channels/slack), [email](/channels/email), or a built-in web [dashboard](#dashboard).
+- **Adapters** for durable execution: [Temporal](/adapters/temporal), [LangGraph](/adapters/langgraph). Workflows park while waiting; survive restarts.
+- **Verification**: optional AI [quality-check + NL parsing](/adapters/verifier) layer (Claude / OpenAI / Gemini / Azure).
+- **Routing**: assign tasks to specific people, [pools](/routing/overview), or roles.
+- **Self-host in one command**: `awaithumans dev` for development, `docker compose up` for production.
+- **MIT license** on the SDK; ELv2 on the server. Free forever for self-hosted use.
+
+## Five-minute test
+
+```bash
+pip install "awaithumans[server]"
+awaithumans dev
+```
+
+Open the URL it prints, create your operator account, then [run the quickstart](/quickstart). First task in five minutes.
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a task delivered to your dashboard in five minutes.
+  </Card>
+  <Card title="Concepts" icon="book" href="/concepts/task-lifecycle">
+    Mental model: task lifecycle, the four buckets, idempotency.
+  </Card>
+  <Card title="Temporal adapter" icon="repeat" href="/adapters/temporal">
+    Durable workflows that pause for hours or days while waiting.
+  </Card>
+  <Card title="LangGraph adapter" icon="diagram-project" href="/adapters/langgraph">
+    Interrupt-based human-in-the-loop in a LangGraph node.
+  </Card>
+</CardGroup>

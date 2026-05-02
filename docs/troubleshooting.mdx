@@ -1,0 +1,237 @@
+---
+title: "Troubleshooting"
+description: "Every typed error code, what causes it, and how to fix it."
+---
+
+This page is the source of truth for the `docs` URL field in error responses. Every link in a server error or SDK exception lands somewhere here.
+
+## Server-side errors
+
+### task-not-found {#task-not-found}
+
+The task ID doesn't exist in the database.
+
+**Common causes:**
+- Task was deleted (operator hit DELETE in the dashboard)
+- Server restarted with a fresh DB (dev mode without persistent storage)
+- Race between a fast workflow and a slow agent
+
+**Fix:** Check the dashboard's task list. If the task is genuinely gone, the agent should not retry — treat it as a permanent failure and your application's compensating logic should kick in.
+
+### task-already-terminal {#task-already-terminal}
+
+Tried to complete / cancel a task that's already `completed`, `timed_out`, `cancelled`, or `verification_exhausted`.
+
+**Common causes:**
+- Race between human submit and the timeout scheduler
+- Two reviewers both clicking submit (only one wins)
+- Replaying a stale Slack message
+
+**Fix:** Refresh and check the current status. If you're an agent, the long-poll endpoint already handles this — don't retry the complete call.
+
+### task-already-exists {#task-already-exists}
+
+Idempotency key conflict where the existing task is somehow inaccessible.
+
+**Common causes:**
+- DB consistency issue (extremely rare)
+
+**Fix:** Open a GitHub issue with the task ID. This shouldn't happen.
+
+### task-already-claimed {#task-already-claimed}
+
+Slack broadcast claim race lost.
+
+**Common causes:**
+- Another reviewer beat you to the claim button by milliseconds
+
+**Fix:** Move on. The dashboard / DM tells you who won.
+
+### user-not-found {#user-not-found}
+
+Lookup by email or ID returned nothing.
+
+**Fix:** Check Settings → Users. Add the user, or fix the lookup.
+
+### user-already-exists {#user-already-exists}
+
+Tried to create a user whose email or `(slack_team_id, slack_user_id)` matches an existing row.
+
+**Fix:** Edit the existing user, or use a different email.
+
+### user-no-address {#user-no-address}
+
+Tried to create a user with neither an email nor a Slack pair.
+
+**Fix:** A user must have at least one delivery address. Add one or the other.
+
+### last-operator {#last-operator}
+
+Tried to delete / demote / deactivate the only active operator.
+
+**Fix:** Promote another user to operator first, then retry the action. This guards against operators locking themselves out of the dashboard.
+
+### setup-already-completed {#setup-already-completed}
+
+Hit `/api/setup/operator` after a user already exists.
+
+**Fix:** Setup is one-shot. Use `/api/auth/login` to log in as the existing operator.
+
+### invalid-setup-token {#invalid-setup-token}
+
+The bootstrap token didn't match.
+
+**Fix:** Restart the server to generate a fresh token. Tokens are in-memory, one-shot, and printed to the server log on first run.
+
+## Verifier errors
+
+### verifier-provider-unavailable {#verifier-provider-unavailable}
+
+The verifier provider's SDK isn't installed.
+
+**Fix:** Install the right extra:
+```bash
+pip install "awaithumans[verifier-claude]"   # for "claude"
+pip install "awaithumans[verifier-openai]"   # for "openai"
+pip install "awaithumans[verifier-gemini]"   # for "gemini"
+pip install "awaithumans[verifier-azure]"    # for "azure"
+```
+
+### verifier-api-key-missing {#verifier-api-key-missing}
+
+The env var named in `VerifierConfig.api_key_env` isn't set on the awaithumans **server** (NOT on the agent process — the LLM call runs server-side).
+
+**Fix:** Set the env var on the server:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Restart the server. Agent code can resubmit without recreating the task.
+
+### verifier-endpoint-missing {#verifier-endpoint-missing}
+
+Azure OpenAI requires both an API key and an endpoint URL.
+
+**Fix:**
+```bash
+export AZURE_OPENAI_API_KEY=...
+export AZURE_OPENAI_ENDPOINT=https://my-resource.openai.azure.com
+```
+
+### verifier-config-invalid {#verifier-config-invalid}
+
+The task's stored `verifier_config` JSON doesn't match the current `VerifierConfig` schema.
+
+**Common causes:**
+- Task was created against an older SDK version
+- Hand-written config with wrong field names
+
+**Fix:** Cancel the task, recreate it with the agent on the current SDK.
+
+### verifier-provider-unknown {#verifier-provider-unknown}
+
+`VerifierConfig.provider` is set to a value we don't recognize.
+
+**Fix:** The error message includes the supported list. Pick one.
+
+### verifier-provider-error {#verifier-provider-error}
+
+The LLM provider returned an error (rate limit, transient outage, model not available, etc.).
+
+**Fix:** Most causes are transient. The human can resubmit; this attempt didn't count toward `max_attempts`.
+
+## SDK errors
+
+### timeout {#timeout}
+
+`TaskTimeoutError` — the task hit its `timeout_seconds` without completion.
+
+**Common causes:**
+- The notification channel didn't reach a human (bad Slack channel, email in spam)
+- Reviewers are out of office
+- Timeout is set too tight for the review window
+
+**Fix:**
+1. Check the assigned channel reaches the right people (Settings → Slack / Email → test)
+2. Verify the user is in your directory (Settings → Users)
+3. Consider raising `timeout_seconds` for slower review windows
+
+### timeout-range {#timeout-range}
+
+`timeout_seconds` outside the allowed range.
+
+**Fix:** Use 60 to 2,592,000 (1 minute to 30 days). For sub-minute or beyond-30-days needs, use a queue / scheduler — not human-in-the-loop.
+
+### schema-validation {#schema-validation}
+
+The payload or response doesn't match the schema you provided.
+
+**Fix:** Check the validation error in the message. Make sure your data conforms to the Pydantic / Zod model you passed.
+
+### task-create-failed {#task-create-failed}
+
+`POST /api/tasks` returned non-2xx.
+
+**Fix:** The error message includes the server's response. Common causes: missing `Authorization` header, malformed body, server not running.
+
+### poll-failed {#poll-failed}
+
+Long-poll request returned non-200.
+
+**Fix:** Same as above. Usually a transient network blip — the SDK retries.
+
+### task-cancelled {#task-cancelled}
+
+Task was cancelled by the agent or an operator.
+
+**Fix:** Decide what your agent should do — retry with a different reviewer, escalate, or fail.
+
+### server-unreachable {#server-unreachable}
+
+Couldn't connect to the awaithumans server URL.
+
+**Fix:**
+1. Is the server running? `awaithumans dev` in another terminal
+2. Is the URL correct? Override with `server_url=` or `AWAITHUMANS_URL` env var
+3. Network / firewall issue?
+
+### verification-exhausted {#verification-exhausted}
+
+Verifier rejected `max_attempts` times.
+
+**Fix:**
+1. Check the verifier's `instructions` — too strict?
+2. Look at the audit log to see what each rejection said
+3. Raise `max_attempts` if the rule is correct but human is fumbling
+
+## Channel errors
+
+### slack signature verification failed
+
+Inbound Slack webhook signature didn't verify.
+
+**Fix:** `AWAITHUMANS_SLACK_SIGNING_SECRET` must match the value in your Slack app's Basic Information page. Restart the server after changing it.
+
+### email-transport-error
+
+Email transport (Resend / SMTP) returned an error.
+
+**Fix:** Check your transport's dashboard for delivery logs. Common causes: unverified sender domain, invalid API key, recipient server reject.
+
+### magic-link-invalid
+
+Email action token is malformed or expired.
+
+**Fix:** Tokens expire after 24 hours by default. Resend the email from the dashboard's task-detail page.
+
+### magic-link-consumed
+
+Email action token was already used.
+
+**Fix:** This is by design — single-use prevents replay. Use the dashboard to update the response.
+
+## Still stuck?
+
+- Check the [GitHub Discussions](https://github.com/awaithumans/awaithumans/discussions) — most issues have been seen before.
+- Open a [GitHub Issue](https://github.com/awaithumans/awaithumans/issues) with: SDK version, Python / Node version, full error message + stack trace, minimal repro.
+- For security issues: **security@awaithumans.com** (private disclosure).

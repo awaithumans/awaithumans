@@ -1,0 +1,135 @@
+---
+title: "POST /api/tasks"
+description: "Create a task (or return the existing one if the idempotency key matches an active task)."
+---
+
+```http
+POST /api/tasks
+Authorization: Bearer <ADMIN_API_TOKEN>
+Content-Type: application/json
+```
+
+Most users go through the SDK's `await_human()` rather than calling this directly. Use this endpoint when:
+
+- You're building a non-SDK client
+- You want to create a task without polling (e.g. fire-and-forget with `callback_url`)
+- You're testing the wire format
+
+## Request
+
+```json
+{
+  "task": "Approve $250 refund?",
+  "payload": {
+    "amount_usd": 250,
+    "customer_id": "cus_demo"
+  },
+  "payload_schema": {
+    "type": "object",
+    "properties": { "amount_usd": {"type": "integer"}, "customer_id": {"type": "string"} },
+    "required": ["amount_usd", "customer_id"]
+  },
+  "response_schema": {
+    "type": "object",
+    "properties": { "approved": {"type": "boolean"}, "notes": {"type": "string"} },
+    "required": ["approved"]
+  },
+  "form_definition": null,
+  "timeout_seconds": 900,
+  "idempotency_key": "refund:order-12345",
+  "assign_to": {"email": "alice@acme.com"},
+  "notify": ["slack:#approvals", "email:alice@acme.com"],
+  "verifier_config": null,
+  "redact_payload": false,
+  "callback_url": null
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `task` | string | yes | Human-readable description (shown in UIs). |
+| `payload` | object | yes | Data the human reviews. |
+| `payload_schema` | JSON Schema | yes | Schema for `payload`. The dashboard validates against it. |
+| `response_schema` | JSON Schema | yes | Schema for the response. Drives the form UI. |
+| `form_definition` | object \| null | no | Channel-specific UI hints (the SDK extracts this from Pydantic / Zod). Optional — falls back to generic JSON Schema rendering. |
+| `timeout_seconds` | int | yes | 60 to 2,592,000. |
+| `idempotency_key` | string | yes | Application-controlled. See [Idempotency](/concepts/idempotency). |
+| `assign_to` | object \| null | no | Routing. See [Routing](/routing/overview). |
+| `notify` | string[] \| null | no | Channel destinations. |
+| `verifier_config` | object \| null | no | Server-side verification. See [Verifier](/adapters/verifier). |
+| `redact_payload` | bool | no | Default `false`. Skips audit logging of response keys + verifier prompt. |
+| `callback_url` | string \| null | no | URL to POST to on terminal status (Temporal/LangGraph adapters use this). |
+
+## Response
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+```
+
+```json
+{
+  "id": "tsk_4f8a2c1e9b...",
+  "idempotency_key": "refund:order-12345",
+  "status": "created",
+  "task": "Approve $250 refund?",
+  "payload": { ... },
+  "payload_schema": { ... },
+  "response_schema": { ... },
+  "assign_to": { "email": "alice@acme.com" },
+  "assigned_to_email": "alice@acme.com",
+  "response": null,
+  "verifier_result": null,
+  "verification_attempt": 0,
+  "timeout_seconds": 900,
+  "redact_payload": false,
+  "created_at": "2026-05-12T08:00:00.000Z",
+  "updated_at": "2026-05-12T08:00:00.000Z",
+  "completed_at": null,
+  "timed_out_at": null,
+  "completed_by_email": null,
+  "completed_via_channel": null
+}
+```
+
+## Idempotency behavior
+
+If a non-terminal task with `idempotency_key` already exists:
+
+```http
+HTTP/1.1 200 OK
+```
+
+The response body is the existing task. Status is whatever it currently is (`notified`, `in_progress`, `submitted`, etc.). Your client should treat this as success and proceed to poll/wait.
+
+If a TERMINAL task with that key exists, a new task is created with the same key (the partial-unique index releases the key on terminal). The response is `201` again with a fresh task ID.
+
+## Errors
+
+| Status | `error_code` | Cause |
+|---|---|---|
+| 400 | (validation) | Body shape mismatch. |
+| 401 | — | Missing or wrong `Authorization` header. |
+| 403 | — | Caller is a logged-in non-operator. |
+| 422 | (validation) | `timeout_seconds` out of range, etc. |
+
+## Notification side-effects
+
+Channel notifications fire in a `BackgroundTask` AFTER the response is sent — a slow Slack API call won't block your task creation, and a Slack outage won't fail a successful task write. The dashboard sees the task immediately regardless.
+
+## SDK equivalent
+
+```python
+# Python
+from awaithumans import await_human_sync
+decision = await_human_sync(
+    task="Approve $250 refund?",
+    payload_schema=RefundPayload,
+    payload=RefundPayload(amount_usd=250, customer_id="cus_demo"),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
+    idempotency_key="refund:order-12345",
+    assign_to="alice@acme.com",
+    notify=["slack:#approvals", "email:alice@acme.com"],
+)
+```

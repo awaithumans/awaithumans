@@ -1,0 +1,239 @@
+---
+title: "Quickstart"
+description: "Get a task delivered to your dashboard in five minutes."
+---
+
+By the end of this page you'll have:
+
+- A local awaithumans server running at `http://localhost:3001`
+- An operator account
+- A Python script that creates a task and waits for your decision
+- That decision flowing back into the script as a typed value
+
+## 1. Install
+
+<CodeGroup>
+```bash Python
+pip install "awaithumans[server]"
+```
+
+```bash TypeScript
+npm install awaithumans
+```
+</CodeGroup>
+
+The `[server]` extra installs the FastAPI server, dashboard, and CLI alongside the SDK. The base `awaithumans` package is just the lightweight HTTP client.
+
+## 2. Start the server
+
+```bash
+awaithumans dev
+```
+
+You'll see something like:
+
+```
+✓ Server running at http://localhost:3001
+✓ Database: ./.awaithumans/dev.db
+✓ Open the dashboard at:
+
+    http://localhost:3001/setup?token=8aF...
+
+  (one-shot setup link — paste it into your browser)
+```
+
+Open the printed `/setup?token=...` URL, paste a password, and create your operator account. You're now logged into the dashboard at `http://localhost:3001`.
+
+<Note>
+`awaithumans dev` auto-generates the encryption key, admin token, and SQLite database in `./.awaithumans/`. The CLI also writes `~/.awaithumans-dev.json` so the SDK can auto-discover the server URL and bearer token — you don't have to set env vars.
+</Note>
+
+## 3. Run your first task
+
+<CodeGroup>
+```python Python
+# refund.py
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundPayload(BaseModel):
+    amount_usd: int
+    customer_id: str
+    reason: str
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    notes: str | None = None
+
+
+def main():
+    decision = await_human_sync(
+        task="Approve $250 refund?",
+        payload_schema=RefundPayload,
+        payload=RefundPayload(
+            amount_usd=250,
+            customer_id="cus_demo",
+            reason="Duplicate charge",
+        ),
+        response_schema=RefundDecision,
+        timeout_seconds=900,
+        idempotency_key=f"refund:{order_id}",  # safe to retry
+    )
+
+    if decision.approved:
+        print(f"Refund approved: {decision.notes}")
+    else:
+        print(f"Refund rejected: {decision.notes}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+```typescript TypeScript
+// refund.ts
+import { awaitHuman } from "awaithumans";
+import { z } from "zod";
+
+const RefundPayload = z.object({
+  amount_usd: z.number(),
+  customer_id: z.string(),
+  reason: z.string(),
+});
+
+const RefundDecision = z.object({
+  approved: z.boolean(),
+  notes: z.string().optional(),
+});
+
+async function main() {
+  const decision = await awaitHuman({
+    task: "Approve $250 refund?",
+    payloadSchema: RefundPayload,
+    payload: {
+      amount_usd: 250,
+      customer_id: "cus_demo",
+      reason: "Duplicate charge",
+    },
+    responseSchema: RefundDecision,
+    timeoutMs: 15 * 60 * 1000,
+    idempotencyKey: `refund:${orderId}`,
+  });
+
+  if (decision.approved) {
+    console.log(`Refund approved: ${decision.notes ?? ""}`);
+  } else {
+    console.log(`Refund rejected: ${decision.notes ?? ""}`);
+  }
+}
+
+main();
+```
+</CodeGroup>
+
+Run it:
+
+<CodeGroup>
+```bash Python
+python refund.py
+```
+
+```bash TypeScript
+npx tsx refund.ts
+```
+</CodeGroup>
+
+The script prints:
+
+```
+✓ Task created: tsk_4f8a2c1e9b...
+  Review at: http://localhost:3001/task?id=tsk_4f8a2c1e9b...
+  Waiting for human (timeout: 900s). Ctrl-C to abort.
+```
+
+Then it blocks. The agent is now awaiting a human.
+
+## 4. Approve it
+
+Click the "Review at" URL (or refresh `http://localhost:3001`). You'll see a task on your queue. Click in, fill the form, hit Submit.
+
+Within a second your script prints:
+
+```
+Refund approved: Duplicate charge confirmed by support team.
+```
+
+That's the whole loop. The agent's `await_human()` call blocked for as long as the human took to decide, then resumed with the typed `RefundDecision` instance.
+
+## What just happened
+
+```
+┌─────────────────┐  POST /api/tasks   ┌──────────────────────┐
+│ refund.py       │ ──────────────────► awaithumans server     │
+│                 │                    │                      │
+│ awaithumans.    │  long-poll status  │  notify human via:   │
+│   await_human() │ ◄──────────────────┤  - dashboard         │
+│   blocks        │                    │  - slack (optional)  │
+│                 │                    │  - email (optional)  │
+│                 │  human submits     │                      │
+│ ◄── response ───┤                    │  store response      │
+│                 │                    │                      │
+│ continues       │                    │                      │
+└─────────────────┘                    └──────────────────────┘
+```
+
+The SDK long-polls until the task reaches a terminal state. For agents that can park for hours/days (Temporal, LangGraph workflows), [the durable adapters](/adapters/temporal) replace polling with workflow-engine signals so you spend zero compute while waiting.
+
+## Add a notification channel
+
+Right now the only place a human sees the task is the dashboard. Add Slack:
+
+```python
+decision = await_human_sync(
+    task="Approve $250 refund?",
+    # ...
+    notify=["slack:#approvals"],   # ← post to this channel
+)
+```
+
+See [Channels: Slack](/channels/slack) for setup. Email works the same way: `notify=["email:approvals@acme.com"]`.
+
+## Add AI verification
+
+Have an LLM gut-check the human's decision before it lands:
+
+```python
+from awaithumans.verifiers.claude import claude_verifier
+
+decision = await_human_sync(
+    # ...
+    verifier=claude_verifier(
+        instructions=(
+            "Reject if the notes contradict the decision, or if "
+            "the amount is over $1000 and notes are empty."
+        ),
+        max_attempts=3,
+    ),
+)
+```
+
+See [Verifier](/adapters/verifier) for the full provider list and NL-parsing tricks.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Task lifecycle" icon="diagram-project" href="/concepts/task-lifecycle">
+    The state machine your task moves through.
+  </Card>
+  <Card title="Idempotency" icon="rotate" href="/concepts/idempotency">
+    Why retries are safe and what `idempotency_key` actually does.
+  </Card>
+  <Card title="Temporal" icon="repeat" href="/adapters/temporal">
+    Park a workflow for hours/days while waiting. Zero compute idle.
+  </Card>
+  <Card title="LangGraph" icon="diagram-project" href="/adapters/langgraph">
+    Interrupt-based HITL in a LangGraph node.
+  </Card>
+</CardGroup>
