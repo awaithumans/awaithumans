@@ -1,0 +1,113 @@
+---
+title: "Idempotency"
+description: "Safe-retry semantics for await_human(). What the key actually does, and what it doesn't."
+---
+
+`idempotency_key` is the most important parameter most users won't touch. It's how `await_human()` stays safe to retry.
+
+## The model
+
+awaithumans follows Stripe's idempotency model: **safe-retry-while-active, NOT eternal uniqueness.**
+
+A key is "active" while the task is in a non-terminal status (`CREATED`, `NOTIFIED`, `IN_PROGRESS`, `SUBMITTED`, `VERIFIED`, `REJECTED`). After the task reaches a terminal status (`COMPLETED`, `TIMED_OUT`, `CANCELLED`, `VERIFICATION_EXHAUSTED`), the key is released — a new task with the same key can be created.
+
+This is what you want. It means:
+
+- ✅ Calling `await_human(...)` twice with the same key while a human is reviewing → returns the same task (safe retry)
+- ✅ Calling `await_human(...)` again the next day with the same key → creates a fresh task (you can re-trigger a review)
+- ✅ Network blip during task creation → safe to retry without creating a duplicate
+
+It's NOT a permanent dedup gate. If you want "this task has been seen before, never run it again" semantics, that's your application's job — store the task's terminal outcome and check before calling.
+
+## What happens under the hood
+
+The `tasks.idempotency_key` column has a **partial unique index**:
+
+```sql
+CREATE UNIQUE INDEX ix_tasks_active_idempotency_key
+  ON tasks (idempotency_key)
+  WHERE status NOT IN ('COMPLETED', 'TIMED_OUT', 'CANCELLED', 'VERIFICATION_EXHAUSTED');
+```
+
+When you call `await_human(...)`:
+
+1. Server looks up active tasks with this key
+2. **Found?** Return the existing task. The SDK long-polls it.
+3. **Not found?** INSERT a fresh task. The partial index lets us race-safely insert even if a previous task with the same key is now terminal.
+4. **Race condition** (two concurrent INSERTs)? The unique constraint catches it; the loser re-fetches the winner.
+
+## Default keys
+
+If you don't pass `idempotency_key=`, the SDK derives one from `(task, payload)`:
+
+```python
+hashlib.sha256(canonical_json({"task": task, "payload": payload})).hexdigest()[:32]
+```
+
+That covers the common case ("same task description with same payload should dedup"). It does NOT cover the case where you want two distinct tasks with the same content — pass an explicit key for those.
+
+The Temporal and LangGraph adapters use prefixed defaults:
+
+- `temporal:{hash}`  — so operators can filter Temporal-driven tasks at the dashboard
+- `langgraph:{hash}` — same idea for LangGraph
+
+## When to pass an explicit key
+
+```python
+# RECOMMENDED: bake your application's natural ID into the key
+decision = await_human_sync(
+    task=f"Approve refund for order {order_id}?",
+    # ...
+    idempotency_key=f"refund:{order_id}",
+)
+```
+
+Why: the `(task, payload)` default is content-addressed, so two refund requests for the same amount + same customer dedup, even if they're a month apart. That's usually wrong.
+
+A natural-key approach (`refund:{order_id}`) makes intent explicit:
+
+- Same `order_id` while task is active → same task (intentional)
+- Same `order_id` after task closed → fresh task (intentional re-review)
+- Different `order_id` → different task (intentional)
+
+## What about retries from the agent's side?
+
+If your agent crashes mid-`await_human()` and restarts, it'll call `await_human(...)` again with the same args. The default-keyed task gets dedup'd, you long-poll the same row, the human only sees one ticket. No duplicate work.
+
+This is the entire point. `await_human()` is the durable-but-with-humans equivalent of Temporal's `await activity()` — your retry loop just works.
+
+## What about the verifier?
+
+When the verifier rejects an attempt, the task goes to `REJECTED` (non-terminal). The idempotency key is still active. If your agent calls `await_human(...)` again with the same key, it returns the same task — the human can still resubmit and run another verifier attempt.
+
+If the verifier exhausts attempts → `VERIFICATION_EXHAUSTED` (terminal). Now the key is released. Next call creates a fresh task with attempt counter reset.
+
+## Example: a refund pipeline
+
+```python
+async def process_refund(order):
+    # First HITL: approval. If we ever retry this whole function,
+    # the same order_id maps to the same task (or a new one if the
+    # previous run's task already terminated).
+    decision = await_human_sync(
+        task=f"Approve ${order.amount} refund for {order.customer_id}?",
+        # ...
+        idempotency_key=f"refund-approval:{order.id}",
+    )
+    if not decision.approved:
+        return {"status": "rejected"}
+
+    # Side effect — your application's own idempotency story.
+    refund_id = await stripe.refund(order, idempotency_key=f"stripe-refund:{order.id}")
+
+    # Second HITL: post-refund review. Different key, different task.
+    confirmation = await_human_sync(
+        task=f"Confirm refund {refund_id} processed correctly?",
+        # ...
+        idempotency_key=f"refund-confirmation:{order.id}",
+    )
+
+    return {"status": "completed", "refund_id": refund_id}
+```
+
+Both `await_human()` calls are safe to retry from a workflow restart. Stripe's own idempotency key handles the side-effect side. The whole pipeline is recoverable.

@@ -1,0 +1,123 @@
+---
+title: "Routing"
+description: "Resolve `assign_to` to a specific human, pool, or role. Least-recently-assigned by default."
+---
+
+`assign_to=` on `await_human()` tells the server "who should do this." The router resolves it to a specific user record, stamps that user as the assignee, and notifications go out per-channel.
+
+## The four shapes
+
+```python
+# 1. Direct: a single email
+assign_to="alice@acme.com"
+
+# 2. List: any of these emails — first to claim wins
+assign_to=["alice@acme.com", "bob@acme.com"]
+
+# 3. Pool: any user in this named pool
+assign_to={"pool": "ops"}
+
+# 4. Role: any user with this role (optionally filtered by access level)
+assign_to={"role": "kyc-reviewer", "access_level": "senior"}
+```
+
+All four resolve to a directory user (or stay unassigned if no match — see below).
+
+## The user directory
+
+Users live in the `users` table, manageable from the dashboard's Settings → Users page. Each user has:
+
+- `email` (or null for Slack-only users)
+- `slack_team_id` + `slack_user_id` (optional)
+- `role` — free-form string, e.g. `kyc-reviewer`, `support-tier-1`
+- `access_level` — free-form string, e.g. `junior`, `senior`
+- `pool` — free-form string, e.g. `ops`, `compliance`
+- `is_operator` — bool, dashboard admin
+- `active` — bool, default true
+
+The fields are deliberately free-form. We don't enforce a schema; you pick the names that match your org.
+
+## Fairness model
+
+Within a resolved set (pool, role, etc.), the router picks the **least-recently-assigned** user. The user record carries `last_assigned_at`; on every routing decision it gets bumped on the picked user.
+
+This spreads load — fresh tasks rotate through a pool rather than piling up on whoever's listed first. It's Option C from the [routing pillar](https://github.com/awaithumans/awaithumans/blob/main/pillars/03-architecture.md): not perfectly even (a slow reviewer ends up with fewer recent tasks), but trivially understandable and good-enough for v0.1.
+
+Operators who need a different fairness model (round-robin, weighted, on-call schedules) override the router. See [Custom routers](#custom-routers).
+
+## Resolution rules
+
+| `assign_to` | Resolution |
+|---|---|
+| `None` (default) | Unassigned. Dashboard shows it under "Unclaimed"; channels broadcast (Slack channel `#approvals`, email default identity). |
+| `"email@..."` | Look up by email. Found? Stamp them. Not found? Stamp `assigned_to_email=...` (notifications still work; user gets created on first action). |
+| `["a@...", "b@..."]` | Same as email; the first email's user gets stamped if found. List form is mostly used by channels that broadcast (Slack `#channel`). |
+| `{"pool": "X"}` | Find users in pool X, pick least-recently-assigned. |
+| `{"role": "X"}` | Same with role. |
+| `{"role": "X", "access_level": "Y"}` | Filter by both. |
+| `{"pool": "X", "role": "Y", ...}` | All conditions ANDed. |
+
+## Slack-only users
+
+Users without an email but with a Slack identity work fine for routing:
+
+```python
+# In Settings → Users:
+#   Alice — slack_team_id=T01ABC, slack_user_id=U_ALICE, no email
+
+assign_to={"pool": "ops"}   # picks Alice if she's in the ops pool
+notify=["slack:#ops"]        # she gets the Slack DM
+```
+
+The audit log records `assigned_to_user_id` (stable across email changes) so attribution stays consistent.
+
+## Marketplace (reserved for Phase 3)
+
+```python
+assign_to={"marketplace": True, "capability": "kyc-review"}
+```
+
+Currently raises `MarketplaceNotAvailableError`. Reserved for the post-Phase-2 workforce marketplace where tasks can be sourced from external reviewers. See the [roadmap](https://github.com/awaithumans/awaithumans/blob/main/pillars/10-roadmap.md).
+
+## Custom routers
+
+The router lives in `server/services/task_router.py`. The function:
+
+```python
+async def resolve_assign_to(
+    session: AsyncSession,
+    assign_to: dict | None,
+) -> RoutingResult:
+    """Returns (user_id, email) or (None, None) if no match."""
+```
+
+Override it for round-robin, weighted, or schedule-driven routing. Drop a replacement module and import from `task_router`.
+
+This is one of the [four buckets](/concepts/four-buckets) — extension points by design. New routing strategies are a Phase-2 community contribution surface.
+
+## Example: KYC review queue
+
+```python
+# Fast lane: senior reviewers handle anything over $10k
+async def review_high_value(amount: int):
+    return await_human_sync(
+        task=f"KYC review for ${amount} transaction",
+        # ...
+        assign_to={"role": "kyc-reviewer", "access_level": "senior"},
+        notify=["slack:#kyc-senior"],
+    )
+
+# Default lane: junior pool
+async def review_standard(amount: int):
+    return await_human_sync(
+        task=f"KYC review for ${amount} transaction",
+        # ...
+        assign_to={"role": "kyc-reviewer"},
+        notify=["slack:#kyc"],
+    )
+
+# Pick the lane in your agent code
+review = review_high_value if amount > 10_000 else review_standard
+```
+
+Each call stamps a different reviewer; load spreads naturally via least-recently-assigned within each pool.

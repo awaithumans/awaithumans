@@ -1,0 +1,61 @@
+---
+title: "The three walls"
+description: "Why a human-in-the-loop layer is permanent infrastructure, not a temporary hack."
+---
+
+A common skeptical question: *"Won't HITL go away once the models are good enough?"*
+
+The answer is no, and it's not a defensive answer. There are three walls between an AI agent and the world. Bigger models knock on the first wall harder; they don't move the second or third.
+
+## Wall 1 — Judgment
+
+The agent has a confidence score. The cost of being wrong isn't symmetric. Someone has to make the call.
+
+Examples:
+- KYC: the model says 73% likely match; the regulator says you can't reject without a manual review
+- Refunds: the model says fraud; the human knows the customer just had a bad week
+- Content moderation: the model says borderline hate speech; the policy team owns the line
+
+This is the wall bigger models DO knock on — a 95%-confident model needs less human input than a 73%-confident one. But "less" never gets to "zero" for high-stakes decisions, because the cost of the long-tail wrong answer is higher than the cost of a human review.
+
+Even with frontier models, the regulatory and reputational tail-risk of being wrong locks in some human review forever. KYC reviewers, fraud analysts, content policy teams — these jobs grow alongside AI, not despite it.
+
+## Wall 2 — System uncertainty
+
+The agent doesn't know what happened.
+
+The Stripe webhook never fired. The wire to the bank didn't come back. The third-party API returned 200 but the downstream system is in an inconsistent state. The model can guess, but the only way to actually know is for a human to call the bank.
+
+This is the most under-appreciated wall. Bigger models do nothing here — by definition, no amount of reasoning can recover information that wasn't captured. The system needs a human to look at the actual external state and report back.
+
+Examples:
+- Transaction reconciliation: payment provider didn't ack; was the transfer applied?
+- Distributed-system inconsistency: order shows as shipped in one DB and not-shipped in another
+- Vendor outage during a long-running workflow: did the workflow's last side effect take?
+
+Human-in-the-loop here isn't about judgment, it's about being the eyes and ears of a system that can't self-introspect. This wall doesn't move.
+
+## Wall 3 — Embodiment
+
+The task needs a body.
+
+Examples:
+- KYC ID-photo verification (a human compares face to document)
+- Pickup-and-delivery (someone has to physically grab the thing)
+- Phone calls to vendors who don't have APIs
+- Visits to physical locations (inspections, audits)
+
+This is the wall where the workforce-marketplace future lives — `assign_to: { capability: "pickup-and-deliver", region: "SF" }`. For v0.1 the embodiment wall is just "humans on your team, routed via `assign_to`." The post-Phase-3 marketplace expansion targets the broader case where the embodied work is sourced from outside your team.
+
+## Why this matters for your stack
+
+If you treat HITL as a temporary hack — a Slack channel where everyone yells, a spreadsheet someone updates by hand — you'll outgrow it within months and have to rip-and-replace.
+
+If you treat it as permanent infrastructure with a clean primitive (`await_human()`), the same code that powers your scrappy v1 review queue still works when:
+
+- You add your second reviewer (just `assign_to=...`)
+- You add a fourth notification channel (just register it)
+- You add an AI verifier (just pass `verifier=`)
+- You move to durable workflows (swap to the [Temporal adapter](/adapters/temporal))
+
+The walls are why this matters. They're permanent. The infrastructure should be too.

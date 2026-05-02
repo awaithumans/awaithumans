@@ -1,0 +1,161 @@
+---
+title: "LangGraph"
+description: "Interrupt-based human-in-the-loop in a LangGraph node. Driver loop handles the dance."
+---
+
+LangGraph's pattern is interrupt/resume rather than Temporal's signal-based approach. Inside a node, `await_human()` calls LangGraph's `interrupt(...)`, which raises and parks the graph. The DRIVER (the code running the graph) catches our shaped interrupt, posts the task to the awaithumans server, polls until terminal, and resumes the graph with the human's response.
+
+```
+┌──────────────────────────────┐  HTTP POST /api/tasks  ┌──────────────────────┐
+│ refund_agent.py              │ ──────────────────────►│ awaithumans server   │
+│  - graph: triage → review    │                        │                      │
+│         → process_refund     │                        │                      │
+│  - drive_human_loop(graph,…) │   long-poll status     │ — human reviews ──►  │
+│                              │ ──────────────────────►│ — completes task ──► │
+│  ◄── interrupt / resume ──── │ ◄──────────────────────│                      │
+└──────────────────────────────┘    response payload    └──────────────────────┘
+```
+
+Single-process. Unlike the Temporal example, no separate worker or web server.
+
+## Install
+
+```bash
+pip install "awaithumans[langgraph]"
+```
+
+## Node side
+
+```python
+from typing import TypedDict
+from pydantic import BaseModel
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+
+from awaithumans.adapters.langgraph import await_human
+
+
+class State(TypedDict):
+    customer_id: str
+    amount_usd: int
+    approved: bool
+
+
+class RefundPayload(BaseModel):
+    customer_id: str
+    amount_usd: int
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    notes: str | None = None
+
+
+def review_node(state: State) -> dict:
+    decision = await_human(
+        task=f"Approve ${state['amount_usd']} refund for {state['customer_id']}?",
+        payload_schema=RefundPayload,
+        payload=RefundPayload(
+            customer_id=state["customer_id"],
+            amount_usd=state["amount_usd"],
+        ),
+        response_schema=RefundDecision,
+        timeout_seconds=15 * 60,
+    )
+    return {"approved": decision.approved}
+
+
+builder = StateGraph(State)
+builder.add_node("review", review_node)
+builder.add_edge(START, "review")
+builder.add_edge("review", END)
+graph = builder.compile(checkpointer=MemorySaver())
+```
+
+`await_human()` is **synchronous** — matches LangGraph's node API. The driver loop handles the actual blocking.
+
+## Driver side
+
+```python
+import asyncio
+from awaithumans.adapters.langgraph import drive_human_loop
+
+async def main():
+    config = {"configurable": {"thread_id": "wf-1"}}
+    final_state = await drive_human_loop(
+        graph,
+        input_state={"customer_id": "cus_demo", "amount_usd": 250, "approved": False},
+        config=config,
+        server_url="http://localhost:3001",
+        api_key=os.environ.get("AWAITHUMANS_ADMIN_API_TOKEN"),
+    )
+    print(final_state.values)
+
+asyncio.run(main())
+```
+
+`drive_human_loop`:
+
+1. Streams the graph forward
+2. Catches our shaped interrupt (anything with the magic `awaithumans` key)
+3. POSTs the task to the awaithumans server
+4. Long-polls until terminal
+5. Resumes the graph with `Command(resume=response)`
+6. Returns the graph's final state
+
+Other interrupts (operator confirmations, branching decisions) flow through unchanged — the driver pattern-matches on the awaithumans key, doesn't grab everything.
+
+## Re-execution semantics
+
+LangGraph re-executes the entire node on resume. Any work BEFORE `await_human(...)` runs twice. Move expensive or non-idempotent work to a separate node downstream:
+
+```python
+# ❌ DON'T do this — process_refund runs on the first execution
+def review_node(state):
+    decision = await_human(...)
+    refund_id = process_refund(...)   # runs twice on resume!
+    return {"refund_id": refund_id, "approved": decision.approved}
+
+# ✅ DO this — split into two nodes
+def review_node(state):
+    decision = await_human(...)
+    return {"approved": decision.approved}
+
+def process_refund_node(state):
+    if not state["approved"]:
+        return {"refund_id": None}
+    return {"refund_id": process_refund(...)}
+```
+
+## Error contract
+
+The driver maps polling status to typed exceptions:
+
+| Status | Exception |
+|---|---|
+| `completed` | (return validated response to node) |
+| `timed_out` | `TaskTimeoutError` |
+| `cancelled` | `TaskCancelledError` |
+| `verification_exhausted` | `VerificationExhaustedError` |
+
+Catch them where you call `drive_human_loop` to recover.
+
+## Why this works under failure
+
+- **Driver process dies during the await** — LangGraph's checkpointer (e.g. SQLite, Postgres, Redis) persists graph state. Re-running the script with the same `thread_id` resumes from the parked node. The deterministic `idempotency_key` (default: `langgraph:{sha256(task,payload)}`) means the awaithumans server returns the existing task.
+- **awaithumans server restarts** — tasks are persisted; on restart the dashboard reconnects and the polling driver resumes.
+- **Human times out** — `drive_human_loop` raises `TaskTimeoutError`. Catch it, retry with a different reviewer, or fail closed.
+
+## End-to-end example
+
+`examples/langgraph/refund_agent.py` in the repo is runnable on a laptop with just `awaithumans dev` running. See [the README](https://github.com/awaithumans/awaithumans/tree/main/examples/langgraph).
+
+## Cross-language
+
+The TypeScript adapter at `awaithumans/langgraph` produces the same wire format. A TS driver can resume a graph paused under Python and vice versa.
+
+## Common gotchas
+
+- **No checkpointer = no interrupts.** LangGraph requires a checkpointer to support `interrupt(...)`. Production graphs should use a durable backend (SQLite / Postgres / Redis), not `MemorySaver`.
+- **Side effects before `await_human`.** Run twice on resume. Move them after, or wrap in idempotency.
+- **Multiple `await_human` calls in one node.** Each interrupts independently; LangGraph routes resume values by call order. Pass distinct `idempotency_key=` if the `(task, payload)` tuples might collide.

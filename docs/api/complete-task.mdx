@@ -1,0 +1,105 @@
+---
+title: "POST /api/tasks/{id}/complete"
+description: "Submit a human's response. Triggers the verifier if configured."
+---
+
+```http
+POST /api/tasks/{id}/complete
+Authorization: Bearer <ADMIN_API_TOKEN>   (or session cookie)
+Content-Type: application/json
+```
+
+Records the human's response and transitions the task toward a terminal status. If a verifier is configured, this endpoint runs the LLM call inline before deciding the final status.
+
+The dashboard's "Submit" button hits this endpoint. So do the Slack modal `view_submission` handler and the email magic-link confirmation page (each with their own auth shape — Slack signature, magic-link token).
+
+## Authorization
+
+| Caller | Allowed? |
+|---|---|
+| Admin bearer token | ✓ |
+| Operator session | ✓ |
+| Assignee session | ✓ |
+| Other logged-in user | 403 |
+
+The assignee check is the security-critical bit — a non-operator can complete only their own assigned tasks.
+
+## Request
+
+```json
+{
+  "response": { "approved": true, "notes": "Duplicate charge confirmed." },
+  "completed_by_email": null,
+  "completed_via_channel": null
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `response` | object | yes | Must validate against the task's `response_schema`. |
+| `completed_by_email` | string \| null | no | Override stamped attribution. Browser-driven calls leave null and the server reads the session. |
+| `completed_via_channel` | string \| null | no | Free-form channel identifier (`dashboard`, `slack`, `email`). Used by the audit log. |
+
+## Response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+The full task record (same shape as `POST /api/tasks` response). The `status` field reflects what happened:
+
+- `completed` — verifier passed (or no verifier). Final.
+- `rejected` — verifier rejected this attempt; the task is non-terminal, the human can resubmit.
+- `verification_exhausted` — verifier rejected, attempts exhausted. Final.
+
+Inspect `verifier_result.reason` for the verifier's explanation when `rejected` / `verification_exhausted`.
+
+## With verifier
+
+If `task.verifier_config` is set:
+
+1. Server runs the LLM call inline (5–30s typical).
+2. Pass → `status=completed`, `response` saved, audit log records `action=verified`.
+3. Fail with attempts left → `status=rejected`, `verification_attempt` bumped, audit log records `action=rejected` + `verifier_reason`. The task stays open for resubmission.
+4. Fail with attempts exhausted → `status=verification_exhausted` (terminal), audit log records `action=verification_exhausted`.
+
+Provider-level failures (vendor outage, missing API key, missing SDK extra) propagate as 5xx with typed `error_code` and DO NOT consume an attempt.
+
+## With redact_payload=True
+
+The verifier is **skipped entirely**. The operator marked the payload sensitive; we don't ship it to a third-party LLM. Status goes straight to `completed`.
+
+## Errors
+
+| Status | `error_code` | Cause |
+|---|---|---|
+| 400 | (validation) | Body shape mismatch. |
+| 401 | — | Missing / invalid auth. |
+| 403 | — | Caller isn't operator / admin / assignee. |
+| 404 | `TASK_NOT_FOUND` | Task ID doesn't exist. |
+| 409 | `TASK_ALREADY_TERMINAL` | Task is already in a terminal status (race with timeout / cancel). |
+| 422 | `VERIFIER_CONFIG_INVALID` | Stored verifier config doesn't match the current schema. |
+| 422 | `VERIFIER_PROVIDER_UNKNOWN` | Operator typo'd the provider name. |
+| 500 | `VERIFIER_API_KEY_MISSING` | Server can't read the LLM API key. |
+| 500 | `VERIFIER_PROVIDER_UNAVAILABLE` | SDK extra not installed. |
+| 502 | `VERIFIER_PROVIDER_ERROR` | Vendor returned an error. |
+
+Each error body has the typed `error_code` + `docs` URL.
+
+## Outbound webhook
+
+If `task.callback_url` is set AND the task transitions to a terminal status, an HMAC-signed POST fires to the callback URL after the response is sent (FastAPI BackgroundTask — the human's submit doesn't wait on it). See [Self-hosting → Security](/self-hosting/security) for the signature scheme.
+
+## SDK equivalent
+
+The dashboard calls this directly from the form submission. From your own code:
+
+```bash
+curl -X POST http://localhost:3001/api/tasks/tsk_abc/complete \
+  -H "Authorization: Bearer $AWAITHUMANS_ADMIN_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"response": {"approved": true}}'
+```
+
+For the typical agent loop (create + poll), use the SDK's `await_human()`.

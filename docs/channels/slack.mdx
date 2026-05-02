@@ -1,0 +1,146 @@
+---
+title: "Slack"
+description: "Deliver tasks via Slack. Block Kit modal review, NL thread replies, broadcast claim."
+---
+
+The Slack channel posts tasks to a channel or DM, opens a Block Kit modal for the form, and accepts both structured submissions and natural-language thread replies (parsed by the [verifier](/adapters/verifier)).
+
+## Two install modes
+
+**Static-token (single workspace)** — fastest setup. One bot token in env, all tasks posted to that workspace. Use this for self-hosted deployments where one team owns the awaithumans server.
+
+**OAuth (multi-workspace)** — for distribution scenarios where multiple Slack workspaces install your app. The dashboard's Settings → Slack page handles the install flow.
+
+For your first run, start with static-token.
+
+## Static-token setup
+
+### 1. Create a Slack app
+
+Go to [api.slack.com/apps](https://api.slack.com/apps) → Create New App → From manifest. Paste:
+
+```yaml
+display_information:
+  name: Await Humans
+features:
+  bot_user:
+    display_name: Await Humans
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - im:write
+      - channels:read
+      - groups:read
+      - users:read
+      - files:write
+      - files:read
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://YOUR-PUBLIC-URL/api/channels/slack/interactions
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
+```
+
+Replace `YOUR-PUBLIC-URL` with your awaithumans server's public address. For local dev: `https://<your-ngrok-id>.ngrok.io`.
+
+Install to your workspace. Copy the **Bot User OAuth Token** (`xoxb-...`) and the **Signing Secret** from Basic Information.
+
+### 2. Set env vars
+
+```bash
+export AWAITHUMANS_SLACK_BOT_TOKEN=xoxb-...
+export AWAITHUMANS_SLACK_SIGNING_SECRET=your-signing-secret
+```
+
+Restart `awaithumans dev`. The dashboard's Settings → Slack page now shows the workspace as a read-only "env" entry.
+
+### 3. Test it
+
+```python
+await_human_sync(
+    task="Approve $250 refund?",
+    # ...
+    notify=["slack:#general"],   # any channel your bot is in
+)
+```
+
+The bot posts the task. Click "Review", fill the modal, submit. The script's `await_human` returns.
+
+## OAuth setup
+
+Set `AWAITHUMANS_SLACK_CLIENT_ID`, `AWAITHUMANS_SLACK_CLIENT_SECRET`, `AWAITHUMANS_SLACK_SIGNING_SECRET`, and `AWAITHUMANS_SLACK_INSTALL_TOKEN` (operator-only secret you share with admins who can install).
+
+Open `https://YOUR-PUBLIC-URL/api/channels/slack/oauth/start?install_token=YOUR_TOKEN` to kick off the install. After consent, the workspace appears in Settings → Slack.
+
+OAuth installs are stored encrypted at rest (AES-GCM keyed off `PAYLOAD_KEY`).
+
+## Notify formats
+
+```python
+notify=["slack:#approvals"]                # broadcast to channel — first claim wins
+notify=["slack:@U01ABC1234"]               # DM a specific Slack user
+notify=["slack:#approvals", "email:..."]   # multi-channel
+```
+
+### Broadcast (channel)
+
+Posts a message with a "Claim this task" button. First clicker wins atomically. After claim:
+
+- The original message updates to "Claimed by @user" so the button vanishes for everyone else
+- The modal pops for the claimer immediately (using Slack's interactivity trigger)
+- Audit log records the claim with channel=`slack`
+
+### Direct (user)
+
+DMs the Slack user. They see "Open in Slack" and click straight into the modal. The user must be in your awaithumans directory (Settings → Users) for the modal to open — operators add them with their `slack_user_id`.
+
+## Modal form
+
+The modal is auto-generated from the response schema's `form_definition`. Fields render as:
+
+| Form kind | Slack block |
+|---|---|
+| `switch` (bool) | radio buttons (Yes / No) |
+| `single_select` | static_select |
+| `multi_select` | multi_static_select |
+| `short_text` | plain_text_input |
+| `long_text` | plain_text_input multiline |
+
+Complex types (file uploads, images, signatures) fall back to a "Review in dashboard" link.
+
+## NL thread replies
+
+A reviewer can reply in the message's thread instead of clicking through the modal. The verifier parses the natural language into the response schema:
+
+```
+@bot Approve refund? Customer: cus_demo, $250, duplicate charge.
+
+  ↳ alice: approve, looks legit
+```
+
+If `verifier=` is set on the task and the verifier supports NL parsing (all four built-ins do), the thread text becomes the response. See [Verifier](/adapters/verifier).
+
+## Authorization
+
+awaithumans validates the Slack user submitting against the task's assignee:
+
+- Submitter must be in the directory and active
+- Submitter must be either the task's assignee OR an operator
+- Anyone else gets a clear ephemeral reply: "This task isn't assigned to you."
+
+The broadcast-claim path doesn't enforce this (it's first-claim-wins by design); the direct-DM and modal-submit paths do.
+
+## Audit identity
+
+`completed_by_email` is the directory user's email, NOT the Slack `user.username`. Operators see consistent attribution across Slack and dashboard completions.
+
+## Common gotchas
+
+- **`request_url` mismatch.** Slack tries to verify your interactivity URL. If your awaithumans server moves, update the manifest.
+- **`SLACK_SIGNING_SECRET` mismatch.** Every interaction gets HMAC-checked. Wrong secret → 401s in your logs.
+- **Bot not in channel.** The bot needs to be in the channel you're posting to. Add it manually or via `channels:join` scope.
+- **Workspace member cache.** The dashboard's "Pick Slack member" dropdown caches `users.list` results — restart the server to refresh.

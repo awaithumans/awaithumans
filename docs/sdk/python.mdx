@@ -1,0 +1,163 @@
+---
+title: "Python SDK"
+description: "Reference for the awaithumans Python package."
+---
+
+```bash
+pip install awaithumans                  # SDK only (httpx + pydantic)
+pip install "awaithumans[server]"        # SDK + server + CLI + dashboard
+pip install "awaithumans[temporal]"      # + Temporal adapter peer dep
+pip install "awaithumans[langgraph]"     # + LangGraph adapter peer dep
+pip install "awaithumans[verifier-claude]"   # + Anthropic SDK
+pip install "awaithumans[verifier-openai]"   # + OpenAI SDK
+pip install "awaithumans[verifier-gemini]"   # + Google SDK
+pip install "awaithumans[verifier-azure]"    # + Azure OpenAI
+```
+
+Python 3.10+. The base SDK (`pip install awaithumans`) has only two runtime deps: `httpx` and `pydantic`.
+
+## await_human / await_human_sync
+
+The primitive. Async and sync flavors:
+
+```python
+from awaithumans import await_human, await_human_sync
+
+# async (inside an asyncio context)
+decision = await await_human(
+    task="Approve refund?",
+    payload_schema=RefundPayload,
+    payload=RefundPayload(amount=250),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
+)
+
+# sync (from a non-async context — Flask, Celery, scripts)
+decision = await_human_sync(
+    task="Approve refund?",
+    payload_schema=RefundPayload,
+    payload=RefundPayload(amount=250),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
+)
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `task` | `str` | yes | Human-readable task description (shown in the dashboard / Slack / email). |
+| `payload_schema` | `type[BaseModel]` | yes | Pydantic class that defines the data the human reviews. |
+| `payload` | `BaseModel` | yes | Instance of `payload_schema` — the actual data. |
+| `response_schema` | `type[BaseModel]` | yes | Pydantic class for the response form. Drives the UI. |
+| `timeout_seconds` | `int` | yes | Min 60 (1 min), max 2,592,000 (30 days). |
+| `assign_to` | `str \| list[str] \| dict \| None` | no | Routing target. See [Routing](/routing/overview). |
+| `notify` | `list[str] \| None` | no | Channel destinations (`slack:#x`, `email:y@z`, …). |
+| `verifier` | `VerifierConfig \| None` | no | Server-side LLM verification. See [Verifier](/adapters/verifier). |
+| `idempotency_key` | `str \| None` | no | Default: `sha256(task, payload)[:32]`. See [Idempotency](/concepts/idempotency). |
+| `redact_payload` | `bool` | no | Default `False`. When true, audit log + verifier prompt are scrubbed. |
+| `server_url` | `str \| None` | no | Override `AWAITHUMANS_URL` env var / discovery file. |
+| `api_key` | `str \| None` | no | Override `AWAITHUMANS_ADMIN_API_TOKEN` env var / discovery file. |
+
+### Returns
+
+An instance of `response_schema` — Pydantic-validated. If validation fails, raises `SchemaValidationError`.
+
+### Raises
+
+| Exception | When |
+|---|---|
+| `TaskTimeoutError` | Task hit `timeout_seconds` without completion. |
+| `TaskCancelledError` | Agent or operator cancelled. |
+| `VerificationExhaustedError` | Verifier rejected `max_attempts` times. |
+| `SchemaValidationError` | Response didn't match `response_schema`. |
+| `TaskNotFoundError` | Task ID disappeared (DB reset?). |
+| `TaskCreateError` | Server rejected `POST /api/tasks`. |
+| `PollError` | Long-poll returned non-200. |
+| `ServerUnreachableError` | Couldn't connect to `server_url`. |
+| `MarketplaceNotAvailableError` | Used `assign_to={"marketplace": True}`. Reserved for Phase 3. |
+
+All inherit from `AwaitHumansError`.
+
+## Verifier helpers
+
+```python
+from awaithumans.verifiers.claude import claude_verifier
+from awaithumans.verifiers.openai import openai_verifier
+from awaithumans.verifiers.gemini import gemini_verifier
+from awaithumans.verifiers.azure_openai import azure_verifier
+
+verifier = claude_verifier(
+    instructions="...",
+    model="claude-sonnet-4-5",     # optional, has default
+    max_attempts=3,                # default 3
+    api_key_env="ANTHROPIC_API_KEY",   # default
+)
+```
+
+Each returns a `VerifierConfig` you pass to `await_human(verifier=...)`. The actual LLM call runs server-side. See [Verifier](/adapters/verifier).
+
+## Adapters
+
+### Temporal
+
+```python
+# Inside a Temporal workflow:
+from temporalio import workflow
+with workflow.unsafe.imports_passed_through():
+    from awaithumans.adapters.temporal import await_human
+
+# In your web server (separate process):
+from awaithumans.adapters.temporal import dispatch_signal
+```
+
+See [Temporal](/adapters/temporal).
+
+### LangGraph
+
+```python
+# Inside a LangGraph node:
+from awaithumans.adapters.langgraph import await_human
+
+# Driver — run the graph:
+from awaithumans.adapters.langgraph import drive_human_loop
+```
+
+See [LangGraph](/adapters/langgraph).
+
+## CLI
+
+```bash
+awaithumans dev               # boot server + auto-config for local dev
+awaithumans add-user          # add a directory user (interactive)
+awaithumans list-users        # list directory users
+awaithumans version           # print version
+```
+
+`awaithumans dev` auto-generates `PAYLOAD_KEY`, `ADMIN_API_TOKEN`, and the SQLite DB if missing. Writes `~/.awaithumans-dev.json` so the SDK auto-discovers the running server.
+
+## Configuration
+
+The SDK reads configuration in this order (first match wins):
+
+1. Function-call args (`server_url=`, `api_key=`)
+2. Environment variables (`AWAITHUMANS_URL`, `AWAITHUMANS_ADMIN_API_TOKEN`)
+3. Discovery file (`~/.awaithumans-dev.json`)
+4. Defaults (`http://localhost:3001`, no token)
+
+Production deployments should use environment variables. The discovery file is a dev affordance.
+
+## Type stubs
+
+The package ships with `py.typed`. mypy/pyright pick up the types automatically:
+
+```python
+decision: RefundDecision = await_human_sync(
+    task="...",
+    payload_schema=RefundPayload,
+    payload=...,
+    response_schema=RefundDecision,
+    timeout_seconds=900,
+)
+# decision is typed as RefundDecision — IDE autocomplete + mypy enforcement
+```

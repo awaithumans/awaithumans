@@ -1,0 +1,131 @@
+---
+title: "Configuration"
+description: "Every environment variable the awaithumans server reads."
+---
+
+All configuration is via environment variables prefixed `AWAITHUMANS_`. The server reads these once at startup; restart the process to pick up changes.
+
+## Required
+
+| Variable | Description |
+|---|---|
+| `AWAITHUMANS_PAYLOAD_KEY` | 32-byte urlsafe-base64 string. Root encryption key for sessions + magic links + Slack OAuth tokens. NEVER rotate after first deploy. |
+| `AWAITHUMANS_ADMIN_API_TOKEN` | Bearer token your agent passes via `Authorization: Bearer ...`. Generate with `secrets.token_urlsafe(32)`. |
+| `AWAITHUMANS_PUBLIC_URL` | Public-facing URL (e.g. `https://reviews.acme.com`). Used for OAuth redirects, magic-link URLs, dashboard click-throughs. |
+
+In dev (`awaithumans dev`), the CLI auto-generates these for you and writes the values to `~/.awaithumans-dev.json`.
+
+## Database
+
+| Variable | Default | Description |
+|---|---|---|
+| `AWAITHUMANS_DATABASE_URL` | (none) | Full Postgres URL. Overrides the SQLite default. |
+| `AWAITHUMANS_DB_PATH` | `.awaithumans/dev.db` | SQLite file path. Used when `DATABASE_URL` is unset. |
+
+```bash
+# SQLite (dev / single-user)
+AWAITHUMANS_DB_PATH=/var/lib/awaithumans/data.db
+
+# Postgres (production)
+AWAITHUMANS_DATABASE_URL=postgresql://user:pass@host:5432/dbname
+```
+
+## Server
+
+| Variable | Default | Description |
+|---|---|---|
+| `AWAITHUMANS_HOST` | `0.0.0.0` | Listen interface. |
+| `AWAITHUMANS_PORT` | `3001` | Listen port. |
+| `AWAITHUMANS_ENVIRONMENT` | `development` | Set to `production` to enable strict checks (HTTPS required, etc). |
+| `AWAITHUMANS_LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+
+## CORS
+
+| Variable | Default | Description |
+|---|---|---|
+| `AWAITHUMANS_CORS_ORIGINS` | `*` | Comma-separated list. Bare `*` means any origin reads, no credentials. Specific origins flip credentials ON. |
+
+The server validates CORS at boot — plain `http://` origins outside localhost are rejected, mixed `*`-with-explicit lists are rejected. See [Security](/self-hosting/security).
+
+## Slack channel
+
+| Variable | Description |
+|---|---|
+| `AWAITHUMANS_SLACK_BOT_TOKEN` | Bot token (`xoxb-...`). Single-workspace mode. |
+| `AWAITHUMANS_SLACK_SIGNING_SECRET` | Required for any Slack mode. Verifies inbound webhooks. |
+| `AWAITHUMANS_SLACK_CLIENT_ID` | OAuth multi-workspace install. |
+| `AWAITHUMANS_SLACK_CLIENT_SECRET` | OAuth multi-workspace install. |
+| `AWAITHUMANS_SLACK_INSTALL_TOKEN` | Operator-only secret gating `/oauth/start`. Required for multi-workspace mode. |
+| `AWAITHUMANS_SLACK_OAUTH_SCOPES` | Override default scope set. Rare. |
+
+See [Slack](/channels/slack) for the install flow.
+
+## Email channel
+
+| Variable | Default | Description |
+|---|---|---|
+| `AWAITHUMANS_EMAIL_TRANSPORT` | (none) | One of `resend`, `smtp`, `logging`, `noop`. |
+| `AWAITHUMANS_EMAIL_FROM` | (none) | Sender address. Required if a transport is set. |
+| `AWAITHUMANS_EMAIL_FROM_NAME` | (none) | Display name. |
+| `AWAITHUMANS_EMAIL_REPLY_TO` | (none) | Reply-To header. |
+| `AWAITHUMANS_RESEND_KEY` | (none) | Resend API key. Required for `resend` transport. |
+| `AWAITHUMANS_SMTP_HOST` | (none) | Required for `smtp` transport. |
+| `AWAITHUMANS_SMTP_PORT` | `587` | |
+| `AWAITHUMANS_SMTP_USER` | (none) | |
+| `AWAITHUMANS_SMTP_PASSWORD` | (none) | |
+| `AWAITHUMANS_SMTP_USE_TLS` | `false` | Implicit TLS (port 465). Rare. |
+| `AWAITHUMANS_SMTP_START_TLS` | `true` | STARTTLS on port 587. Most common. |
+
+See [Email](/channels/email).
+
+## Verifier
+
+| Variable | Description |
+|---|---|
+| `ANTHROPIC_API_KEY` | Default for `claude` provider. |
+| `OPENAI_API_KEY` | Default for `openai` provider. |
+| `GEMINI_API_KEY` | Default for `gemini` provider. |
+| `AZURE_OPENAI_API_KEY` | Default for `azure` provider. |
+| `AZURE_OPENAI_ENDPOINT` | Required for `azure` provider. |
+
+These are read by `Settings.get_secret(env_name)` at verification time. Override per-task via `VerifierConfig.api_key_env=...`. See [Verifier](/adapters/verifier).
+
+## .env file
+
+The server loads `.env` from the working directory at startup. Useful for local dev:
+
+```dotenv
+AWAITHUMANS_PAYLOAD_KEY=tlR5UCElY4QIjThpO4TlL1GzTzXrQQJYa3BtvZ0FOBQ
+AWAITHUMANS_ADMIN_API_TOKEN=YrKxVj9FOaEP2UnVQWf1kT87Ld6sPmA9XgB3ZNzuIqs
+AWAITHUMANS_SLACK_BOT_TOKEN=xoxb-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Variables in the actual environment override the file. For Docker / Kubernetes, prefer real env vars.
+
+## Logging
+
+The root logger writes structured lines to stdout:
+
+```
+2026-05-12T08:00:01.123Z [INFO] awaithumans.server.routes.tasks request_id=abc123 — Task tsk_4f8 created
+```
+
+A scrubbing filter on the root handler redacts known credential patterns from every record before it reaches stdout — `sk-...`, `Bearer ...`, `password=...`, `X-Admin-Token: ...`. Even if upstream code accidentally logs a credential, it gets `[REDACTED]` before egress.
+
+For audit-style structured output (one JSON object per line), wrap with `jq` downstream — the format is grep-friendly by design.
+
+## Discovery file
+
+In dev mode, `awaithumans dev` writes `~/.awaithumans-dev.json`:
+
+```json
+{
+  "url": "http://localhost:3001",
+  "admin_token": "..."
+}
+```
+
+The SDK (Python and TS) reads this file when no env vars are set, so `await_human()` calls in your agent script auto-discover the running dev server. The file is `chmod 0600` and lives in the user's home — never check it in.
+
+In production, set `AWAITHUMANS_URL` and `AWAITHUMANS_ADMIN_API_TOKEN` in your agent's environment instead.

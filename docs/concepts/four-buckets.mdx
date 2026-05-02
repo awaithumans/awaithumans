@@ -1,0 +1,87 @@
+---
+title: "The four buckets"
+description: "Every customization in awaithumans goes through one of four extension points. There is no fifth."
+---
+
+Every framework eventually faces a fork: do we let users customize anything they want, or do we constrain them to a small set of well-defined extension points?
+
+awaithumans takes the second path. Customization goes through one of **four buckets**. Anything that doesn't fit one of these is by design unsupported — you write a wrapper around the SDK, not a fork of the core.
+
+| Bucket | Where it runs | What it customizes |
+|---|---|---|
+| **Channel** | Server-side | How a task is delivered to humans (Slack, email, SMS, …) |
+| **Verifier** | Server-side | Quality-check the human's response before committing |
+| **Router** | Server-side | Resolve `assign_to` to a specific user / pool / role |
+| **Task-type handler** | Dashboard + server | Render the human-facing UI from a schema |
+
+## Channel
+
+A channel is "how does the human find out about the task and respond?" Built-in channels:
+
+- **Dashboard** (always on) — operators log in via `/login`, see their queue, click in to fill the response form
+- **Slack** — Block Kit message with a Review button, opens a modal with the form
+- **Email** — Resend / SMTP, action buttons for boolean / single-select fields, magic-link confirmation page
+
+Adding a channel means writing a small Python module that:
+
+1. Subscribes to `notify=[...]` strings with your prefix (`sms:`, `pagerduty:`, …)
+2. Builds a delivery message from the task's `form_definition`
+3. Receives the human's reply (webhook from your provider) and calls `complete_task()` on the awaithumans server
+
+See [Channels: overview](/channels/overview) for the contract. Slack and email are the canonical examples.
+
+## Verifier
+
+A verifier is an LLM-backed quality check that runs server-side after the human submits. Two jobs in one call:
+
+1. **Quality**: was the response acceptable per the operator's `instructions`?
+2. **NL parsing**: if the human replied in free text (Slack thread, email body), extract structured data into the response schema.
+
+Built-in providers:
+
+- `claude` (Anthropic) — uses tool-use for structured output
+- `openai` — uses `response_format: json_schema` strict mode
+- `gemini` (Google) — uses `response_schema`
+- `azure` (Azure OpenAI) — same shape as openai, deployment-name addressing
+
+Adding a provider means a single file in `server/verification/providers/` exporting an async `verify(config, ctx) -> VerifierResult`. See [Verifier](/adapters/verifier).
+
+## Router
+
+A router resolves the `assign_to=` field on a task to a specific human (or a list, or a pool). Built-in resolution:
+
+- `assign_to="alice@acme.com"` → that user
+- `assign_to=["a@b.com", "c@d.com"]` → first to claim
+- `assign_to={"role": "kyc-reviewer"}` → pool of users with that role
+- `assign_to={"pool": "ops", "access_level": "senior"}` → filter by pool + level
+
+The default router uses **least-recently-assigned** within the resolved set so workload spreads. Operators who need a different fairness model (round-robin, weighted, on-call schedules) override the router. See [Routing](/routing/overview).
+
+## Task-type handler
+
+A task-type handler is a dashboard React component that renders the human-facing form from a schema. The default handler renders any Pydantic / Zod schema as a generic form — it works for 80% of tasks out of the box.
+
+Custom handlers exist for cases where generic JSON-schema rendering isn't enough: file uploads with drag-drop, signature pads, image annotation, embedded video review. The dashboard's `components/form-renderer/` is the registry; you register a component for a `kind` value in the form definition.
+
+For v0.1 the default handler covers everything. Custom task-type handlers are a Phase-2 plugin point — declared here so the architecture stays open, but no built-ins beyond the default.
+
+## What's NOT a bucket
+
+By design, these don't get extension points:
+
+- **Storage** — Postgres or SQLite, nothing else. We test both.
+- **Queue / scheduling** — single-process timeout scheduler, no Redis / Celery / RabbitMQ.
+- **Auth** — argon2id passwords + HMAC session cookies. SSO comes via the [hosted product](/self-hosting) post-launch.
+- **The `await_human()` signature** — public API; breaking it is a v1.0 event.
+
+If you want a thing that doesn't fit one of the four buckets, the answer is "wrap the SDK in your own code." Per-customer feature requests go into adapters that live alongside the core, never into the core itself.
+
+## Why this matters
+
+The constraint earns the architecture's reliability. With four well-defined extension points:
+
+- The wire format between the SDK and the server is locked. Bumping the SDK in your agent code can't break the dashboard.
+- The error contract is locked. Every typed error has a docs URL and an action.
+- Reviewing a contributor's PR is fast: which bucket is this? Does it stay inside?
+
+This is the [`refuse-customization-creep`](https://github.com/awaithumans/awaithumans/blob/main/CONTRIBUTING.md) rule: per-customer divergence goes into adapters, never into core forks.

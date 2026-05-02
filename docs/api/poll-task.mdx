@@ -1,0 +1,88 @@
+---
+title: "GET /api/tasks/{id}/poll"
+description: "Long-poll a task until it reaches a terminal status."
+---
+
+```http
+GET /api/tasks/{id}/poll?timeout=25
+Authorization: Bearer <ADMIN_API_TOKEN>
+```
+
+Holds the connection open for up to `timeout` seconds (default 25, max 30). Returns immediately when the task transitions to a terminal status. If still pending after the timeout, returns the current status and the client reconnects.
+
+## Why long-polling
+
+Plain `GET /api/tasks/{id}` works for one-shot reads, but agents waiting on tasks need either polling (every second → DB load + latency) or long-polling (one connection, server pushes when state changes). awaithumans uses long-polling because:
+
+- One connection per task, parked at the server
+- Server-side detection of terminal transitions (no polling cost)
+- Any HTTP client works (no WebSockets / SSE complexity)
+
+The SDK reconnects every ~25 seconds, well under typical gateway timeouts (60s).
+
+## Query params
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `timeout` | int | 25 | Max seconds to hold the connection (1–30). |
+
+## Response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "completed",
+  "response": { "approved": true, "notes": "Duplicate charge confirmed." },
+  "completed_at": "2026-05-12T08:05:23.456Z",
+  "timed_out_at": null
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | One of `created`, `notified`, `assigned`, `in_progress`, `submitted`, `verified`, `rejected`, `completed`, `timed_out`, `cancelled`, `verification_exhausted`. |
+| `response` | object \| null | Set when status is `completed`. The validated response per `response_schema`. |
+| `completed_at` | timestamp \| null | Set on `completed`. |
+| `timed_out_at` | timestamp \| null | Set on `timed_out`. |
+
+## Statuses your client cares about
+
+| Status | Meaning | Client action |
+|---|---|---|
+| `completed` | Human submitted, verifier (if any) passed | Use `response`; you're done. |
+| `timed_out` | Scheduler hit `timeout_at` | Raise `TaskTimeoutError`. |
+| `cancelled` | Agent or operator cancelled | Raise `TaskCancelledError`. |
+| `verification_exhausted` | Verifier rejected `max_attempts` times | Raise `VerificationExhaustedError`. |
+| (anything else) | Still pending | Reconnect after the response; loop. |
+
+## Errors
+
+| Status | `error_code` | Cause |
+|---|---|---|
+| 401 | — | Missing or wrong auth. |
+| 403 | — | Caller isn't operator / admin / assignee. |
+| 404 | `TASK_NOT_FOUND` | Task ID doesn't exist. |
+
+## Polling vs webhooks
+
+For agents that block on `await_human()` long enough that polling cost matters, use the [Temporal](/adapters/temporal) or LangGraph adapters — they replace polling with workflow signals via the `callback_url` mechanism.
+
+For everything else (Flask handlers, scripts, simple async loops), polling is fine. The cost: one HTTP connection per pending task, held for ~25s at a time.
+
+## SDK equivalent
+
+```python
+# Python — happens automatically inside await_human()
+from awaithumans import await_human_sync
+decision = await_human_sync(...)   # internal polling loop
+```
+
+```ts
+// TypeScript
+import { awaitHuman } from "awaithumans";
+const decision = await awaitHuman({ ... });   // internal polling loop
+```
