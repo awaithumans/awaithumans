@@ -36,7 +36,7 @@ from awaithumans.server.db.models import (  # noqa: F401 — register models
     SlackInstallation,
     Task,
 )
-from awaithumans.server.services import task_service
+from awaithumans.server.services import task_verifier
 from awaithumans.server.services.exceptions import VerifierProviderError
 from awaithumans.server.services.task_service import complete_task, create_task
 from awaithumans.types import TaskStatus, VerifierResult
@@ -98,7 +98,7 @@ async def test_verifier_pass_marks_completed_and_stores_result(
     async def fake(_cfg, _ctx):
         return VerifierResult(passed=True, reason="Looks consistent.")
 
-    monkeypatch.setattr(task_service, "run_verifier", fake)
+    monkeypatch.setattr(task_verifier, "run_verifier", fake)
 
     completed = await complete_task(
         session, task_id=task.id, response={"approved": True}
@@ -119,7 +119,7 @@ async def test_verifier_reject_with_attempts_left_marks_rejected(
     async def fake(_cfg, _ctx):
         return VerifierResult(passed=False, reason="Decision conflicts with policy.")
 
-    monkeypatch.setattr(task_service, "run_verifier", fake)
+    monkeypatch.setattr(task_verifier, "run_verifier", fake)
 
     rejected = await complete_task(
         session, task_id=task.id, response={"approved": True}
@@ -153,7 +153,7 @@ async def test_verifier_reject_can_be_resubmitted_and_attempt_advances(
     async def fake(_cfg, _ctx):
         return next(verdicts)
 
-    monkeypatch.setattr(task_service, "run_verifier", fake)
+    monkeypatch.setattr(task_verifier, "run_verifier", fake)
 
     first = await complete_task(session, task_id=task.id, response={"approved": True})
     assert first.status == TaskStatus.REJECTED
@@ -175,7 +175,7 @@ async def test_verifier_exhausted_marks_terminal(
     async def fake(_cfg, _ctx):
         return VerifierResult(passed=False, reason="Still wrong.")
 
-    monkeypatch.setattr(task_service, "run_verifier", fake)
+    monkeypatch.setattr(task_verifier, "run_verifier", fake)
 
     first = await complete_task(session, task_id=task.id, response={"approved": True})
     assert first.status == TaskStatus.REJECTED
@@ -201,7 +201,7 @@ async def test_verifier_nl_parsed_response_replaces_stored_response(
             parsed_response={"approved": True, "note": "looks good"},
         )
 
-    monkeypatch.setattr(task_service, "run_verifier", fake)
+    monkeypatch.setattr(task_verifier, "run_verifier", fake)
 
     completed = await complete_task(
         session,
@@ -225,7 +225,7 @@ async def test_provider_failure_does_not_burn_an_attempt(
     async def fake(_cfg, _ctx):
         raise VerifierProviderError("claude", "rate limit exceeded")
 
-    monkeypatch.setattr(task_service, "run_verifier", fake)
+    monkeypatch.setattr(task_verifier, "run_verifier", fake)
 
     with pytest.raises(VerifierProviderError):
         await complete_task(session, task_id=task.id, response={"approved": True})

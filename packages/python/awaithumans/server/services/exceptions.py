@@ -209,6 +209,26 @@ class VerifierAPIKeyMissingError(ServiceError):
         )
 
 
+class VerifierConfigInvalidError(ServiceError):
+    """A task's stored `verifier_config` JSON doesn't match the current
+    VerifierConfig schema.
+
+    Common cause: a task was created against an older SDK that wrote a
+    field shape we've since changed. The task can't be verified, but
+    it's not the human's fault — surface a clear error to the operator
+    so they know whether to bump the SDK or override the verifier."""
+
+    status_code = 422
+    error_code = "VERIFIER_CONFIG_INVALID"
+    docs_path = "verifier-config-invalid"
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+        super().__init__(
+            f"The task's stored verifier_config doesn't match the current schema: {detail}"
+        )
+
+
 class VerifierProviderError(ServiceError):
     """Provider rejected the verification call (network, auth, quota, model errors).
 

@@ -20,9 +20,12 @@ from awaithumans.server.verification.prompt import (
     build_user_prompt,
 )
 from awaithumans.types import VerificationContext, VerifierConfig, VerifierResult
-
-DEFAULT_MODEL = "gpt-4o-2024-11-20"
-DEFAULT_API_KEY_ENV = "OPENAI_API_KEY"
+from awaithumans.utils.constants import (
+    VERIFIER_MAX_OUTPUT_TOKENS,
+    VERIFIER_OPENAI_DEFAULT_API_KEY_ENV,
+    VERIFIER_OPENAI_DEFAULT_MODEL,
+    VERIFIER_OUTPUT_SCHEMA_NAME,
+)
 
 
 async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierResult:
@@ -31,13 +34,13 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
     except ImportError as exc:
         raise VerifierProviderUnavailableError("openai", "verifier-openai") from exc
 
-    api_key_env = config.api_key_env or DEFAULT_API_KEY_ENV
+    api_key_env = config.api_key_env or VERIFIER_OPENAI_DEFAULT_API_KEY_ENV
     api_key = os.environ.get(api_key_env)
     if not api_key:
         raise VerifierAPIKeyMissingError(api_key_env)
 
     client = AsyncOpenAI(api_key=api_key)
-    model = config.model or DEFAULT_MODEL
+    model = config.model or VERIFIER_OPENAI_DEFAULT_MODEL
 
     # OpenAI's JSON-schema response_format requires `additionalProperties:
     # false` and every property listed in `required`. Our shared schema
@@ -55,12 +58,12 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
             response_format={
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "verifier_verdict",
+                    "name": VERIFIER_OUTPUT_SCHEMA_NAME,
                     "schema": strict_schema,
                     "strict": True,
                 },
             },
-            max_tokens=1024,
+            max_tokens=VERIFIER_MAX_OUTPUT_TOKENS,
         )
     except Exception as exc:  # noqa: BLE001
         raise VerifierProviderError("openai", str(exc)) from exc

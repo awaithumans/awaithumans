@@ -22,9 +22,11 @@ from awaithumans.server.verification.prompt import (
     build_user_prompt,
 )
 from awaithumans.types import VerificationContext, VerifierConfig, VerifierResult
-
-DEFAULT_MODEL = "gemini-2.0-flash"
-DEFAULT_API_KEY_ENV = "GEMINI_API_KEY"
+from awaithumans.utils.constants import (
+    VERIFIER_GEMINI_DEFAULT_API_KEY_ENV,
+    VERIFIER_GEMINI_DEFAULT_MODEL,
+    VERIFIER_MAX_OUTPUT_TOKENS,
+)
 
 
 async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierResult:
@@ -33,12 +35,12 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
     except ImportError as exc:
         raise VerifierProviderUnavailableError("gemini", "verifier-gemini") from exc
 
-    api_key_env = config.api_key_env or DEFAULT_API_KEY_ENV
+    api_key_env = config.api_key_env or VERIFIER_GEMINI_DEFAULT_API_KEY_ENV
     api_key = os.environ.get(api_key_env)
     if not api_key:
         raise VerifierAPIKeyMissingError(api_key_env)
 
-    model_name = config.model or DEFAULT_MODEL
+    model_name = config.model or VERIFIER_GEMINI_DEFAULT_MODEL
     system_prompt = build_system_prompt(config.instructions)
     user_prompt = build_user_prompt(ctx)
 
@@ -53,7 +55,7 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
             generation_config={
                 "response_mime_type": "application/json",
                 "response_schema": _to_gemini_schema(VERIFIER_OUTPUT_SCHEMA),
-                "max_output_tokens": 1024,
+                "max_output_tokens": VERIFIER_MAX_OUTPUT_TOKENS,
             },
         )
         return {"text": result.text}

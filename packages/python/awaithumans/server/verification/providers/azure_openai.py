@@ -29,10 +29,13 @@ from awaithumans.server.verification.prompt import (
 )
 from awaithumans.server.verification.providers.openai import _to_strict_schema
 from awaithumans.types import VerificationContext, VerifierConfig, VerifierResult
-
-DEFAULT_API_KEY_ENV = "AZURE_OPENAI_API_KEY"
-DEFAULT_ENDPOINT_ENV = "AZURE_OPENAI_ENDPOINT"
-DEFAULT_API_VERSION = "2024-10-21"
+from awaithumans.utils.constants import (
+    VERIFIER_AZURE_DEFAULT_API_KEY_ENV,
+    VERIFIER_AZURE_DEFAULT_API_VERSION,
+    VERIFIER_AZURE_DEFAULT_ENDPOINT_ENV,
+    VERIFIER_MAX_OUTPUT_TOKENS,
+    VERIFIER_OUTPUT_SCHEMA_NAME,
+)
 
 
 async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierResult:
@@ -41,18 +44,18 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
     except ImportError as exc:
         raise VerifierProviderUnavailableError("azure", "verifier-azure") from exc
 
-    api_key_env = config.api_key_env or DEFAULT_API_KEY_ENV
+    api_key_env = config.api_key_env or VERIFIER_AZURE_DEFAULT_API_KEY_ENV
     api_key = os.environ.get(api_key_env)
     if not api_key:
         raise VerifierAPIKeyMissingError(api_key_env)
 
     metadata = config.metadata or {}
-    endpoint_env = metadata.get("endpoint_env", DEFAULT_ENDPOINT_ENV)
+    endpoint_env = metadata.get("endpoint_env", VERIFIER_AZURE_DEFAULT_ENDPOINT_ENV)
     endpoint = os.environ.get(endpoint_env)
     if not endpoint:
         raise VerifierAPIKeyMissingError(endpoint_env)
 
-    api_version = metadata.get("api_version", DEFAULT_API_VERSION)
+    api_version = metadata.get("api_version", VERIFIER_AZURE_DEFAULT_API_VERSION)
     deployment = metadata.get("deployment") or config.model
     if not deployment:
         raise VerifierProviderError(
@@ -79,12 +82,12 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
             response_format={
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "verifier_verdict",
+                    "name": VERIFIER_OUTPUT_SCHEMA_NAME,
                     "schema": strict_schema,
                     "strict": True,
                 },
             },
-            max_tokens=1024,
+            max_tokens=VERIFIER_MAX_OUTPUT_TOKENS,
         )
     except Exception as exc:  # noqa: BLE001
         raise VerifierProviderError("azure", str(exc)) from exc
