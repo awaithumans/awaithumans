@@ -45,6 +45,7 @@ from awaithumans.server.services.task_service import (
     list_tasks,
 )
 from awaithumans.server.services.user_service import get_user
+from awaithumans.server.services.webhook_dispatch import fire_completion_webhook
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -183,6 +184,7 @@ async def complete_task_route(
     task_id: str,
     body: CompleteTaskRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
     """Complete a task with the human's response.
@@ -213,6 +215,15 @@ async def complete_task_route(
         completed_by_email=completer_email,
         completed_via_channel=body.completed_via_channel,
     )
+
+    # Fire the outbound webhook AFTER the response so a slow callback
+    # endpoint never blocks the human's submit. Only fires when the
+    # task actually transitioned to a terminal state — REJECTED is
+    # non-terminal, the agent shouldn't get a "complete" callback for
+    # a verifier-rejected attempt.
+    if task.callback_url and task.status in TERMINAL_STATUSES_SET:
+        background_tasks.add_task(fire_completion_webhook, task)
+
     return _task_to_response(task)
 
 
@@ -234,6 +245,7 @@ async def _session_user_email(request: Request, session: AsyncSession) -> str | 
 async def cancel_task_route(
     task_id: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
     """Cancel a task. Operator / admin only.
@@ -244,6 +256,13 @@ async def cancel_task_route(
     to before completing it, which the agent won't expect."""
     require_operator_or_admin(request)
     task = await cancel_task(session, task_id)
+
+    # Cancellation is also a terminal transition the durable adapter
+    # cares about — without the webhook, a Temporal workflow would
+    # sit waiting for a signal that never comes.
+    if task.callback_url:
+        background_tasks.add_task(fire_completion_webhook, task)
+
     return _task_to_response(task)
 
 
