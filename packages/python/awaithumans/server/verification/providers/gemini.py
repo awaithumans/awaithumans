@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import threading
 from typing import Any
 
+from awaithumans.server.core.config import settings
 from awaithumans.server.services.exceptions import (
     VerifierAPIKeyMissingError,
     VerifierProviderError,
@@ -54,7 +54,7 @@ async def verify(config: VerifierConfig, ctx: VerificationContext) -> VerifierRe
         raise VerifierProviderUnavailableError("gemini", "verifier-gemini") from exc
 
     api_key_env = config.api_key_env or VERIFIER_GEMINI_DEFAULT_API_KEY_ENV
-    api_key = os.environ.get(api_key_env)
+    api_key = settings.get_secret(api_key_env)
     if not api_key:
         raise VerifierAPIKeyMissingError(api_key_env)
 
