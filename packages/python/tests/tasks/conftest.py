@@ -11,5 +11,6 @@ from __future__ import annotations
 from tests.auth.conftest import (  # noqa: F401 — fixture re-export
     _isolated_db,
     _payload_key,
+    _reset_rate_limit,
     operator_user,
 )

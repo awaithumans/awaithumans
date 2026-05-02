@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.core import bootstrap
 from awaithumans.server.core.auth import sign_session
 from awaithumans.server.core.config import settings
+from awaithumans.server.core.rate_limit import SETUP_PER_IP, client_ip
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.setup import (
     CreateOperatorRequest,
@@ -61,6 +62,7 @@ async def setup_status(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_first_operator(
+    request: Request,
     body: CreateOperatorRequest,
     response: Response,
     session: AsyncSession = Depends(get_session),
@@ -72,6 +74,19 @@ async def create_first_operator(
     session cookie so the operator lands directly on the queue —
     no redundant login step.
     """
+    # Rate-limit per IP. The route is unauthenticated by design (the
+    # bootstrap token gates it), and the first-run window can stretch
+    # for hours/days while the operator finishes onboarding — long
+    # enough that an attacker discovering the install could grind the
+    # 32-byte token endlessly. The cap is generous enough that a real
+    # operator fumbling their first attempt isn't locked out.
+    ip = client_ip(request)
+    if not SETUP_PER_IP.check(f"setup:{ip}"):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many setup attempts. Try again in a few minutes.",
+        )
+
     # Re-check on the DB rather than only trusting the bootstrap flag:
     # two concurrent /setup posts could both see `_completed=False`
     # before the row commits. The user service's unique constraints
