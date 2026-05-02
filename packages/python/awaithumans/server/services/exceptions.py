@@ -101,9 +101,7 @@ class TaskAlreadyClaimedError(ServiceError):
     def __init__(self, task_id: str, claimed_by_user_id: str | None) -> None:
         self.task_id = task_id
         self.claimed_by_user_id = claimed_by_user_id
-        super().__init__(
-            f"Task '{task_id}' was already claimed by another user."
-        )
+        super().__init__(f"Task '{task_id}' was already claimed by another user.")
 
 
 class UserNoAddressError(ServiceError):
@@ -171,4 +169,73 @@ class LastOperatorError(ServiceError):
             f"Can't {action} the last active operator — at least one "
             "operator must remain so the dashboard stays manageable. "
             "Promote another user to operator first."
+        )
+
+
+# ─── Verifier errors ──────────────────────────────────────────────────
+
+
+class VerifierProviderUnavailableError(ServiceError):
+    """The configured verifier provider's SDK isn't installed.
+
+    Surfaces the exact `pip install` line so the operator can fix it
+    without hunting through docs."""
+
+    status_code = 500
+    error_code = "VERIFIER_PROVIDER_UNAVAILABLE"
+    docs_path = "verifier-provider-unavailable"
+
+    def __init__(self, provider: str, extra: str) -> None:
+        self.provider = provider
+        self.extra = extra
+        super().__init__(
+            f"Verifier provider '{provider}' requires the [{extra}] extra. "
+            f'Install with: pip install "awaithumans[{extra}]"'
+        )
+
+
+class VerifierAPIKeyMissingError(ServiceError):
+    """The env var named in VerifierConfig.api_key_env wasn't set on the server."""
+
+    status_code = 500
+    error_code = "VERIFIER_API_KEY_MISSING"
+    docs_path = "verifier-api-key-missing"
+
+    def __init__(self, env_var: str) -> None:
+        self.env_var = env_var
+        super().__init__(
+            f"Verifier API key not configured. Set the '{env_var}' environment "
+            "variable on the awaithumans server (not in the agent process)."
+        )
+
+
+class VerifierProviderError(ServiceError):
+    """Provider rejected the verification call (network, auth, quota, model errors).
+
+    Distinct from VERIFIER_API_KEY_MISSING (config) and from a 'failed'
+    VerifierResult (the LLM ran successfully but said the response is
+    bad). This means the LLM call itself blew up."""
+
+    status_code = 502
+    error_code = "VERIFIER_PROVIDER_ERROR"
+    docs_path = "verifier-provider-error"
+
+    def __init__(self, provider: str, detail: str) -> None:
+        self.provider = provider
+        self.detail = detail
+        super().__init__(f"Verifier provider '{provider}' failed: {detail}")
+
+
+class VerifierProviderUnknownError(ServiceError):
+    """VerifierConfig.provider is set to something we don't recognise."""
+
+    status_code = 422
+    error_code = "VERIFIER_PROVIDER_UNKNOWN"
+    docs_path = "verifier-provider-unknown"
+
+    def __init__(self, provider: str, known: list[str]) -> None:
+        self.provider = provider
+        self.known = known
+        super().__init__(
+            f"Unknown verifier provider '{provider}'. Supported providers: {', '.join(known)}."
         )
