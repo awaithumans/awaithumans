@@ -49,6 +49,7 @@ from awaithumans.server.db.models import (  # noqa: F401 — register models
     Task,
     TaskStatus,
 )
+from awaithumans.server.db.models import User
 from awaithumans.server.services.task_service import create_task, get_task
 from awaithumans.utils.constants import SLACK_ACTION_OPEN_REVIEW
 
@@ -198,6 +199,33 @@ async def _read_task(client: AsyncClient, task_id: str) -> Task:
     raise RuntimeError("session override did not yield")
 
 
+async def _seed_user(
+    client: AsyncClient,
+    *,
+    email: str,
+    slack_team_id: str,
+    slack_user_id: str,
+    is_operator: bool = False,
+) -> str:
+    """Insert a directory user with a Slack identity. Required so the
+    interactivity routes can resolve a Slack user to a directory user
+    and authorise them against the task."""
+    override = client._transport.app.dependency_overrides[get_session]  # type: ignore[attr-defined]
+    async for s in override():
+        user = User(
+            email=email,
+            slack_team_id=slack_team_id,
+            slack_user_id=slack_user_id,
+            is_operator=is_operator,
+            active=True,
+        )
+        s.add(user)
+        await s.commit()
+        await s.refresh(user)
+        return user.id
+    raise RuntimeError("session override did not yield")
+
+
 # ─── Signature gate ─────────────────────────────────────────────────────
 
 
@@ -281,12 +309,23 @@ async def test_block_actions_opens_modal(
     slack_ctx: tuple[AsyncClient, FakeSlackClient],
 ) -> None:
     client, fake = slack_ctx
+    # Seed an operator — their Slack identity must be resolvable to a
+    # directory user before the route will open the modal. Operators
+    # can act on any task; non-operators only on their own.
+    await _seed_user(
+        client,
+        email="ops@acme.com",
+        slack_team_id="T_ACME",
+        slack_user_id="U_ALICE",
+        is_operator=True,
+    )
     task_id = await _seed_task(client, form_definition=_switch_form())
 
     payload = {
         "type": "block_actions",
         "trigger_id": "trigger-xyz",
         "team": {"id": "T_ACME"},
+        "user": {"id": "U_ALICE"},
         "actions": [
             {"action_id": SLACK_ACTION_OPEN_REVIEW, "value": task_id},
         ],
@@ -359,6 +398,16 @@ async def test_view_submission_completes_task(
     slack_ctx: tuple[AsyncClient, FakeSlackClient],
 ) -> None:
     client, _ = slack_ctx
+    # Seed an operator with a Slack identity — they're authorised to
+    # complete any task, and the directory email becomes the audited
+    # `completed_by_email` (NOT the trusted-from-Slack username).
+    await _seed_user(
+        client,
+        email="alice@acme.com",
+        slack_team_id="T_ACME",
+        slack_user_id="U_ALICE",
+        is_operator=True,
+    )
     task_id = await _seed_task(client, form_definition=_switch_form())
 
     # Slack sends back the user's selections under `view.state.values`,
@@ -367,7 +416,8 @@ async def test_view_submission_completes_task(
     # option on a radio_buttons element).
     payload = {
         "type": "view_submission",
-        "user": {"username": "alice@acme.com"},
+        "team": {"id": "T_ACME"},
+        "user": {"id": "U_ALICE", "username": "alice"},
         "view": {
             "private_metadata": task_id,
             "state": {
@@ -394,6 +444,98 @@ async def test_view_submission_completes_task(
     assert updated.response == {"approved": True}
     assert updated.completed_via_channel == "slack"
     assert updated.completed_by_email == "alice@acme.com"
+
+
+# ─── Auth gates: only directory operators / assignees can act ────────────
+
+
+@pytest.mark.asyncio
+async def test_block_actions_blocked_for_non_assignee_non_operator(
+    slack_ctx: tuple[AsyncClient, FakeSlackClient],
+) -> None:
+    """A directory user who is NEITHER the task's assignee NOR an
+    operator must not be able to open the review modal — the broadcast
+    "Claim" path is the only legitimate way for a non-assignee to
+    take a task. Without this gate, anyone in a shared channel who
+    saw the message could submit on behalf of the actual assignee."""
+    client, fake = slack_ctx
+    # Bob exists in the directory but is not an operator and is not
+    # the task's assignee.
+    await _seed_user(
+        client,
+        email="bob@acme.com",
+        slack_team_id="T_ACME",
+        slack_user_id="U_BOB",
+        is_operator=False,
+    )
+    task_id = await _seed_task(client, form_definition=_switch_form())
+
+    payload = {
+        "type": "block_actions",
+        "trigger_id": "trigger-xyz",
+        "team": {"id": "T_ACME"},
+        "user": {"id": "U_BOB"},
+        "actions": [
+            {"action_id": SLACK_ACTION_OPEN_REVIEW, "value": task_id},
+        ],
+    }
+    body = _form_body(payload)
+    resp = await client.post(
+        "/api/channels/slack/interactions", content=body, headers=_sign(body)
+    )
+    assert resp.status_code == 200
+    # Modal NOT opened — the route returns 200 but does no Slack work
+    # beyond the ephemeral "you're not authorised" reply path.
+    assert all(c["method"] != "views_open" for c in fake.calls)
+
+
+@pytest.mark.asyncio
+async def test_view_submission_blocked_for_non_assignee_non_operator(
+    slack_ctx: tuple[AsyncClient, FakeSlackClient],
+) -> None:
+    """Even with a captured `private_metadata` task_id, a non-assignee
+    non-operator must not be able to complete a task by submitting the
+    modal directly. Defense in depth — `_open_modal_for_task` already
+    blocks before opening, but the submit handler is the hard gate."""
+    client, _ = slack_ctx
+    await _seed_user(
+        client,
+        email="bob@acme.com",
+        slack_team_id="T_ACME",
+        slack_user_id="U_BOB",
+        is_operator=False,
+    )
+    task_id = await _seed_task(client, form_definition=_switch_form())
+
+    payload = {
+        "type": "view_submission",
+        "team": {"id": "T_ACME"},
+        "user": {"id": "U_BOB"},
+        "view": {
+            "private_metadata": task_id,
+            "state": {
+                "values": {
+                    "awaithumans:approved": {
+                        "approved": {
+                            "type": "radio_buttons",
+                            "selected_option": {"value": "true"},
+                        },
+                    },
+                },
+            },
+        },
+    }
+    body = _form_body(payload)
+    resp = await client.post(
+        "/api/channels/slack/interactions", content=body, headers=_sign(body)
+    )
+    # Modal returns an error block instead of empty — task NOT completed.
+    assert resp.status_code == 200
+    body_json = resp.json()
+    assert body_json.get("response_action") == "errors"
+
+    updated = await _read_task(client, task_id)
+    assert updated.status != TaskStatus.COMPLETED
 
 
 @pytest.mark.asyncio

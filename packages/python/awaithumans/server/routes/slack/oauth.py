@@ -51,15 +51,14 @@ from awaithumans.server.services.slack_installation_service import (
 )
 from awaithumans.utils.constants import (
     SLACK_DEFAULT_OAUTH_SCOPES,
+    SLACK_OAUTH_ERROR_PARAM_MAX_LENGTH,
+    SLACK_OAUTH_HTTP_TIMEOUT_SECONDS,
     SLACK_OAUTH_STATE_COOKIE_NAME,
     SLACK_OAUTH_STATE_MAX_AGE_SECONDS,
 )
 
 router = APIRouter()
 logger = logging.getLogger("awaithumans.server.routes.slack.oauth")
-
-# Cap defensively — Slack's `error` param and team names are untrusted.
-_REDIRECT_PARAM_MAX_LENGTH = 100
 
 
 def _oauth_redirect_uri() -> str:
@@ -77,7 +76,7 @@ def _oauth_cookie_secure() -> bool:
 
 def _error_redirect(code: str) -> RedirectResponse:
     """Redirect to dashboard home with a URL-encoded error param."""
-    qs = urlencode({"slack_oauth_error": code[:_REDIRECT_PARAM_MAX_LENGTH]})
+    qs = urlencode({"slack_oauth_error": code[:SLACK_OAUTH_ERROR_PARAM_MAX_LENGTH]})
     return RedirectResponse(
         url=f"{settings.PUBLIC_URL.rstrip('/')}/?{qs}"
     )
@@ -177,7 +176,7 @@ async def oauth_callback(
             status_code=503, detail="Slack OAuth credentials not configured."
         )
 
-    async with httpx.AsyncClient(timeout=10) as http:
+    async with httpx.AsyncClient(timeout=SLACK_OAUTH_HTTP_TIMEOUT_SECONDS) as http:
         resp = await http.post(
             "https://slack.com/api/oauth.v2.access",
             data={

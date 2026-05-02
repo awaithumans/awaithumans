@@ -87,12 +87,51 @@ class Settings(BaseSettings):
     # ── Verification ─────────────────────────────────────────────────
     ANTHROPIC_API_KEY: str | None = None
 
+    def get_secret(self, env_name: str) -> str | None:
+        """Read a secret value through Settings rather than raw os.environ.
+
+        Verifier providers (and any other code paths that need to
+        consume an operator-managed secret keyed by env-var name)
+        should funnel through here. Two reasons:
+
+          1. CLAUDE.md §6 forbids raw `os.environ.get(...)` outside
+             `core/config.py`. Concentrating reads here gives us one
+             place to add scrubbing / audit / `.env` normalisation in
+             the future without chasing call sites.
+          2. The pydantic-settings model picks up declared fields
+             automatically (e.g. `ANTHROPIC_API_KEY`) — a bare
+             `os.environ.get()` would miss `.env` loading on those.
+             We try the model attribute first, then fall back to
+             `os.environ` for fields the operator added themselves
+             via VerifierConfig.api_key_env without us pre-declaring
+             a Settings field for them.
+
+        Returns None when the variable is unset, so callers can raise
+        their own typed errors (e.g. VerifierAPIKeyMissingError).
+        """
+        import os as _os
+
+        # Match attribute name case-insensitively against declared
+        # Settings fields (CLAUDE.md leans on the pydantic-settings
+        # `case_sensitive=False` config we already set).
+        attr = getattr(self, env_name.upper(), None)
+        if isinstance(attr, str) and attr:
+            return attr
+        return _os.environ.get(env_name) or None
+
     # ── Payload ──────────────────────────────────────────────────────
     PAYLOAD_KEY: str | None = None  # AES-256-GCM encryption key
     MAX_PAYLOAD_SIZE_MB: int = 5
 
-    # ── Webhook ──────────────────────────────────────────────────────
-    WEBHOOK_SECRET: str = "awaithumans-dev-secret"  # HMAC signing secret
+    # NOTE: We deliberately do NOT carry a `WEBHOOK_SECRET` setting any
+    # more. An earlier version had `WEBHOOK_SECRET: str =
+    # "awaithumans-dev-secret"` — unused but a footgun: as soon as any
+    # outbound-webhook signing code referenced it, every deployment
+    # that didn't override the env var would HMAC with a value
+    # publicly visible in the GitHub repo. If outbound webhook signing
+    # is reintroduced, declare the field as `str | None = None` and
+    # fail-fast in `app.py` when the dependent code path runs without
+    # an explicit operator-set value, mirroring the PAYLOAD_KEY guard.
 
     model_config = {
         "env_prefix": "AWAITHUMANS_",

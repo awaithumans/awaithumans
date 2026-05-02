@@ -26,14 +26,6 @@ class TaskStatus(str, enum.Enum):
     VERIFICATION_EXHAUSTED = "verification_exhausted"
 
 
-TERMINAL_STATUSES = frozenset({
-    TaskStatus.COMPLETED,
-    TaskStatus.TIMED_OUT,
-    TaskStatus.CANCELLED,
-    TaskStatus.VERIFICATION_EXHAUSTED,
-})
-
-
 class AwaitHumanOptions(BaseModel):
     """Options for the await_human() call."""
 

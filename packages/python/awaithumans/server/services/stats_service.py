@@ -22,14 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from awaithumans.server.db.models import Task
 from awaithumans.server.schemas.stats import TaskStats, TaskStatsByDay
 from awaithumans.types import TaskStatus
-
-# Terminal statuses that count as "finished" for completion rate.
-_TERMINAL = {
-    TaskStatus.COMPLETED,
-    TaskStatus.TIMED_OUT,
-    TaskStatus.CANCELLED,
-    TaskStatus.VERIFICATION_EXHAUSTED,
-}
+from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 
 async def get_task_stats(
@@ -47,7 +40,7 @@ async def get_task_stats(
 
     # Completion rate uses totals (all-time), matching operator intent:
     # "of tasks that ever finished, how many did a human actually complete".
-    terminal_count = sum(totals.get(s.value, 0) for s in _TERMINAL)
+    terminal_count = sum(totals.get(s.value, 0) for s in TERMINAL_STATUSES_SET)
     completed_count = totals.get(TaskStatus.COMPLETED.value, 0)
     completion_rate: float | None = (
         completed_count / terminal_count if terminal_count > 0 else None

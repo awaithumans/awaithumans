@@ -10,12 +10,14 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import Response
+from slack_sdk.errors import SlackApiError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.channels.slack.client import (
     get_client_for_team,
     get_env_client,
 )
+from awaithumans.server.core.admin_auth import require_admin
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.slack import (
     SlackInstallationResponse,
@@ -26,8 +28,14 @@ from awaithumans.server.services.slack_installation_service import (
     delete_installation,
     list_installations,
 )
+from awaithumans.utils.constants import SLACK_TEAM_ID_MAX_LENGTH
 
-router = APIRouter()
+# Every route in this module is operator-only — these are
+# infrastructure-management surfaces (uninstall a workspace, list
+# every member's name + admin status, see which workspace owns the
+# static token). Without this gate, any logged-in non-operator could
+# silently DoS the Slack integration by hitting DELETE.
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("awaithumans.server.routes.slack.installations")
 
 # Cached static-token workspace info. `auth.test` is a network call we
@@ -93,7 +101,11 @@ async def get_static_workspace() -> SlackStaticWorkspaceResponse:
 
     try:
         resp = await client.auth_test()
-    except Exception as exc:  # noqa: BLE001
+    except SlackApiError as exc:
+        # Specific catch — bare `except Exception` would mask network
+        # / runtime errors as "token rejected." Slack's own auth
+        # failures all surface as SlackApiError; anything else is a
+        # genuine bug and should propagate to the central handler.
         logger.warning("Slack auth.test failed for static token: %s", exc)
         raise HTTPException(
             status_code=502,
@@ -128,7 +140,7 @@ async def get_static_workspace() -> SlackStaticWorkspaceResponse:
     response_class=Response,
 )
 async def uninstall_slack_workspace(
-    team_id: str = Path(..., min_length=1, max_length=50),
+    team_id: str = Path(..., min_length=1, max_length=SLACK_TEAM_ID_MAX_LENGTH),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     ok = await delete_installation(session, team_id)
@@ -143,7 +155,7 @@ async def uninstall_slack_workspace(
     response_model=list[SlackMemberResponse],
 )
 async def list_workspace_members(
-    team_id: str = Path(..., min_length=1, max_length=50),
+    team_id: str = Path(..., min_length=1, max_length=SLACK_TEAM_ID_MAX_LENGTH),
     session: AsyncSession = Depends(get_session),
 ) -> list[SlackMemberResponse]:
     """List non-bot, active members of a Slack workspace.
@@ -170,7 +182,8 @@ async def list_workspace_members(
 
     try:
         resp = await client.users_list()
-    except Exception as exc:  # noqa: BLE001
+    except SlackApiError as exc:
+        # Specific catch — see auth.test above for rationale.
         logger.warning(
             "Slack users.list failed for team_id=%s: %s", team_id, exc
         )

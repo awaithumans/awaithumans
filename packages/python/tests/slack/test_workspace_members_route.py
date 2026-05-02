@@ -50,10 +50,20 @@ class FakeClient:
 
 
 class FailingClient:
-    """Simulates Slack rejecting users.list (e.g. missing scope)."""
+    """Simulates Slack rejecting users.list (e.g. missing scope).
+
+    Raises `SlackApiError` because that's what the real
+    AsyncWebClient raises — the route's specific catch is keyed on
+    that exception type, so a generic RuntimeError here would
+    propagate past the handler and 500 instead of 502."""
 
     async def users_list(self) -> Any:
-        raise RuntimeError("missing_scope: users:read")
+        from slack_sdk.errors import SlackApiError
+
+        raise SlackApiError(
+            message="missing_scope: users:read",
+            response={"ok": False, "error": "missing_scope"},
+        )
 
 
 # Canonical sample of users.list shape — real Slack response fields,

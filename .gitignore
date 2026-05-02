@@ -20,3 +20,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# Dev-mode auto-generated state — payload encryption key + admin
+# token + sqlite DB. Per-developer secrets, never committed.
+.awaithumans/

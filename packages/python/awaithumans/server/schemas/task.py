@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_serializer
 
 from awaithumans.server.schemas._datetime import utc_iso
 from awaithumans.types import TaskStatus
+from awaithumans.utils.constants import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS
 
 
 class CreateTaskRequest(BaseModel):
@@ -17,7 +18,7 @@ class CreateTaskRequest(BaseModel):
     payload_schema: dict[str, Any]
     response_schema: dict[str, Any]
     form_definition: dict[str, Any] | None = None
-    timeout_seconds: int = Field(ge=60, le=2_592_000)
+    timeout_seconds: int = Field(ge=MIN_TIMEOUT_SECONDS, le=MAX_TIMEOUT_SECONDS)
     idempotency_key: str
     assign_to: dict[str, Any] | None = None
     notify: list[str] | None = None

@@ -67,6 +67,23 @@ def _payload_key() -> Iterator[None]:
     encryption.reset_key_cache()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limit() -> Iterator[None]:
+    """Module-level rate-limiter singletons leak state across tests
+    that share a process. Without this reset, the 11th test that
+    posts to /login from the same client IP hits the global
+    counter and starts seeing 429s instead of the expected 401."""
+    from awaithumans.server.core import rate_limit
+
+    rate_limit.LOGIN_PER_IP._hits.clear()
+    rate_limit.LOGIN_PER_EMAIL._hits.clear()
+    rate_limit.SETUP_PER_IP._hits.clear()
+    yield
+    rate_limit.LOGIN_PER_IP._hits.clear()
+    rate_limit.LOGIN_PER_EMAIL._hits.clear()
+    rate_limit.SETUP_PER_IP._hits.clear()
+
+
 @pytest.fixture
 def operator_user() -> Iterator[User]:
     """Insert a fresh operator into the test DB and return the row.

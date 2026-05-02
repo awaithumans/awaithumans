@@ -48,7 +48,11 @@ from awaithumans.server.services.email_identity_service import (
     list_identities,
     upsert_identity,
 )
-from awaithumans.server.services.exceptions import TaskAlreadyTerminalError
+from awaithumans.server.services.email_token_service import try_consume_token
+from awaithumans.server.services.exceptions import (
+    TaskAlreadyTerminalError,
+    TaskNotFoundError,
+)
 from awaithumans.server.services.task_service import complete_task, get_task
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
@@ -199,7 +203,11 @@ async def action_confirm(
 
     try:
         task = await get_task(session, claim.task_id)
-    except Exception:
+    except TaskNotFoundError:
+        # Specific catch — bare `except Exception` here would swallow
+        # genuine DB / framework errors (connection drops, etc.) and
+        # render them as "no longer exists." Now those propagate to
+        # the central 500 handler and surface in operator logs.
         return HTMLResponse(
             status_code=404,
             content=completed_page_html(
@@ -237,6 +245,21 @@ async def action_submit(
             status_code=400,
             content=completed_page_html(
                 message="This link is invalid or has expired."
+            ),
+        )
+
+    # Single-use enforcement. Without this, a forwarded email or
+    # leaked URL is replayable for the entire TTL window. The PK
+    # constraint on the consumed table makes this race-safe under
+    # concurrent POSTs.
+    if not await try_consume_token(session, claim.jti):
+        return HTMLResponse(
+            status_code=410,
+            content=completed_page_html(
+                message=(
+                    "This link has already been used. If you need to "
+                    "change the response, open the dashboard."
+                )
             ),
         )
 

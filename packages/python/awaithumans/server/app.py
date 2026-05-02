@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
+
 from awaithumans.server.core.auth import DashboardAuthMiddleware
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.dashboard_static import DashboardStaticFiles
@@ -146,6 +148,14 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
             "print(secrets.token_urlsafe(32))'"
         )
 
+    # CORS sanity check. Below we set `allow_credentials = (origins
+    # != "*")`, which means the moment an operator narrows the origin
+    # list at all, credentials flip on. If the narrowed list contains
+    # http:// origins or stray wildcards, that's a session-ride
+    # vector — credentials cross-origin to an attacker-controlled
+    # site. Refuse to start instead of guessing.
+    _validate_cors_origins(settings.cors_origin_list)
+
     # ── App ──────────────────────────────────────────────────────────
     app = FastAPI(
         title="awaithumans",
@@ -211,3 +221,47 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     )
 
     return app
+
+
+def _validate_cors_origins(origins: list[str]) -> None:
+    """Reject CORS configurations that would expose credentials to
+    untrusted origins.
+
+    The combination `allow_credentials=True` + a too-loose origin list
+    is the classic session-ride trap. We allow:
+
+      - `["*"]` exactly (credentials are forced OFF in app.py for
+        this case, so any origin can read but nothing carries cookies)
+      - any number of explicit https:// origins (hostname or IP, with
+        an optional port)
+      - http://localhost or http://127.0.0.1 (with optional port) for
+        dev-mode dashboards. Pure dev affordance — production
+        deployments should run with HTTPS PUBLIC_URL anyway.
+
+    Anything else (mixed `*` with explicit, plain http:// non-local,
+    malformed strings) makes the server refuse to start with an
+    actionable message."""
+    if origins == ["*"]:
+        return
+
+    https_re = re.compile(r"^https://[A-Za-z0-9.\-]+(:\d+)?$")
+    local_http_re = re.compile(r"^http://(localhost|127\.0\.0\.1)(:\d+)?$")
+
+    for origin in origins:
+        if origin == "*":
+            raise RuntimeError(
+                "AWAITHUMANS_CORS_ORIGINS contains '*' alongside explicit "
+                "origins. Browsers reject this combination, and our auth "
+                "middleware would flip credentials ON because the list "
+                "isn't a bare '*'. Use either '*' alone (no credentials) "
+                "or a fully-explicit https:// list."
+            )
+        if https_re.match(origin) or local_http_re.match(origin):
+            continue
+        raise RuntimeError(
+            f"AWAITHUMANS_CORS_ORIGINS contains an unsafe origin: '{origin}'. "
+            "Plain http:// origins outside localhost would carry session "
+            "cookies in cleartext to whichever site the operator listed. "
+            "Use https:// only (or http://localhost / http://127.0.0.1 "
+            "for local dev)."
+        )

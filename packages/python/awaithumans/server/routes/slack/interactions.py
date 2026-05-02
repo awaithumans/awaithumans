@@ -21,6 +21,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from slack_sdk.errors import SlackApiError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -37,6 +38,7 @@ from awaithumans.server.channels.slack.coerce import slack_values_to_response
 from awaithumans.server.channels.slack.signing import verify_signature
 from awaithumans.server.core.config import settings
 from awaithumans.server.db.connection import get_session
+from awaithumans.server.db.models import Task
 from awaithumans.server.services.exceptions import (
     TaskAlreadyClaimedError,
     TaskAlreadyTerminalError,
@@ -50,6 +52,7 @@ from awaithumans.server.services.user_service import get_user, get_user_by_slack
 from awaithumans.utils.constants import (
     SLACK_ACTION_CLAIM_TASK,
     SLACK_ACTION_OPEN_REVIEW,
+    SLACK_RESPONSE_URL_TIMEOUT_SECONDS,
 )
 
 router = APIRouter()
@@ -125,9 +128,39 @@ async def _handle_block_actions(
 
     task_id = open_action.get("value")
     trigger_id = payload.get("trigger_id")
-    team_id = (payload.get("team") or {}).get("id")
+    team = payload.get("team") or {}
+    team_id = team.get("id")
+    user = payload.get("user") or {}
+    slack_user_id = user.get("id")
+    response_url = payload.get("response_url")
+    channel = (payload.get("channel") or {}).get("id")
+
     if not task_id or not trigger_id:
         logger.warning("block_actions: missing task_id or trigger_id.")
+        return
+
+    # Authorise the click before we open a modal that completes the
+    # task. Without this, anyone in a shared channel who saw the
+    # message could open the form and submit on behalf of the actual
+    # assignee. The claim path doesn't need this — it's "first click
+    # wins by design" — but the direct-DM ("Open in Slack") path does.
+    task = await get_task(session, task_id)
+    authorised, why_not = await _slack_user_can_act_on_task(
+        session=session,
+        task=task,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+    )
+    if not authorised:
+        client = await get_client_for_team(session, team_id)
+        if client is not None and slack_user_id:
+            await _ephemeral_reply(
+                client=client,
+                channel=channel,
+                user_id=slack_user_id,
+                response_url=response_url,
+                text=why_not,
+            )
         return
 
     await _open_modal_for_task(
@@ -135,6 +168,51 @@ async def _handle_block_actions(
         task_id=task_id,
         trigger_id=trigger_id,
         team_id=team_id,
+    )
+
+
+async def _slack_user_can_act_on_task(
+    *,
+    session: AsyncSession,
+    task: Task,
+    team_id: str | None,
+    slack_user_id: str | None,
+) -> tuple[bool, str]:
+    """Check whether a Slack user is authorised to open / submit a task.
+
+    Returns (authorised, reason_when_not). A Slack user is authorised
+    when:
+
+      - they're in the directory AND active, AND
+      - they're either the task's assignee, OR an operator.
+
+    Anyone else gets blocked with a human-readable reason so the
+    ephemeral reply tells them why. Resolving (team_id, slack_user_id)
+    to a directory user is the same lookup the claim path already does
+    — keeps the audit trail consistent (`completed_by_email` becomes
+    the directory email, not whatever Slack happened to put in
+    `user.username`)."""
+    if not team_id or not slack_user_id:
+        return False, "Missing Slack identity in the interaction payload."
+
+    directory_user = await get_user_by_slack(
+        session, slack_team_id=team_id, slack_user_id=slack_user_id
+    )
+    if directory_user is None or not directory_user.active:
+        return False, (
+            "You're not in this server's user directory. Ask your "
+            "operator to add you via Settings → Users."
+        )
+
+    if directory_user.is_operator:
+        return True, ""
+    if task.assigned_to_user_id == directory_user.id:
+        return True, ""
+
+    return False, (
+        "This task isn't assigned to you. Operators can review any "
+        "task from the dashboard; reviewers can only act on the "
+        "tasks routed to them."
     )
 
 
@@ -288,8 +366,12 @@ async def _handle_claim(
                     claimed_by_display=claimer_display,
                 ),
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("chat.update after claim failed: %s", exc)
+        except SlackApiError as exc:
+            # Slack-side failures (lost permissions, message deleted,
+            # missing scope) are best-effort — the modal still opens
+            # for the claimer so they can complete the task. Anything
+            # NOT a SlackApiError is a real bug and should propagate.
+            logger.warning("chat.update after claim failed: %s", exc.response.get("error", exc))
 
     # Pop the modal for the claimer so they can complete it immediately.
     await _open_modal_for_task(
@@ -337,14 +419,18 @@ async def _ephemeral_reply(
 
     if response_url:
         try:
-            async with httpx.AsyncClient(timeout=5.0) as http:
+            async with httpx.AsyncClient(timeout=SLACK_RESPONSE_URL_TIMEOUT_SECONDS) as http:
                 resp = await http.post(
                     response_url,
                     json={"response_type": "ephemeral", "text": text},
                 )
                 resp.raise_for_status()
             return
-        except Exception as exc:  # noqa: BLE001
+        except httpx.HTTPError as exc:
+            # response_url is a transient signed URL Slack provides;
+            # network issues / 4xx after expiry / Slack-side hiccups
+            # are expected operational noise. We catch httpx errors
+            # specifically so genuine bugs (TypeError, etc.) propagate.
             logger.warning("ephemeral via response_url failed: %s", exc)
 
     if channel:
@@ -352,8 +438,14 @@ async def _ephemeral_reply(
             await client.chat_postEphemeral(
                 channel=channel, user=user_id, text=text
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("chat.postEphemeral failed: %s", exc)
+        except SlackApiError as exc:
+            # `not_in_channel` / `missing_scope` / token revoked all
+            # surface here; the route still completes successfully
+            # (the ephemeral was best-effort).
+            logger.warning(
+                "chat.postEphemeral failed: %s",
+                exc.response.get("error", exc),
+            )
 
 
 # ─── view_submission — complete the task ────────────────────────────────
@@ -369,7 +461,9 @@ async def _handle_view_submission(
         raise HTTPException(status_code=400, detail="Missing task_id in modal metadata.")
 
     user = payload.get("user") or {}
-    user_email = user.get("username") or user.get("id")
+    team = payload.get("team") or {}
+    slack_user_id = user.get("id")
+    team_id = team.get("id")
 
     task = await get_task(session, task_id)
     if task.form_definition is None:
@@ -378,6 +472,33 @@ async def _handle_view_submission(
             detail="Task has no form_definition; cannot coerce submission.",
         )
 
+    # Authorise the submitter. Without this, anyone with a workspace
+    # session who could trigger the modal (or replay a captured
+    # `private_metadata` task_id) could complete tasks they were never
+    # assigned to. Slack returns the rejection inline as a modal
+    # response_action so the user sees a clear message; the task is
+    # not touched.
+    authorised, why_not = await _slack_user_can_act_on_task(
+        session=session,
+        task=task,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+    )
+    if not authorised:
+        return {
+            "response_action": "errors",
+            "errors": {"awaithumans:_auth": why_not},
+        }
+
+    # Record the directory email, not the Slack-supplied `username`
+    # which is just the @handle. Looking up via the directory makes
+    # `completed_by_email` consistent across channels (Slack
+    # completions look the same as dashboard ones in the audit log).
+    directory_user = await get_user_by_slack(
+        session, slack_team_id=team_id, slack_user_id=slack_user_id
+    )
+    completer_email = directory_user.email if directory_user else None
+
     form = FormDefinition.model_validate(task.form_definition)
     response = slack_values_to_response(form, view.get("state") or {})
 
@@ -385,7 +506,7 @@ async def _handle_view_submission(
         session,
         task_id=task_id,
         response=response,
-        completed_by_email=user_email,
+        completed_by_email=completer_email,
         completed_via_channel="slack",
     )
 

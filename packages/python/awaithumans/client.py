@@ -13,9 +13,13 @@ import httpx
 from pydantic import BaseModel
 
 from awaithumans.errors import (
-    AwaitHumansError,
     MarketplaceNotAvailableError,
+    PollError,
     SchemaValidationError,
+    ServerUnreachableError,
+    TaskCancelledError,
+    TaskCreateError,
+    TaskNotFoundError,
     TaskTimeoutError,
     TimeoutRangeError,
     VerificationExhaustedError,
@@ -23,10 +27,11 @@ from awaithumans.errors import (
 from awaithumans.forms import extract_form
 from awaithumans.types import MarketplaceAssignment, VerifierConfig
 from awaithumans.utils.constants import (
-    DOCS_TROUBLESHOOTING_URL,
     MAX_TIMEOUT_SECONDS,
     MIN_TIMEOUT_SECONDS,
     POLL_INTERVAL_SECONDS,
+    SDK_CREATE_TIMEOUT_SECONDS,
+    SDK_POLL_TIMEOUT_BUFFER_SECONDS,
 )
 from awaithumans.utils.discovery import resolve_admin_token, resolve_server_url
 
@@ -68,9 +73,15 @@ def _print_waiting_banner(*, base_url: str, task_id: str, timeout_seconds: int) 
     expecting the review form.
     """
     dashboard_url = f"{base_url}/task?id={task_id}"
-    print(f"\n✓ Task created: {task_id}", file=sys.stderr)
-    print(f"  Review at: {dashboard_url}", file=sys.stderr)
-    print(
+    # CLAUDE.md "no print()" applies to server code; here we're in
+    # the SDK that runs inside the user's agent process. Their
+    # script almost never has a logging handler attached, so
+    # `logger.info` would silently vanish and the script looks
+    # frozen. Stderr keeps stdout clean for piping the return value
+    # downstream. T201 ruff warning suppressed deliberately.
+    print(f"\n✓ Task created: {task_id}", file=sys.stderr)  # noqa: T201
+    print(f"  Review at: {dashboard_url}", file=sys.stderr)  # noqa: T201
+    print(  # noqa: T201
         f"  Waiting for human (timeout: {timeout_seconds}s). Ctrl-C to abort.",
         file=sys.stderr,
         flush=True,
@@ -140,7 +151,7 @@ async def await_human(
     form_definition = extract_form(response_schema).model_dump(mode="json")
 
     # ── Create task on the server ────────────────────────────────────
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=SDK_CREATE_TIMEOUT_SECONDS) as client:
         create_body = {
             "task": task,
             "payload": payload.model_dump(mode="json"),
@@ -155,18 +166,19 @@ async def await_human(
             "redact_payload": redact_payload,
         }
 
-        resp = await client.post(
-            f"{base_url}/api/tasks",
-            json=create_body,
-            headers=auth_headers,
-        )
-        if resp.status_code not in (200, 201):
-            raise AwaitHumansError(
-                code="TASK_CREATE_FAILED",
-                message=f"Failed to create task on the server (HTTP {resp.status_code}).",
-                hint=f"Server response: {resp.text[:500]}",
-                docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-create-failed",
+        try:
+            resp = await client.post(
+                f"{base_url}/api/tasks",
+                json=create_body,
+                headers=auth_headers,
             )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            # Connection-level failure → typed `ServerUnreachableError`
+            # so users get a concrete "the server isn't running" hint
+            # instead of an opaque httpx exception.
+            raise ServerUnreachableError(base_url, exc) from exc
+        if resp.status_code not in (200, 201):
+            raise TaskCreateError(resp.status_code, resp.text)
 
         task_data = resp.json()
         task_id = task_data["id"]
@@ -195,7 +207,9 @@ async def _poll_until_terminal(
     The server's poll endpoint holds the connection for up to 25 seconds
     per request.
     """
-    async with httpx.AsyncClient(timeout=POLL_INTERVAL_SECONDS + 10) as client:
+    async with httpx.AsyncClient(
+        timeout=POLL_INTERVAL_SECONDS + SDK_POLL_TIMEOUT_BUFFER_SECONDS,
+    ) as client:
         while True:
             resp = await client.get(
                 f"{base_url}/api/tasks/{task_id}/poll",
@@ -204,23 +218,10 @@ async def _poll_until_terminal(
             )
 
             if resp.status_code == 404:
-                raise AwaitHumansError(
-                    code="TASK_NOT_FOUND",
-                    message=f"Task '{task_id}' not found on the server.",
-                    hint=(
-                        "The task may have been deleted or the server "
-                        "was restarted with a fresh database."
-                    ),
-                    docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-not-found",
-                )
+                raise TaskNotFoundError(task_id)
 
             if resp.status_code != 200:
-                raise AwaitHumansError(
-                    code="POLL_FAILED",
-                    message=f"Failed to poll task '{task_id}' (HTTP {resp.status_code}).",
-                    hint=f"Server response: {resp.text[:500]}",
-                    docs_url=f"{DOCS_TROUBLESHOOTING_URL}#poll-failed",
-                )
+                raise PollError(task_id, resp.status_code, resp.text)
 
             poll_data = resp.json()
             status = poll_data["status"]
@@ -238,12 +239,7 @@ async def _poll_until_terminal(
                 raise TaskTimeoutError(task_description, timeout_seconds)
 
             if status == "cancelled":
-                raise AwaitHumansError(
-                    code="TASK_CANCELLED",
-                    message=f"Task '{task_description}' was cancelled.",
-                    hint="The task was cancelled by an admin or another agent.",
-                    docs_url=f"{DOCS_TROUBLESHOOTING_URL}#task-cancelled",
-                )
+                raise TaskCancelledError(task_description)
 
             if status == "verification_exhausted":
                 raise VerificationExhaustedError(

@@ -76,6 +76,41 @@ SLACK_NOTIFY_PREFIX = "slack:"
 # more than this long to complete the install consent.
 SLACK_OAUTH_STATE_MAX_AGE_SECONDS = 600  # 10 minutes
 
+# Cap on Slack team_id strings used as path params (DELETE / list-members).
+# Real Slack IDs top out around 11 chars (T123ABC456); 50 leaves headroom
+# for enterprise prefixes without inviting an unbounded path scan.
+SLACK_TEAM_ID_MAX_LENGTH = 50
+
+# Maximum length we'll echo back as `?slack_oauth_error=...` on the
+# redirect URL when something goes wrong during install. Long enough
+# for a clear error code, short enough that nobody can stuff a 4KB
+# query string into the redirect target.
+SLACK_OAUTH_ERROR_PARAM_MAX_LENGTH = 100
+
+# Timeout for the HTTPS exchange against Slack's OAuth `oauth.v2.access`
+# endpoint. Slack itself responds within ~1s in practice; 10s gives
+# headroom for a slow operator network without making the install
+# UX feel hung.
+SLACK_OAUTH_HTTP_TIMEOUT_SECONDS = 10
+
+# Timeout for ephemeral-reply POSTs against the per-interaction
+# `response_url`. These are best-effort UX courtesies (the modal /
+# completion already happened); 5s keeps a flaky network from
+# blocking the route's main path.
+SLACK_RESPONSE_URL_TIMEOUT_SECONDS = 5
+
+# Default timeout for the SDK's `POST /api/tasks` create call. Long
+# enough to absorb a slow first-request DB warmup; short enough that
+# misconfigured `server_url` fails fast with a clear unreachable
+# error rather than hanging.
+SDK_CREATE_TIMEOUT_SECONDS = 30
+
+# Long-poll request timeout for the SDK. The server holds the
+# connection up to POLL_INTERVAL_SECONDS; the client adds a small
+# buffer so the underlying httpx call doesn't fire its own timeout
+# right at the boundary.
+SDK_POLL_TIMEOUT_BUFFER_SECONDS = 10
+
 # Bot scopes we request during OAuth install. Kept in sync with
 # channels/slack/app_manifest.yaml. Used as the default value for
 # SLACK_OAUTH_SCOPES when the env var isn't overridden.
@@ -117,6 +152,40 @@ HMAC_SHA256_DIGEST_BYTES = 32
 # `notify=` routing prefix (`email+acme:user@…`). 100 is more than enough
 # for any human-chosen slug and short enough to keep URLs sane.
 EMAIL_IDENTITY_ID_MAX_LENGTH = 100
+
+# ─── Verifier ────────────────────────────────────────────────────────────
+
+# Default model + API-key env var per provider. Operators can override
+# either via VerifierConfig (the per-task config carries `model` and
+# `api_key_env` fields) — these are the fall-throughs. Bumping a default
+# model here changes the behaviour of any task that didn't pin one.
+
+VERIFIER_CLAUDE_DEFAULT_MODEL = "claude-sonnet-4-5"
+VERIFIER_CLAUDE_DEFAULT_API_KEY_ENV = "ANTHROPIC_API_KEY"
+# Anthropic forces structured output via tool-use; this is the tool name
+# we register and force-select. Stable string — Slack/email/dashboard
+# don't see it, but tests assert against it.
+VERIFIER_CLAUDE_TOOL_NAME = "submit_verdict"
+
+VERIFIER_OPENAI_DEFAULT_MODEL = "gpt-4o-2024-11-20"
+VERIFIER_OPENAI_DEFAULT_API_KEY_ENV = "OPENAI_API_KEY"
+
+VERIFIER_GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
+VERIFIER_GEMINI_DEFAULT_API_KEY_ENV = "GEMINI_API_KEY"
+
+VERIFIER_AZURE_DEFAULT_API_KEY_ENV = "AZURE_OPENAI_API_KEY"
+VERIFIER_AZURE_DEFAULT_ENDPOINT_ENV = "AZURE_OPENAI_ENDPOINT"
+VERIFIER_AZURE_DEFAULT_API_VERSION = "2024-10-21"
+
+# Per-call token cap. Verifier responses are short structured JSON; this
+# is sized to fit `passed` + `reason` + `parsed_response` for any
+# realistic schema, with headroom for a multi-sentence reason.
+VERIFIER_MAX_OUTPUT_TOKENS = 1024
+
+# JSON-schema name passed to OpenAI / Azure structured-output. Slack and
+# the dashboard never see it, but it shows up in vendor logs and the
+# error-debug surface so a stable, descriptive name helps.
+VERIFIER_OUTPUT_SCHEMA_NAME = "verifier_verdict"
 
 # ─── Dashboard Auth ──────────────────────────────────────────────────────
 

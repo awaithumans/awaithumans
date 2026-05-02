@@ -16,6 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.channels.email import notify_task as notify_task_email
 from awaithumans.server.channels.slack import notify_task as notify_task_slack
+from awaithumans.server.core.admin_auth import require_admin
+from awaithumans.server.core.auth import SessionClaims
+from awaithumans.server.core.task_auth import (
+    caller_is_operator,
+    caller_user_id,
+    require_operator_or_admin,
+    require_task_complete,
+    require_task_read,
+)
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.db.models import Task, TaskStatus
 from awaithumans.server.schemas import (
@@ -25,19 +34,17 @@ from awaithumans.server.schemas import (
     PollResponse,
     TaskResponse,
 )
-from awaithumans.server.core.admin_auth import require_admin
-from awaithumans.server.core.auth import SessionClaims
 from awaithumans.server.services.exceptions import TaskNotFoundError
-from awaithumans.server.services.user_service import get_user
 from awaithumans.server.services.task_service import (
     cancel_task,
-    delete_task,
     complete_task,
     create_task,
+    delete_task,
     get_audit_trail,
     get_task,
     list_tasks,
 )
+from awaithumans.server.services.user_service import get_user
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -63,8 +70,15 @@ async def create_task_route(
     body: CreateTaskRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
+    _admin: None = Depends(require_admin),
 ) -> TaskResponse:
     """Create a new HITL task (or return existing if idempotency key matches).
+
+    Admin-only — agents call this with the `ADMIN_API_TOKEN` Bearer.
+    Operators can also create tasks from the dashboard for ad-hoc
+    workflows. Logged-in non-operators have no business creating tasks
+    (the agent owns the contract that tasks are an output of code, not
+    a UI button).
 
     Channel notifications fire in a FastAPI BackgroundTask *after* the
     response is sent, so a slow Slack API call never blocks task creation
@@ -109,17 +123,43 @@ async def create_task_route(
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks_route(
+    request: Request,
     status: TaskStatus | None = Query(None, description="Filter by status"),
     assigned_to: str | None = Query(None, description="Filter by assigned email"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[TaskResponse]:
-    """List tasks with optional filters."""
+    """List tasks. Operators / admin-bearer callers see everything;
+    a logged-in non-operator (i.e., a regular reviewer) only sees the
+    tasks routed to them.
+
+    Without this scoping, a non-operator with a dashboard password
+    could enumerate every task in the system (payloads, responses,
+    audit data) — that defeats the routing model. Server-side filter
+    is the authoritative gate; the dashboard's per-user view is a
+    convenience, not a security control."""
+    if caller_is_operator(request) or getattr(
+        request.state, "auth_admin_token", False
+    ):
+        scoped_assigned_user_id: str | None = None
+    else:
+        # Non-operator session — force scope to the caller's own tasks
+        # regardless of the `assigned_to` query param. Honouring the
+        # client-supplied filter would let a non-operator pass any
+        # email and read those tasks.
+        user_id = caller_user_id(request)
+        if user_id is None:
+            # Should be unreachable — middleware would have 401'd.
+            return []
+        scoped_assigned_user_id = user_id
+        assigned_to = None
+
     tasks = await list_tasks(
         session,
         status=status,
         assigned_to_email=assigned_to,
+        assigned_to_user_id=scoped_assigned_user_id,
         limit=limit,
         offset=offset,
     )
@@ -129,10 +169,12 @@ async def list_tasks_route(
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task_route(
     task_id: str,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
-    """Get a single task by ID."""
+    """Get a single task by ID. Operator / admin / assignee only."""
     task = await get_task(session, task_id)
+    require_task_read(request, task)
     return _task_to_response(task)
 
 
@@ -154,6 +196,12 @@ async def complete_task_route(
     email. That's the correct attribution: client can't fake it, server
     authoritatively stamps who clicked submit.
     """
+    # Authorise BEFORE running the verifier — a non-assignee
+    # submitting via the dashboard form would otherwise burn an
+    # attempt and ship the (potentially sensitive) payload to the LLM.
+    existing = await get_task(session, task_id)
+    require_task_complete(request, existing)
+
     completer_email = body.completed_by_email
     if not completer_email:
         completer_email = await _session_user_email(request, session)
@@ -185,9 +233,16 @@ async def _session_user_email(request: Request, session: AsyncSession) -> str | 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)
 async def cancel_task_route(
     task_id: str,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
-    """Cancel a task."""
+    """Cancel a task. Operator / admin only.
+
+    The agent is the canonical caller (admin bearer); operators get
+    the dashboard "Cancel" button. Non-operator humans don't get to
+    cancel — that would let a reviewer kill a task they were assigned
+    to before completing it, which the agent won't expect."""
+    require_operator_or_admin(request)
     task = await cancel_task(session, task_id)
     return _task_to_response(task)
 
@@ -216,9 +271,10 @@ async def delete_task_route(
 @router.get("/{task_id}/poll", response_model=PollResponse)
 async def poll_task_route(
     task_id: str,
+    request: Request,
     timeout: int = Query(25, ge=1, le=30, description="Long-poll timeout in seconds"),
 ) -> PollResponse:
-    """Long-poll for task completion.
+    """Long-poll for task completion. Operator / admin / assignee only.
 
     Holds the HTTP connection open for up to `timeout` seconds (default 25, max 30).
     Returns immediately if the task is already in a terminal state.
@@ -235,6 +291,11 @@ async def poll_task_route(
     # Check current state immediately
     async with factory() as session:
         task = await get_task(session, task_id)
+
+        # Authorise once on the initial read; the assignee/operator
+        # status of the caller doesn't change inside the long-poll
+        # window, so re-checking each second would just be busywork.
+        require_task_read(request, task)
 
         if task.status in TERMINAL_STATUSES_SET:
             return PollResponse(
@@ -275,9 +336,16 @@ async def poll_task_route(
 @router.get("/{task_id}/audit", response_model=list[AuditEntryResponse])
 async def get_audit_trail_route(
     task_id: str,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> list[AuditEntryResponse]:
-    """Get the full audit trail for a task."""
-    await get_task(session, task_id)  # Verify task exists (raises TaskNotFoundError if not)
-    entries = await get_audit_trail(session, task_id)
+    """Get the full audit trail for a task. Operator / admin only.
+
+    The audit trail can quote response keys, completer emails, and
+    verifier reasoning — sensitive enough that a non-operator
+    assignee shouldn't see other reviewers' work even if they're
+    listed on the task. Operators legitimately need it for review."""
+    task = await get_task(session, task_id)  # raises TaskNotFoundError
+    require_operator_or_admin(request)
+    entries = await get_audit_trail(session, task.id)
     return [AuditEntryResponse.model_validate(e) for e in entries]

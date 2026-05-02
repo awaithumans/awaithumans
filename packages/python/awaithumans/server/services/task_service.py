@@ -2,11 +2,16 @@
 
 Pure business logic. No HTTP, no routes, no framework concerns.
 Raises domain exceptions from services/exceptions.py.
+
+Verifier integration lives in `task_verifier.py`; this file only
+sequences the lifecycle operations and the verifier-aware UPDATE.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
@@ -19,7 +24,14 @@ from awaithumans.server.services.exceptions import (
     TaskNotFoundError,
 )
 from awaithumans.server.services.task_router import resolve_assign_to
+from awaithumans.server.services.task_verifier import (
+    VerifierOutcome,
+    audit_action_for,
+    evaluate_submission,
+)
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
+
+logger = logging.getLogger("awaithumans.server.services.task_service")
 
 
 async def create_task(
@@ -118,15 +130,23 @@ async def list_tasks(
     *,
     status: TaskStatus | None = None,
     assigned_to_email: str | None = None,
+    assigned_to_user_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Task]:
-    """List tasks with optional filters."""
+    """List tasks with optional filters.
+
+    `assigned_to_user_id` is the authoritative scope for non-operator
+    callers — it filters on the resolved directory user ID stamped at
+    routing time, which is stable across email changes and works for
+    Slack-only users (where `assigned_to_email` is null)."""
     query = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
     if status is not None:
         query = query.where(Task.status == status)
     if assigned_to_email is not None:
         query = query.where(Task.assigned_to_email == assigned_to_email)
+    if assigned_to_user_id is not None:
+        query = query.where(Task.assigned_to_user_id == assigned_to_user_id)
     result = await session.execute(query)
     return list(result.scalars().all())
 
@@ -213,32 +233,101 @@ async def complete_task(
     response: dict,
     completed_by_email: str | None = None,
     completed_via_channel: str | None = None,
+    raw_input: str | None = None,
 ) -> Task:
     """Complete a task with the human's response.
 
-    Uses first-writer-wins: if the task is already terminal (e.g., timed out),
+    First-writer-wins: if the task is already terminal (e.g., timed out),
     raises TaskAlreadyTerminalError.
+
+    If `task.verifier_config` is set, the response is run through the
+    server-side verifier before deciding the final status. The verifier
+    does two things in one LLM call:
+
+      - quality-check the response against the operator's `instructions`
+      - parse `raw_input` (NL reply) into a structured `parsed_response`
+        when no structured response was submitted
+
+    Outcomes:
+      - verifier passes → status COMPLETED, response stored (parsed if NL)
+      - verifier rejects, attempts left → status REJECTED (non-terminal),
+        attempt counter bumped, verifier_result kept; the human can
+        resubmit and the channel layer surfaces the reason to them
+      - verifier rejects, attempts exhausted → status VERIFICATION_EXHAUSTED
+        (terminal); the agent is unblocked with a typed exhaustion error
+
+    Provider-level failures (missing API key, vendor outage, missing
+    SDK extra) propagate as ServiceError subclasses — they do NOT
+    consume a retry attempt because the LLM never actually rendered a
+    verdict. The caller's HTTP request fails; the human can retry by
+    resubmitting once the operator fixes the config.
     """
     task = await get_task(session, task_id)
 
     if task.status in TERMINAL_STATUSES_SET:
         raise TaskAlreadyTerminalError(task_id, task.status)
 
-    now = datetime.now(timezone.utc)
+    verifier_outcome: VerifierOutcome | None = None
+    final_response = response
+    if task.verifier_config and not task.redact_payload:
+        # We do NOT ship redacted-task payloads to a third-party LLM
+        # under any circumstance — the operator marked the payload
+        # sensitive, and the verifier prompt would carry that same
+        # payload off-server. Skip verification for redacted tasks;
+        # the submission is treated as if no verifier were configured.
 
-    # Atomic update — only succeeds if status is still non-terminal
+        # Snapshot the fields the verifier needs into a detached
+        # `Task` instance BEFORE releasing the session, then commit to
+        # release the DB connection back to the pool. Verifier round-
+        # trips can take 5-30s; holding the connection in a transaction
+        # would exhaust the pool on a moderately-loaded instance.
+        #
+        # Snapshotting (rather than reading task attrs after commit)
+        # decouples the verifier-path correctness from
+        # `expire_on_commit` / `expire_on_rollback` session config.
+        # Anyone flipping those flags in `db/connection.py` or in a
+        # test fixture can no longer silently break this code path —
+        # the verifier sees a frozen copy of the task as it was at
+        # submission time.
+        task_snapshot = _snapshot_task_for_verifier(task)
+        await session.commit()
+        verifier_outcome = await evaluate_submission(
+            task_snapshot, response=response, raw_input=raw_input
+        )
+        if verifier_outcome.parsed_response is not None:
+            # NL parse path — the structured value the agent receives is
+            # whatever the verifier extracted, not the raw form data
+            # (which was likely empty when raw_input was the input).
+            final_response = verifier_outcome.parsed_response
+
+    now = datetime.now(timezone.utc)
+    target_status = verifier_outcome.target_status if verifier_outcome else TaskStatus.COMPLETED
+
+    update_values: dict[str, Any] = {
+        "status": target_status,
+        "response": final_response,
+        "updated_at": now,
+        "completed_by_email": completed_by_email,
+        "completed_via_channel": completed_via_channel,
+    }
+    # Only stamp completed_at on actual completion. REJECTED is
+    # non-terminal — leaving completed_at null lets the dashboard
+    # render "in review" correctly across a rejection cycle.
+    if target_status == TaskStatus.COMPLETED:
+        update_values["completed_at"] = now
+    if verifier_outcome is not None:
+        update_values["verifier_result"] = verifier_outcome.result.model_dump()
+        update_values["verification_attempt"] = verifier_outcome.new_attempt
+
+    # Atomic update — only succeeds if status is still non-terminal.
+    # Note: verification can take seconds (LLM call) before we get here;
+    # if the task got cancelled / timed-out during the verifier call,
+    # this safely no-ops via the rowcount check.
     result = await session.execute(
         update(Task)
         .where(Task.id == task_id)
         .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
-        .values(
-            status=TaskStatus.COMPLETED,
-            response=response,
-            completed_at=now,
-            updated_at=now,
-            completed_by_email=completed_by_email,
-            completed_via_channel=completed_via_channel,
-        )
+        .values(**update_values)
     )
 
     if result.rowcount == 0:
@@ -246,16 +335,33 @@ async def complete_task(
         await session.refresh(task)
         raise TaskAlreadyTerminalError(task_id, task.status)
 
-    # Audit entry
+    # Audit entry — one per submission. When the verifier rejected,
+    # we record the rejection action AND the reason so the audit trail
+    # tells the full story without joining against verifier_result.
+    audit_action = audit_action_for(target_status, verifier_outcome)
+    audit_extra: dict[str, Any] = {}
+    # Honour `redact_payload` here too — the audit trail is operator-
+    # facing but ends up in logs, exports, and the dashboard. When the
+    # operator said "redact this payload", that includes derived field
+    # names. response_keys is marginal observability vs PII risk.
+    if response and not task.redact_payload:
+        audit_extra["response_keys"] = list(response.keys())
+    if verifier_outcome is not None:
+        audit_extra["verifier_passed"] = verifier_outcome.result.passed
+        audit_extra["verification_attempt"] = verifier_outcome.new_attempt
+        if not task.redact_payload:
+            # Reason can quote payload back at us; gate on redaction.
+            audit_extra["verifier_reason"] = verifier_outcome.result.reason
+
     audit = AuditEntry(
         task_id=task_id,
         from_status=task.status.value,
-        to_status=TaskStatus.COMPLETED.value,
-        action="completed",
+        to_status=target_status.value,
+        action=audit_action,
         actor_type="human",
         actor_email=completed_by_email,
         channel=completed_via_channel,
-        extra_data={"response_keys": list(response.keys())} if response else None,
+        extra_data=audit_extra or None,
     )
     session.add(audit)
     await session.commit()
@@ -367,6 +473,40 @@ async def get_audit_trail(session: AsyncSession, task_id: str) -> list[AuditEntr
     return list(result.scalars().all())
 
 
+def _snapshot_task_for_verifier(task: Task) -> Task:
+    """Build a detached `Task` carrying only the fields the verifier
+    reads.
+
+    The verifier path commits/closes the session before running the
+    LLM call (see `complete_task`). After the commit, accessing
+    attributes on the original ORM instance is technically still safe
+    because the session factory pins `expire_on_commit=False`, but
+    that's a fragile coupling — anyone flipping the flag in
+    `db/connection.py` or a test fixture would silently break this
+    code path. Snapshotting decouples the two concerns: we read the
+    fields once while the session is unambiguously alive, then pass a
+    plain Python object across the LLM-call boundary.
+
+    Fields included match what `task_verifier.evaluate_submission`
+    actually reads (verifier_config, payload, schemas, attempt
+    counter, prior verifier_result, status, id, task description).
+    """
+    return Task(
+        id=task.id,
+        idempotency_key=task.idempotency_key,
+        task=task.task,
+        payload=task.payload,
+        payload_schema=task.payload_schema,
+        response_schema=task.response_schema,
+        status=task.status,
+        verifier_config=task.verifier_config,
+        verifier_result=task.verifier_result,
+        verification_attempt=task.verification_attempt,
+        timeout_seconds=task.timeout_seconds,
+        redact_payload=task.redact_payload,
+    )
+
+
 async def _find_active_task_by_idempotency_key(
     session: AsyncSession, idempotency_key: str
 ) -> Task | None:
@@ -377,3 +517,9 @@ async def _find_active_task_by_idempotency_key(
         .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
     )
     return result.scalar_one_or_none()
+
+
+# Verifier helpers (`evaluate_submission`, `audit_action_for`,
+# `previous_rejections_for`, `VerifierOutcome`) live in
+# `task_verifier.py` — kept out of this file to stay under the 300-line
+# file cap and isolate the LLM-call path from core lifecycle logic.

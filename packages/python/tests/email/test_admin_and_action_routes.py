@@ -235,9 +235,17 @@ async def test_action_post_completes_task(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_action_post_idempotent_on_already_terminal(
+async def test_action_post_replay_rejected_with_410(
     client: AsyncClient,
 ) -> None:
+    """Single-use enforcement: the second POST of the same magic-link
+    token returns 410 with an "already used" message, BEFORE touching
+    `complete_task`. Without this, a forwarded email or leaked URL is
+    replayable for the entire TTL window.
+
+    410 (rather than 200 with a status message) tells caches /
+    proxies / mail clients the resource is permanently gone — they
+    should not retry."""
     async for session in _direct_session(client):
         task = await create_task(
             session,
@@ -255,10 +263,49 @@ async def test_action_post_idempotent_on_already_terminal(
     first = await client.post(f"/api/channels/email/action/{token}")
     assert first.status_code == 200
 
-    # Second click of the same link shows "already completed", not a 500.
+    # Second click of the same link is rejected as already used.
     second = await client.post(f"/api/channels/email/action/{token}")
-    assert second.status_code == 200
+    assert second.status_code == 410
     assert "already" in second.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_action_post_two_distinct_tokens_for_same_task_independent(
+    client: AsyncClient,
+) -> None:
+    """The single-use marker is keyed on the token's `jti`, not on
+    `(task_id, field_name)`. An operator who issued two different
+    magic-link tokens for the same option (e.g. resent the email)
+    should be able to consume EITHER one — once. This test pins that
+    the consumed-token table doesn't accidentally over-block."""
+    async for session in _direct_session(client):
+        task = await create_task(
+            session,
+            task="Approve",
+            payload={},
+            payload_schema={},
+            response_schema={},
+            timeout_seconds=3600,
+            idempotency_key="k4",
+        )
+        task_id = task.id
+        break
+
+    token_a = sign_action_token(task_id=task_id, field_name="approve", value=True)
+    token_b = sign_action_token(task_id=task_id, field_name="approve", value=True)
+    assert token_a != token_b  # different jti each time
+
+    # First token consumed successfully.
+    resp_a = await client.post(f"/api/channels/email/action/{token_a}")
+    assert resp_a.status_code == 200
+
+    # Second token tries to complete the (now terminal) task and gets
+    # the "already completed" path — proves single-use didn't block
+    # the unrelated jti, AND proves the terminal-state check still
+    # works as a backstop for legitimate-but-stale links.
+    resp_b = await client.post(f"/api/channels/email/action/{token_b}")
+    assert resp_b.status_code == 200
+    assert "already" in resp_b.text.lower()
 
 
 async def _direct_session(client: AsyncClient) -> AsyncGenerator[AsyncSession, None]:

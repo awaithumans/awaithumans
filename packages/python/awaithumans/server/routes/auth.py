@@ -25,6 +25,11 @@ from awaithumans.server.core.auth import (
 )
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.password import dummy_verify, verify_password
+from awaithumans.server.core.rate_limit import (
+    LOGIN_PER_EMAIL,
+    LOGIN_PER_IP,
+    client_ip,
+)
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.auth import LoginRequest, MeResponse
 from awaithumans.server.services.user_service import get_user, get_user_by_email
@@ -39,6 +44,7 @@ logger = logging.getLogger("awaithumans.server.routes.auth")
 
 @router.post("/login", status_code=status.HTTP_204_NO_CONTENT)
 async def login(
+    request: Request,
     body: LoginRequest,
     response: Response,
     session: AsyncSession = Depends(get_session),
@@ -48,8 +54,29 @@ async def login(
 
     Returns 401 for unknown email, inactive account, no password set,
     or wrong password — uniform error so we don't leak which field
-    was wrong.
+    was wrong. Returns 429 once an IP or email exceeds its sliding-
+    window limit.
     """
+    # Rate-limit on BOTH dimensions: per-IP catches credential
+    # stuffing from one host (different emails each attempt); per-
+    # email catches a distributed attack against one known account.
+    # Reject before touching argon2 so we don't burn CPU on attempts
+    # the limiter has already decided to refuse.
+    ip = client_ip(request)
+    email_key = body.email.lower().strip()
+    if not LOGIN_PER_IP.check(f"login:{ip}"):
+        logger.warning("Login rate-limited by IP: %s", ip)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again in a few minutes.",
+        )
+    if not LOGIN_PER_EMAIL.check(f"login:{email_key}"):
+        logger.warning("Login rate-limited by email: %s", email_key)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again in a few minutes.",
+        )
+
     user = await get_user_by_email(session, body.email)
     reject = HTTPException(status_code=401, detail="Invalid credentials.")
 
@@ -65,6 +92,11 @@ async def login(
     if not verify_password(body.password, user.password_hash):
         logger.info("Failed login (wrong password): %s", body.email)
         raise reject
+
+    # Successful login — clear the per-email counter so a legit user
+    # who fat-fingered their password three times doesn't get
+    # throttled out of their own session 5 minutes later.
+    LOGIN_PER_EMAIL.reset(f"login:{email_key}")
 
     token = sign_session(user_id=user.id, is_operator=user.is_operator)
     response.set_cookie(
