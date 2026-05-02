@@ -16,6 +16,7 @@ from awaithumans.server.channels.slack.client import (
     get_client_for_team,
     get_env_client,
 )
+from awaithumans.server.core.admin_auth import require_admin
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.slack import (
     SlackInstallationResponse,
@@ -27,7 +28,12 @@ from awaithumans.server.services.slack_installation_service import (
     list_installations,
 )
 
-router = APIRouter()
+# Every route in this module is operator-only — these are
+# infrastructure-management surfaces (uninstall a workspace, list
+# every member's name + admin status, see which workspace owns the
+# static token). Without this gate, any logged-in non-operator could
+# silently DoS the Slack integration by hitting DELETE.
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("awaithumans.server.routes.slack.installations")
 
 # Cached static-token workspace info. `auth.test` is a network call we

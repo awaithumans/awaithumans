@@ -130,15 +130,23 @@ async def list_tasks(
     *,
     status: TaskStatus | None = None,
     assigned_to_email: str | None = None,
+    assigned_to_user_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Task]:
-    """List tasks with optional filters."""
+    """List tasks with optional filters.
+
+    `assigned_to_user_id` is the authoritative scope for non-operator
+    callers — it filters on the resolved directory user ID stamped at
+    routing time, which is stable across email changes and works for
+    Slack-only users (where `assigned_to_email` is null)."""
     query = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
     if status is not None:
         query = query.where(Task.status == status)
     if assigned_to_email is not None:
         query = query.where(Task.assigned_to_email == assigned_to_email)
+    if assigned_to_user_id is not None:
+        query = query.where(Task.assigned_to_user_id == assigned_to_user_id)
     result = await session.execute(query)
     return list(result.scalars().all())
 
