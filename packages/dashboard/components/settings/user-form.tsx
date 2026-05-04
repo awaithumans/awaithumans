@@ -8,13 +8,26 @@ import {
 	createUser,
 	fetchSlackInstallations,
 	fetchSlackWorkspaceMembers,
+	fetchStaticSlackWorkspace,
 	type CreateUserRequest,
-	type SlackInstallation,
 	type SlackMember,
 	type User,
 	updateUser,
 } from "@/lib/server";
 import { cn } from "@/lib/utils";
+
+/**
+ * One row in the workspace dropdown — unified shape covering both
+ * OAuth installations and the static-token (env-configured)
+ * workspace. The dropdown doesn't care which kind it is; the only
+ * UX difference is a small `(env)` suffix on the static one so the
+ * operator knows it's running in single-workspace mode.
+ */
+interface WorkspaceOption {
+	team_id: string;
+	team_name: string | null;
+	source: "oauth" | "env";
+}
 
 const inputClass =
 	"w-full bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 text-xs placeholder:text-white/20 focus:outline-none focus:border-brand/40";
@@ -56,24 +69,55 @@ export function UserForm({
 	const [password, setPassword] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 
-	// ── Slack workspace picker — loaded lazily on mount; silently
-	// disabled if no workspaces are installed. ──
-	const [installations, setInstallations] = useState<SlackInstallation[]>([]);
+	// ── Slack workspace picker ──
+	// Loaded lazily on mount. Combines OAuth installations
+	// (`slack_installations` table) with the static-token workspace
+	// (set via SLACK_BOT_TOKEN env). Without merging both, an
+	// operator running in static-token mode would see "no workspaces
+	// installed" here even though Settings → Slack shows the env
+	// workspace just fine — confusing and wrong.
+	const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
 	const [members, setMembers] = useState<SlackMember[] | null>(null);
 	const [loadingMembers, setLoadingMembers] = useState(false);
 	const [memberLoadError, setMemberLoadError] = useState<string | null>(null);
 
 	useEffect(() => {
-		fetchSlackInstallations()
-			.then(setInstallations)
-			.catch(() => setInstallations([]));
+		// Fire both lookups in parallel; merge the results. Either
+		// can fail independently (no OAuth configured / no env token)
+		// so we tolerate either side returning empty / null.
+		Promise.all([
+			fetchSlackInstallations().catch(() => []),
+			fetchStaticSlackWorkspace().catch(() => null),
+		]).then(([installs, staticWs]) => {
+			const merged: WorkspaceOption[] = installs.map((i) => ({
+				team_id: i.team_id,
+				team_name: i.team_name,
+				source: "oauth",
+			}));
+			// Avoid duplicates if the same team_id ever appears in both
+			// (shouldn't, but be defensive).
+			if (
+				staticWs &&
+				!merged.some((w) => w.team_id === staticWs.team_id)
+			) {
+				merged.push({
+					team_id: staticWs.team_id,
+					team_name: staticWs.team_name,
+					source: "env",
+				});
+			}
+			setWorkspaces(merged);
+		});
 	}, []);
 
 	// When the operator picks a team from the dropdown, fetch its
 	// members so the user ID field becomes a combobox of real people
-	// rather than a free-text paste box.
+	// rather than a free-text paste box. Works for BOTH OAuth and
+	// static-token workspaces — the server's get_client_for_team
+	// falls back to the env client when no DB row matches the
+	// team_id.
 	useEffect(() => {
-		if (!slackTeamId || !installations.some((i) => i.team_id === slackTeamId)) {
+		if (!slackTeamId || !workspaces.some((w) => w.team_id === slackTeamId)) {
 			setMembers(null);
 			return;
 		}
@@ -87,7 +131,7 @@ export function UserForm({
 				),
 			)
 			.finally(() => setLoadingMembers(false));
-	}, [slackTeamId, installations]);
+	}, [slackTeamId, workspaces]);
 
 	const hasEmail = email.trim().length > 0;
 	const hasSlackTeam = slackTeamId.trim().length > 0;
@@ -184,12 +228,12 @@ export function UserForm({
 				<Field
 					label="Slack workspace"
 					hint={
-						installations.length === 0
-							? "No Slack workspaces installed. Add one from Settings → Slack."
+						workspaces.length === 0
+							? "No Slack workspaces installed. Add one from Settings → Slack, or set SLACK_BOT_TOKEN for single-workspace mode."
 							: "Pick a workspace the app is installed in, or paste a team ID manually."
 					}
 				>
-					{installations.length > 0 ? (
+					{workspaces.length > 0 ? (
 						<select
 							value={slackTeamId}
 							onChange={(e) => {
@@ -201,9 +245,10 @@ export function UserForm({
 							className={inputClass}
 						>
 							<option value="">—</option>
-							{installations.map((i) => (
-								<option key={i.team_id} value={i.team_id}>
-									{i.team_name || i.team_id}
+							{workspaces.map((w) => (
+								<option key={w.team_id} value={w.team_id}>
+									{w.team_name || w.team_id}
+									{w.source === "env" ? " (env)" : ""}
 								</option>
 							))}
 						</select>
