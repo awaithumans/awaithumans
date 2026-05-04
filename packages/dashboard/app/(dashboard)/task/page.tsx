@@ -5,9 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
 	fetchTask,
 	fetchAuditTrail,
+	fetchMe,
 	completeTask,
 	cancelTask,
 	deleteTask,
+	type MeResponse,
 	type Task,
 	type AuditEntry,
 } from "@/lib/server";
@@ -50,6 +52,7 @@ function TaskDetailPageInner() {
 
 	const [task, setTask] = useState<Task | null>(null);
 	const [audit, setAudit] = useState<AuditEntry[]>([]);
+	const [me, setMe] = useState<MeResponse | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
@@ -62,12 +65,17 @@ function TaskDetailPageInner() {
 	const loadTask = async () => {
 		try {
 			setError(null);
-			const [taskData, auditData] = await Promise.all([
+			// Fetch /me alongside the task so we can decide whether to
+			// show the "you're stepping in" banner without a second
+			// round-trip after the form renders.
+			const [taskData, auditData, meData] = await Promise.all([
 				fetchTask(taskId),
 				fetchAuditTrail(taskId),
+				fetchMe().catch(() => null), // tolerate auth blip; banner just hides
 			]);
 			setTask(taskData);
 			setAudit(auditData);
+			setMe(meData);
 
 			if (taskData.form_definition) {
 				setFormData(initialValueFor(taskData.form_definition));
@@ -123,6 +131,21 @@ function TaskDetailPageInner() {
 	const isTerminal = task?.status
 		? TERMINAL_STATUSES.includes(task.status)
 		: false;
+
+	// Operator stepping in: someone else owns this task, but the operator
+	// is the omnipotent admin tier and can submit on their behalf. Surface
+	// this in the UI so the audit trail's `completed_by_email` can be
+	// reconciled with the assignee at a glance.
+	const steppingIn =
+		!!me?.is_operator &&
+		!isTerminal &&
+		!!task &&
+		((task.assigned_to_email !== null &&
+			task.assigned_to_email !== me.email) ||
+			(task.assigned_to_user_id !== null &&
+				task.assigned_to_user_id !== me.user_id));
+	const assigneeLabel =
+		task?.assigned_to_email ?? task?.assigned_to_user_id ?? null;
 
 	if (loading) {
 		return <TerminalSpinner label="awaiting task" size="md" />;
@@ -217,6 +240,20 @@ function TaskDetailPageInner() {
 							<Eyebrow as="h2" size="md" tone="brand" weight="semibold" className="block mb-4">
 								Your Response
 							</Eyebrow>
+							{steppingIn && assigneeLabel && (
+								<div className="mb-4 rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-200/90">
+									<span className="font-mono text-amber-300">⚠</span>{" "}
+									Assigned to{" "}
+									<span className="font-mono">{assigneeLabel}</span>
+									{" · "}you're submitting as operator
+									{me?.email && (
+										<span className="text-amber-200/60">
+											{" "}
+											({me.email})
+										</span>
+									)}
+								</div>
+							)}
 							<FormRenderer
 								form={task.form_definition}
 								value={formData}
