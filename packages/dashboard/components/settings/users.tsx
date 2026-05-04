@@ -129,7 +129,18 @@ function UserRow({
 	onEdit: () => void;
 	onDelete: () => void;
 }) {
-	const primaryLabel = u.display_name || u.email || u.id;
+	// Headline fallback chain. The row ID (last resort) is a 32-char
+	// hex string — it's never useful to humans, so we exhaust every
+	// human-friendly option first: the operator's display name, then
+	// their email, then a recognisable Slack reference like
+	// `@U_ALICE`. Only if all of those are missing do we land on the
+	// raw row ID (and even then the addressLine below repeats the
+	// Slack ID so the operator can see what's going on).
+	const primaryLabel =
+		u.display_name ||
+		u.email ||
+		(u.slack_user_id ? `@${u.slack_user_id}` : null) ||
+		u.id;
 	const addressLine = [
 		u.email,
 		u.slack_user_id ? `slack:${u.slack_user_id}` : null,

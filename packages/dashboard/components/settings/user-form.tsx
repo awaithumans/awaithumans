@@ -277,7 +277,25 @@ export function UserForm({
 					{members && members.length > 0 ? (
 						<select
 							value={slackUserId}
-							onChange={(e) => setSlackUserId(e.target.value)}
+							onChange={(e) => {
+								const id = e.target.value;
+								setSlackUserId(id);
+								// Auto-fill display_name from the picked member
+								// when the operator hasn't typed one yet. Without
+								// this the Users list falls back to the row ID
+								// for Slack-only directory users — terrible UX.
+								if (id && !displayName.trim()) {
+									const picked = members.find((m) => m.id === id);
+									if (picked) {
+										setDisplayName(
+											picked.real_name ||
+												picked.display_name ||
+												picked.name ||
+												"",
+										);
+									}
+								}
+							}}
 							className={inputClass}
 						>
 							<option value="">—</option>

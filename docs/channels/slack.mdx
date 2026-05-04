@@ -82,9 +82,13 @@ OAuth installs are stored encrypted at rest (AES-GCM keyed off `PAYLOAD_KEY`).
 
 ```python
 notify=["slack:#approvals"]                # broadcast to channel — first claim wins
-notify=["slack:@U01ABC1234"]               # DM a specific Slack user
+notify=["slack:@alice"]                    # DM by Slack handle (auto-resolved)
+notify=["slack:@U01ABC1234"]               # DM by raw user ID (also works)
+notify=["slack:alice@acme.com"]            # DM by email (uses users.lookupByEmail)
 notify=["slack:#approvals", "email:..."]   # multi-channel
 ```
+
+The middle three forms can target the same person — pick whichever's easiest. Handles (`@alice`) are resolved via `users.list` once per workspace per process, then cached. Emails use Slack's dedicated `users.lookupByEmail`. Raw user IDs pass through unchanged.
 
 ### Broadcast (channel)
 
@@ -96,7 +100,15 @@ Posts a message with a "Claim this task" button. First clicker wins atomically. 
 
 ### Direct (user)
 
-DMs the Slack user. They see "Open in Slack" and click straight into the modal. The user must be in your awaithumans directory (Settings → Users) for the modal to open — operators add them with their `slack_user_id`.
+DMs the Slack user. They see "Open in Slack" and click straight into the modal. The user must be in your awaithumans directory (Settings → Users) for the modal to open.
+
+For the `notify=` string you can use any of:
+
+- `slack:@alice` — Slack handle (most natural)
+- `slack:alice@acme.com` — email (when you only know that)
+- `slack:@U01ABC1234` — raw user ID (always works, no API call)
+
+For the directory entry (Settings → Users), the dashboard's "Slack member" picker pulls the workspace member list — operators pick from a dropdown rather than copy-pasting `U…` strings.
 
 ## Modal form
 
