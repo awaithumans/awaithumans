@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { Task } from "@/lib/types";
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
@@ -18,6 +19,25 @@ export function formatRelativeTime(dateString: string): string {
 	if (diffMinutes < 60) return `${diffMinutes}m ago`;
 	if (diffHours < 24) return `${diffHours}h ago`;
 	return `${diffDays}d ago`;
+}
+
+/**
+ * Pick the best label for a task's assignee. Mirrors the server-side
+ * fallback chain so a Slack-only assignee doesn't render as blank.
+ *
+ *   display_name → email → @<slack_user_id> → null (caller renders "—")
+ */
+export function assigneeLabel(task: Pick<
+	Task,
+	"assigned_to_display_name"
+	| "assigned_to_email"
+	| "assigned_to_slack_user_id"
+	| "assigned_to_user_id"
+>): string | null {
+	if (task.assigned_to_display_name) return task.assigned_to_display_name;
+	if (task.assigned_to_email) return task.assigned_to_email;
+	if (task.assigned_to_slack_user_id) return `@${task.assigned_to_slack_user_id}`;
+	return null;
 }
 
 export function statusBadgeColor(status: string): string {

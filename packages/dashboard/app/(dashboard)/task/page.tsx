@@ -13,12 +13,13 @@ import {
 	type Task,
 	type AuditEntry,
 } from "@/lib/server";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { assigneeLabel, cn, formatRelativeTime } from "@/lib/utils";
 import {
 	IDEMPOTENCY_KEY_DISPLAY_LENGTH,
 	SECONDS_PER_MINUTE,
 	TERMINAL_STATUSES,
 } from "@/lib/constants";
+import { CopyButton } from "@/components/copy-button";
 import { ErrorBanner } from "@/components/error-banner";
 import { Eyebrow } from "@/components/eyebrow";
 import { StatusBadge } from "@/components/status-badge";
@@ -136,6 +137,7 @@ function TaskDetailPageInner() {
 	// is the omnipotent admin tier and can submit on their behalf. Surface
 	// this in the UI so the audit trail's `completed_by_email` can be
 	// reconciled with the assignee at a glance.
+	const assigneeText = task ? assigneeLabel(task) : null;
 	const steppingIn =
 		!!me?.is_operator &&
 		!isTerminal &&
@@ -144,8 +146,6 @@ function TaskDetailPageInner() {
 			task.assigned_to_email !== me.email) ||
 			(task.assigned_to_user_id !== null &&
 				task.assigned_to_user_id !== me.user_id));
-	const assigneeLabel =
-		task?.assigned_to_email ?? task?.assigned_to_user_id ?? null;
 
 	if (loading) {
 		return <TerminalSpinner label="awaiting task" size="md" />;
@@ -171,6 +171,7 @@ function TaskDetailPageInner() {
 					<div className="flex items-center gap-3 mt-2">
 						<StatusBadge status={task.status} />
 						<span className="text-white/30 text-xs font-mono">{task.id}</span>
+						<CopyButton code={task.id} />
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
@@ -240,11 +241,11 @@ function TaskDetailPageInner() {
 							<Eyebrow as="h2" size="md" tone="brand" weight="semibold" className="block mb-4">
 								Your Response
 							</Eyebrow>
-							{steppingIn && assigneeLabel && (
+							{steppingIn && assigneeText && (
 								<div className="mb-4 rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-200/90">
 									<span className="font-mono text-amber-300">⚠</span>{" "}
 									Assigned to{" "}
-									<span className="font-mono">{assigneeLabel}</span>
+									<span className="font-mono">{assigneeText}</span>
 									{" · "}you're submitting as operator
 									{me?.email && (
 										<span className="text-amber-200/60">
@@ -357,6 +358,14 @@ function TaskDetailPageInner() {
 					{/* Task metadata */}
 					<div className="mt-6 pt-4 border-t border-white/10 space-y-2 text-xs text-white/30">
 						<div>
+							<span className="text-white/50">Assigned to:</span>{" "}
+							{assigneeText ? (
+								<span className="font-mono text-white/70">{assigneeText}</span>
+							) : (
+								<span className="italic">unassigned</span>
+							)}
+						</div>
+						<div>
 							<span className="text-white/50">Timeout:</span>{" "}
 							{Math.round(task.timeout_seconds / SECONDS_PER_MINUTE)} minutes
 						</div>
@@ -364,11 +373,12 @@ function TaskDetailPageInner() {
 							<span className="text-white/50">Created:</span>{" "}
 							{new Date(task.created_at).toLocaleString()}
 						</div>
-						<div>
+						<div className="flex items-center gap-1">
 							<span className="text-white/50">Idempotency:</span>{" "}
 							<span className="font-mono">
 								{task.idempotency_key.slice(0, IDEMPOTENCY_KEY_DISPLAY_LENGTH)}...
 							</span>
+							<CopyButton code={task.idempotency_key} />
 						</div>
 					</div>
 				</div>
