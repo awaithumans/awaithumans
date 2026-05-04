@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import pytest
 
-from awaithumans.server.channels.slack.notifier import (
+from awaithumans.server.channels.slack.resolution import (
     _HANDLE_CACHE,
-    _resolve_target,
+    resolve_slack_target as _resolve_target,
 )
 
 

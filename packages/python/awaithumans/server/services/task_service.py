@@ -23,7 +23,10 @@ from awaithumans.server.services.exceptions import (
     TaskAlreadyTerminalError,
     TaskNotFoundError,
 )
-from awaithumans.server.services.task_router import resolve_assign_to
+from awaithumans.server.services.task_router import (
+    derive_implicit_assignee,
+    resolve_assign_to,
+)
 from awaithumans.server.services.task_verifier import (
     VerifierOutcome,
     audit_action_for,
@@ -65,6 +68,17 @@ async def create_task(
     # session; committing the task and the bump together keeps Option C
     # fairness in step with task creation.
     route = await resolve_assign_to(session, assign_to)
+
+    # If the developer didn't pin an assignee but DID `notify=` a
+    # specific person via Slack, treat that person as the assignee.
+    # `notify=["slack:@alice"]` is the natural shorthand for "alice
+    # is responsible" — without this, alice gets DMed but the
+    # dashboard's "Assigned to" stays empty AND the Slack auth
+    # check rejects her submission. See `derive_implicit_assignee`.
+    if route.user_id is None and route.email is None:
+        implicit = await derive_implicit_assignee(session, notify)
+        if implicit.user_id is not None or implicit.email is not None:
+            route = implicit
 
     # Create the task
     now = datetime.now(timezone.utc)
