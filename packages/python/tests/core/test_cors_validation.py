@@ -1,4 +1,4 @@
-"""CORS origin validation refuses unsafe configurations at boot.
+"""CORS origin + PUBLIC_URL validation at boot.
 
 The middleware in `app.py` flips `allow_credentials` ON the moment the
 origin list isn't a bare `*`. Without validation, any operator who
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from awaithumans.server.app import _validate_cors_origins
+from awaithumans.server.app import _validate_cors_origins, _validate_public_url
 
 
 # ─── Acceptable configs ──────────────────────────────────────────────
@@ -75,3 +75,54 @@ def test_origin_with_path_refused() -> None:
     """CORS origins must be scheme + host + optional port — no path."""
     with pytest.raises(RuntimeError):
         _validate_cors_origins(["https://app.acme.com/api"])
+
+
+# ─── PUBLIC_URL validation ───────────────────────────────────────────
+
+
+class TestPublicUrlValidation:
+    """`PUBLIC_URL` must be scheme + host + optional port — no path.
+
+    Operators commonly paste the full Slack OAuth callback URL into
+    this env var, which then breaks every constructed URL (dashboard
+    click-throughs become `/api/channels/slack/oauth/callback/task?id=…`).
+    Fail at boot with a clear fix instead of letting them debug 404s."""
+
+    def test_localhost_dev_accepted(self) -> None:
+        _validate_public_url("http://localhost:3001")
+        _validate_public_url("http://localhost")
+
+    def test_loopback_accepted(self) -> None:
+        _validate_public_url("http://127.0.0.1:3001")
+
+    def test_https_host_accepted(self) -> None:
+        _validate_public_url("https://reviews.acme.com")
+        _validate_public_url("https://reviews.acme.com:8443")
+
+    def test_ngrok_subdomain_accepted(self) -> None:
+        _validate_public_url("https://abcd1234.ngrok-free.app")
+
+    def test_trailing_slash_tolerated(self) -> None:
+        _validate_public_url("https://reviews.acme.com/")
+
+    def test_full_oauth_callback_url_refused(self) -> None:
+        """The classic operator footgun: pasting the OAuth redirect URL
+        instead of the base. Server constructs every URL by joining
+        PUBLIC_URL + path, so this would yield `…/api/channels/slack/
+        oauth/callback/task?id=…` for the dashboard link."""
+        with pytest.raises(RuntimeError, match="not a base URL"):
+            _validate_public_url(
+                "https://example.com/api/channels/slack/oauth/callback"
+            )
+
+    def test_path_segment_refused(self) -> None:
+        with pytest.raises(RuntimeError, match="not a base URL"):
+            _validate_public_url("https://example.com/something")
+
+    def test_empty_refused(self) -> None:
+        with pytest.raises(RuntimeError, match="is unset"):
+            _validate_public_url("")
+
+    def test_missing_scheme_refused(self) -> None:
+        with pytest.raises(RuntimeError, match="not a base URL"):
+            _validate_public_url("reviews.acme.com")

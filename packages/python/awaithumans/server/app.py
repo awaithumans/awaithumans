@@ -124,6 +124,17 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
             settings.PUBLIC_URL,
         )
 
+    # PUBLIC_URL must be a base URL (scheme + host[:port]) — no path.
+    # A common misconfiguration: pasting the full Slack OAuth callback
+    # URL (`https://example.com/api/channels/slack/oauth/callback`) into
+    # PUBLIC_URL. That breaks every dashboard click-through (the Slack
+    # message's "Open in dashboard" link becomes
+    # `https://example.com/api/channels/slack/oauth/callback/task?id=…`)
+    # and the OAuth callback redirects to the wrong place. Fail-fast at
+    # boot with a concrete fix instead of letting the operator
+    # debug 404s.
+    _validate_public_url(settings.PUBLIC_URL)
+
     # OAuth stores bot tokens in the DB. Those tokens are encrypted at rest
     # via server/core/encryption.py, which needs PAYLOAD_KEY. Without the
     # key we'd either silently fall back to plaintext (unsafe) or crash on
@@ -264,4 +275,50 @@ def _validate_cors_origins(origins: list[str]) -> None:
             "cookies in cleartext to whichever site the operator listed. "
             "Use https:// only (or http://localhost / http://127.0.0.1 "
             "for local dev)."
+        )
+
+
+def _validate_public_url(url: str) -> None:
+    """Reject `PUBLIC_URL` values that include a path beyond `/`.
+
+    The contract: `PUBLIC_URL` is the base of every URL the server
+    constructs (dashboard click-throughs, OAuth redirects, magic
+    links). Code does `f"{settings.PUBLIC_URL.rstrip('/')}/task?id=…"`
+    and friends. If `PUBLIC_URL` is, say,
+    `https://example.com/api/channels/slack/oauth/callback`, every
+    constructed URL stacks the path and breaks. Operators usually
+    hit this when they paste a full callback URL into the env var
+    instead of just the host.
+
+    Acceptable shapes:
+      https://host
+      https://host:port
+      https://host/         (trailing slash tolerated)
+      http://localhost
+      http://localhost:3001
+
+    Rejected:
+      https://host/api/...
+      https://host/anything-besides-a-trailing-slash
+      missing scheme
+      empty
+    """
+    if not url:
+        raise RuntimeError(
+            "AWAITHUMANS_PUBLIC_URL is unset. Set it to the base URL the "
+            "dashboard is reachable at, e.g. http://localhost:3001 in dev "
+            "or https://reviews.your-company.com in production."
+        )
+
+    valid = re.compile(r"^https?://[A-Za-z0-9.\-]+(:\d+)?/?$")
+    if not valid.match(url):
+        raise RuntimeError(
+            f"AWAITHUMANS_PUBLIC_URL='{url}' is not a base URL — it must "
+            "be scheme + host + optional port, with no path. A common "
+            "mistake is pasting the full Slack OAuth callback URL "
+            "(`/api/channels/slack/oauth/callback`) into this variable; "
+            "use just the host portion. Examples:\n"
+            "  http://localhost:3001\n"
+            "  https://reviews.your-company.com\n"
+            "  https://abcd1234.ngrok-free.app"
         )
