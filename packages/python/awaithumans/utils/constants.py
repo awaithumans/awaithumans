@@ -224,3 +224,13 @@ DASHBOARD_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 # the same root key never signs two different primitives.
 DASHBOARD_SESSION_HKDF_SALT = b"awaithumans-dashboard-session"
 DASHBOARD_SESSION_HKDF_INFO = b"v1"
+
+# HKDF parameters for the Slack-handoff URL signature. A signed URL
+# travels in the Slack DM that announces a task — clicking it mints a
+# session cookie for the recipient. Slack-only users (no email/password)
+# can't use the normal login form so this is the only way they reach
+# the dashboard. URL is bound to (user_id, task_id, expiry); the expiry
+# is set to the task's `timeout_at` so the link stays usable for the
+# whole task lifetime, no matter how long that is.
+SLACK_HANDOFF_HKDF_SALT = b"awaithumans-slack-handoff"
+SLACK_HANDOFF_HKDF_INFO = b"v1"

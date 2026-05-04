@@ -15,13 +15,18 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from awaithumans.server.core.auth import (
     InvalidSessionError,
     sign_session,
     verify_session,
+)
+from awaithumans.server.core.slack_handoff import (
+    InvalidHandoffError,
+    verify_handoff,
 )
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.password import dummy_verify, verify_password
@@ -150,3 +155,60 @@ async def me(
         display_name=user.display_name,
         is_operator=user.is_operator,
     )
+
+
+@router.get("/slack-handoff")
+async def slack_handoff(
+    request: Request,
+    u: str = Query(..., description="Directory user_id the URL was issued to."),
+    t: str = Query(..., description="Task id the URL is bound to."),
+    e: int = Query(..., description="Unix expiry — usually task.timeout_at."),
+    s: str = Query(..., description="HMAC signature over (u|t|e)."),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Sign in a Slack-only user and redirect to the task page.
+
+    Endpoint is invoked by the recipient clicking "Open in Dashboard"
+    on the Slack DM their task notification arrived in. Slack-only
+    users have no password, so the signed URL is their only path
+    through the login wall. Operators / email-and-password reviewers
+    can also click the link and end up logged in as themselves; the
+    URL is not a privilege escalator — it always mints a session for
+    user_id `u` exactly.
+    """
+    try:
+        verify_handoff(user_id=u, task_id=t, exp_unix=e, signature=s)
+    except InvalidHandoffError as exc:
+        logger.info("Rejected Slack handoff: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Sign-in link is invalid or expired. Open the latest "
+            "Slack notification for this task to get a fresh one.",
+        ) from exc
+
+    user = await get_user(session, u)
+    if user is None or not user.active:
+        # Don't leak which case it is — both look the same to a
+        # would-be attacker probing user_ids, and the operator can
+        # tell from logs.
+        logger.info("Slack handoff rejected: user=%s missing/inactive", u)
+        raise HTTPException(
+            status_code=403,
+            detail="That user is no longer active. Ask an operator to "
+            "re-add you to the directory.",
+        )
+
+    token = sign_session(user_id=user.id, is_operator=user.is_operator)
+    target = f"/task?id={t}"
+    response = RedirectResponse(url=target, status_code=303)
+    response.set_cookie(
+        key=DASHBOARD_SESSION_COOKIE_NAME,
+        value=token,
+        max_age=DASHBOARD_SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=settings.PUBLIC_URL.startswith("https://"),
+        samesite="lax",
+        path="/",
+    )
+    logger.info("Slack handoff: signed in user=%s for task=%s", user.id, t)
+    return response

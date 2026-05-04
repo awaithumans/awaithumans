@@ -14,6 +14,7 @@ from awaithumans.server.channels.slack.blocks.surfaces import (
     claimed_message_blocks,
     form_to_modal,
     open_review_message_blocks,
+    terminal_message_blocks,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "claimed_message_blocks",
     "form_to_modal",
     "open_review_message_blocks",
+    "terminal_message_blocks",
 ]

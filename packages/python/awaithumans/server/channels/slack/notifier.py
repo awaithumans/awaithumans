@@ -26,9 +26,17 @@ from awaithumans.server.channels.slack.client import (
     get_client_for_team,
     get_default_client,
 )
+from awaithumans.server.channels.slack.handoff_url import (
+    build_review_url,
+    task_handoff_expiry,
+)
+from awaithumans.server.channels.slack.handoff_url_types import HandoffParams
+from awaithumans.server.channels.slack.message_log import (
+    record_posted_message,
+)
 from awaithumans.server.channels.slack.resolution import resolve_slack_target
-from awaithumans.server.core.config import settings
 from awaithumans.server.db.connection import get_async_session_factory
+from awaithumans.server.services.task_service import get_task
 from awaithumans.utils.constants import (
     SLACK_ACTION_CLAIM_TASK,
     SLACK_ACTION_OPEN_REVIEW,
@@ -54,15 +62,35 @@ async def notify_task(
         return
 
     form = _parse_form(form_definition)
-    # The dashboard moved to `/task?id=…` for static-export compatibility
-    # (dynamic segments don't survive `output: "export"`). Old `/tasks/{id}`
-    # 404s.
-    review_url = f"{settings.PUBLIC_URL.rstrip('/')}/task?id={task_id}"
     offenders = unsupported_fields(form, "slack") if form is not None else None
     fallback_text = f"New task: {task_title}"
 
     factory = get_async_session_factory()
     async with factory() as session:
+        # Pull the task once so we can sign URLs for the assignee and
+        # bind the handoff TTL to `task.timeout_at`. If the task was
+        # deleted between the route handler and this background run
+        # there's nothing to notify about — bail.
+        try:
+            task = await get_task(session, task_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notify_task: task %s missing: %s", task_id, exc)
+            return
+
+        # Sign the URL for the resolved assignee when we have one.
+        # Slack-only users (no email/password) have no other way through
+        # the dashboard's login wall — the signed URL doubles as a
+        # sign-in handoff (see core/slack_handoff.py).
+        handoff = (
+            HandoffParams(
+                user_id=task.assigned_to_user_id,
+                exp_unix=task_handoff_expiry(task.timeout_at),
+            )
+            if task.assigned_to_user_id and task.timeout_at
+            else None
+        )
+        review_url = build_review_url(task_id=task_id, params=handoff)
+
         for route in routes:
             # Broadcast: route target starts with `#` → posting to a
             # channel where anyone could pick it up. Swap the "Open in
@@ -106,7 +134,7 @@ async def notify_task(
                 )
                 continue
             try:
-                await client.chat_postMessage(
+                resp = await client.chat_postMessage(
                     channel=target,
                     text=fallback_text,
                     blocks=blocks,
@@ -118,6 +146,17 @@ async def notify_task(
                     f" (team={route.identity})" if route.identity else "",
                     " [broadcast]" if broadcast else "",
                 )
+                # Persist (channel, ts) so the post-completion updater
+                # can rewrite the message to "Completed by X" later.
+                # `resp["channel"]` is the resolved channel id even
+                # when we posted to a user_id (Slack auto-opens an IM).
+                await record_posted_message(
+                    session,
+                    task_id=task_id,
+                    channel=resp.get("channel") or target,
+                    ts=resp.get("ts") or "",
+                    team_id=route.identity,
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "Slack notification failed for task %s → %s: %s",
@@ -125,6 +164,8 @@ async def notify_task(
                     route.target,
                     exc,
                 )
+
+        await session.commit()
 
 
 def _is_channel_target(target: str) -> bool:

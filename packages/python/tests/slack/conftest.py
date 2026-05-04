@@ -18,6 +18,7 @@ from awaithumans.server.core.config import settings
 from awaithumans.server.db.models import (  # noqa: F401
     AuditEntry,
     SlackInstallation,
+    SlackTaskMessage,
     Task,
 )
 
