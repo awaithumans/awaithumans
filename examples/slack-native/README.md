@@ -157,7 +157,7 @@ That's the whole interface. The `notify=` string is what makes it Slack-native; 
 
 ## Why broadcast + claim instead of direct DM?
 
-You could have used `notify=["slack:@U_ALICE"]` to DM Alice directly. We picked broadcast for the demo because:
+You could have used `notify=["slack:@alice"]` to DM Alice directly (or `slack:alice@acme.com`, or `slack:@U_ALICE_ID` — all three resolve to the same person). We picked broadcast for the demo because:
 
 - It shows what makes Slack-native compelling: anyone watching the channel can pick up the task. No need to know up-front who's online or available.
 - The atomic-claim model is easy to demo and easy to reason about — first clicker wins, message updates so others stop trying.
