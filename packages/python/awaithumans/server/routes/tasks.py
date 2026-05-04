@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterable
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from awaithumans.server.db.models import User
 
 from awaithumans.server.channels.email import notify_task as notify_task_email
 from awaithumans.server.channels.slack import notify_task as notify_task_slack
@@ -55,12 +59,63 @@ logger = logging.getLogger("awaithumans.server.routes.tasks")
 # ─── Helper ──────────────────────────────────────────────────────────────
 
 
-def _task_to_response(task: Task, *, redact: bool = False) -> TaskResponse:
-    """Convert a Task model to a TaskResponse, optionally redacting payload."""
+def _assignee_display_name(user: User) -> str:
+    """Same fallback chain the user-form picker uses, so the dashboard
+    surfaces a Slack-only user's `@<slack_user_id>` instead of a raw row id."""
+    if user.display_name:
+        return user.display_name
+    if user.email:
+        return user.email
+    if user.slack_user_id:
+        return f"@{user.slack_user_id}"
+    return user.id
+
+
+async def _build_assignee_index(
+    session: AsyncSession, tasks: Iterable[Task]
+) -> dict[str, User]:
+    """Bulk-load Users for the assignees of the given tasks.
+
+    One query per request instead of N — list_tasks_route in particular
+    can return up to 200 rows. Empty when no task has an assignee."""
+    user_ids = {t.assigned_to_user_id for t in tasks if t.assigned_to_user_id}
+    if not user_ids:
+        return {}
+    result = await session.execute(select(User).where(User.id.in_(user_ids)))
+    return {u.id: u for u in result.scalars().all()}
+
+
+def _task_to_response(
+    task: Task,
+    *,
+    redact: bool = False,
+    assignee: User | None = None,
+) -> TaskResponse:
+    """Convert a Task model to a TaskResponse, optionally redacting payload.
+
+    When `assignee` is provided, fills in display_name + slack_user_id
+    so the dashboard can render Slack-only users correctly. Pass None
+    when the task has no resolved directory user."""
     data = TaskResponse.model_validate(task)
     if redact and task.redact_payload:
         data.payload = {"_redacted": True}
+    if assignee is not None:
+        data.assigned_to_display_name = _assignee_display_name(assignee)
+        data.assigned_to_slack_user_id = assignee.slack_user_id
     return data
+
+
+async def _task_to_response_with_lookup(
+    session: AsyncSession,
+    task: Task,
+    *,
+    redact: bool = False,
+) -> TaskResponse:
+    """Single-task convenience that does its own user lookup."""
+    assignee: User | None = None
+    if task.assigned_to_user_id:
+        assignee = await get_user(session, task.assigned_to_user_id)
+    return _task_to_response(task, redact=redact, assignee=assignee)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────
@@ -119,7 +174,7 @@ async def create_task_route(
             form_definition=task.form_definition,
         )
 
-    return _task_to_response(task)
+    return await _task_to_response_with_lookup(session, task)
 
 
 @router.get("", response_model=list[TaskResponse])
@@ -164,7 +219,13 @@ async def list_tasks_route(
         limit=limit,
         offset=offset,
     )
-    return [_task_to_response(t, redact=True) for t in tasks]
+    assignees = await _build_assignee_index(session, tasks)
+    return [
+        _task_to_response(
+            t, redact=True, assignee=assignees.get(t.assigned_to_user_id or "")
+        )
+        for t in tasks
+    ]
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
@@ -176,7 +237,7 @@ async def get_task_route(
     """Get a single task by ID. Operator / admin / assignee only."""
     task = await get_task(session, task_id)
     require_task_read(request, task)
-    return _task_to_response(task)
+    return await _task_to_response_with_lookup(session, task)
 
 
 @router.post("/{task_id}/complete", response_model=TaskResponse)
@@ -224,7 +285,7 @@ async def complete_task_route(
     if task.callback_url and task.status in TERMINAL_STATUSES_SET:
         background_tasks.add_task(fire_completion_webhook, task)
 
-    return _task_to_response(task)
+    return await _task_to_response_with_lookup(session, task)
 
 
 async def _session_user_email(request: Request, session: AsyncSession) -> str | None:
@@ -263,7 +324,7 @@ async def cancel_task_route(
     if task.callback_url:
         background_tasks.add_task(fire_completion_webhook, task)
 
-    return _task_to_response(task)
+    return await _task_to_response_with_lookup(session, task)
 
 
 @router.delete(

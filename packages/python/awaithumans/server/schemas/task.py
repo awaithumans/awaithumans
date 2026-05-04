@@ -44,6 +44,14 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     assign_to: dict[str, Any] | None = None
     assigned_to_email: str | None = None
+    # Populated for tasks assigned to a directory user. The dashboard
+    # uses these to render the assignee in lists and the detail panel:
+    # `display_name → email → @<slack_user_id> → "—"`. Without these
+    # fields a Slack-only assignee (no email) shows as blank in the
+    # UI even when routing knows who they are.
+    assigned_to_user_id: str | None = None
+    assigned_to_display_name: str | None = None
+    assigned_to_slack_user_id: str | None = None
     response: dict[str, Any] | None = None
     verifier_result: dict[str, Any] | None = None
     verification_attempt: int = 0

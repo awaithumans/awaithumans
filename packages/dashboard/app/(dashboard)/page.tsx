@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchTasks, type Task, type TaskStatus } from "@/lib/server";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { assigneeLabel, cn, formatRelativeTime } from "@/lib/utils";
 import {
 	SECONDS_PER_MINUTE,
 	TASK_ID_TRUNCATE_LENGTH,
@@ -185,7 +185,7 @@ main();`,
 										<StatusBadge status={task.status} />
 									</td>
 									<td className="px-4 py-3 text-sm text-white/60">
-										{task.assigned_to_email ?? task.assign_to ? "Routed" : "—"}
+										{assigneeLabel(task) ?? (task.assign_to ? "Routed" : "—")}
 									</td>
 									<td className="px-4 py-3 text-sm text-white/40">
 										{formatRelativeTime(task.created_at)}
