@@ -180,6 +180,74 @@ def open_review_message_blocks(
     ]
 
 
+def terminal_message_blocks(
+    *,
+    task_title: str,
+    status: str,
+    completed_by_display: str | None,
+    review_url: str | None,
+) -> list[dict[str, Any]]:
+    """Replacement blocks posted via chat.update once the task is no
+    longer actionable.
+
+    Strips the action buttons so a recipient reading their DMs days
+    later doesn't think there's still work to do. Keeps a "View in
+    dashboard" link when we have one — the audit trail and the
+    submitted response are useful even after the task is closed.
+
+    `status` is one of "completed" / "cancelled" / "timed_out". The
+    label and emoji are picked from the status; the dashboard's
+    own status badge has the canonical visualization, this is a
+    one-line summary.
+
+    `completed_by_display` is the human-readable name we show
+    after the status. None for `timed_out` (no human did it) or
+    when the completer's identity isn't recorded.
+    """
+    label, emoji = _terminal_label_emoji(status)
+    headline = f"{emoji} *{label}:* {truncate(task_title, _MESSAGE_TITLE_MAX)}"
+    if completed_by_display and status != "timed_out":
+        headline += f" — by {completed_by_display}"
+
+    blocks: list[dict[str, Any]] = [
+        {"type": "section", "text": {"type": "mrkdwn", "text": headline}}
+    ]
+
+    if review_url:
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "View in dashboard"},
+                    "url": review_url,
+                    "action_id": "awaithumans.open_dashboard",
+                }
+            ],
+        })
+
+    return blocks
+
+
+def _terminal_label_emoji(status: str) -> tuple[str, str]:
+    """Map a terminal task status to a (label, emoji) pair.
+
+    Verifier-rejected attempts come through as `verification_exhausted`
+    once the agent gave up; we surface that as "Verifier rejected" so
+    operators know the human's response wasn't accepted, not that the
+    task was abandoned. Any unexpected status falls back to
+    a neutral "Closed" — better than crashing the update path."""
+    if status == "completed":
+        return ("Completed", ":white_check_mark:")
+    if status == "cancelled":
+        return ("Cancelled", ":no_entry:")
+    if status == "timed_out":
+        return ("Timed out", ":hourglass:")
+    if status == "verification_exhausted":
+        return ("Verifier rejected", ":x:")
+    return ("Closed", ":lock:")
+
+
 def claimed_message_blocks(
     *,
     task_title: str,

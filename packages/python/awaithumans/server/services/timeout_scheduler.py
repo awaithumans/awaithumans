@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from awaithumans.server.channels.slack.post_completion import (
+    update_slack_messages_for_task,
+)
 from awaithumans.server.db.connection import get_async_session_factory
 from awaithumans.server.db.models import Task
 from awaithumans.server.services.task_service import timeout_task
@@ -62,3 +65,8 @@ async def _check_and_timeout_expired_tasks() -> None:
             # next iteration of the scheduler loop.
             if task.callback_url:
                 asyncio.create_task(fire_completion_webhook(task))
+
+            # Replace the original Slack notification ("Approve / Reject"
+            # buttons) with a "Timed out" surface so the recipient
+            # doesn't try to fill the form on a dead task.
+            asyncio.create_task(update_slack_messages_for_task(task.id))

@@ -16,6 +16,7 @@ data for the payload.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -35,6 +36,14 @@ from awaithumans.server.channels.slack.blocks import (
 )
 from awaithumans.server.channels.slack.client import get_client_for_team
 from awaithumans.server.channels.slack.coerce import slack_values_to_response
+from awaithumans.server.channels.slack.handoff_url import (
+    build_review_url,
+    task_handoff_expiry,
+)
+from awaithumans.server.channels.slack.handoff_url_types import HandoffParams
+from awaithumans.server.channels.slack.post_completion import (
+    update_slack_messages_for_task,
+)
 from awaithumans.server.channels.slack.signing import verify_signature
 from awaithumans.server.core.config import settings
 from awaithumans.server.db.connection import get_session
@@ -353,7 +362,19 @@ async def _handle_claim(
         if slack_user_id
         else directory_user.display_name or directory_user.email or "a user"
     )
-    review_url = f"{settings.PUBLIC_URL.rstrip('/')}/task?id={task.id}"
+    # Sign the post-claim URL for the claimer so a Slack-only user
+    # can click straight through into the dashboard. Other channel
+    # members clicking the button will still be challenged for a
+    # password — the link is bound to the claimer specifically.
+    handoff = (
+        HandoffParams(
+            user_id=directory_user.id,
+            exp_unix=task_handoff_expiry(task.timeout_at),
+        )
+        if directory_user and task.timeout_at
+        else None
+    )
+    review_url = build_review_url(task_id=task.id, params=handoff)
     if channel and message_ts:
         try:
             await client.chat_update(
@@ -509,6 +530,13 @@ async def _handle_view_submission(
         completed_by_email=completer_email,
         completed_via_channel="slack",
     )
+
+    # Replace the original "Approve / Reject" message with a
+    # "Completed by X" surface. We schedule it as a fire-and-forget
+    # task because Slack expects the view_submission response within
+    # 3s — a slow chat.update would push us over that and Slack
+    # would re-deliver the submission, double-completing the task.
+    asyncio.create_task(update_slack_messages_for_task(task_id))
 
     # Empty response closes the modal successfully.
     return {}

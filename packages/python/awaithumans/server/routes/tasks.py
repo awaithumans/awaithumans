@@ -20,6 +20,9 @@ from awaithumans.server.db.models import User
 
 from awaithumans.server.channels.email import notify_task as notify_task_email
 from awaithumans.server.channels.slack import notify_task as notify_task_slack
+from awaithumans.server.channels.slack.post_completion import (
+    update_slack_messages_for_task,
+)
 from awaithumans.server.core.admin_auth import require_admin
 from awaithumans.server.core.auth import SessionClaims
 from awaithumans.server.core.task_auth import (
@@ -285,6 +288,12 @@ async def complete_task_route(
     if task.callback_url and task.status in TERMINAL_STATUSES_SET:
         background_tasks.add_task(fire_completion_webhook, task)
 
+    # Replace the original Slack message so the recipient stops
+    # seeing "open" action buttons after they (or someone else) has
+    # already completed the task. Best-effort, runs after response.
+    if task.status in TERMINAL_STATUSES_SET:
+        background_tasks.add_task(update_slack_messages_for_task, task.id)
+
     return await _task_to_response_with_lookup(session, task)
 
 
@@ -323,6 +332,11 @@ async def cancel_task_route(
     # sit waiting for a signal that never comes.
     if task.callback_url:
         background_tasks.add_task(fire_completion_webhook, task)
+
+    # Mirror the completion path: replace the now-stale "open" Slack
+    # messages with a "Cancelled" surface so the operator who got
+    # DM'd doesn't try to fill the form anyway.
+    background_tasks.add_task(update_slack_messages_for_task, task.id)
 
     return await _task_to_response_with_lookup(session, task)
 
