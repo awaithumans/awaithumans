@@ -69,10 +69,16 @@ function TaskDetailPageInner() {
 			// Fetch /me alongside the task so we can decide whether to
 			// show the "you're stepping in" banner without a second
 			// round-trip after the form renders.
+			//
+			// Audit + /me are tolerant: a 403 on either (e.g. a
+			// non-operator assignee whose audit perms regress, or a
+			// momentary cookie blip) shouldn't blank the whole page
+			// when the task itself loaded fine. Only the task fetch
+			// failing should abort the render.
 			const [taskData, auditData, meData] = await Promise.all([
 				fetchTask(taskId),
-				fetchAuditTrail(taskId),
-				fetchMe().catch(() => null), // tolerate auth blip; banner just hides
+				fetchAuditTrail(taskId).catch(() => []),
+				fetchMe().catch(() => null),
 			]);
 			setTask(taskData);
 			setAudit(auditData);
@@ -152,7 +158,19 @@ function TaskDetailPageInner() {
 	}
 
 	if (!task) {
-		return <div className="text-red-400">Task not found</div>;
+		// Surface the underlying error when one is set — without this
+		// any 4xx from the task fetch (auth blip, deleted task,
+		// signed-link expiry) renders as a generic "not found",
+		// which sent a Slack-only user in circles trying to figure
+		// out why their fresh handoff URL didn't work.
+		return (
+			<div className="max-w-5xl mx-auto">
+				{error && <ErrorBanner message={error} />}
+				<div className="text-red-400 mt-4">
+					{error ? "Couldn't load task." : "Task not found"}
+				</div>
+			</div>
+		);
 	}
 
 	return (
