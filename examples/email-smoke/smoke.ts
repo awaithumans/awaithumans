@@ -42,20 +42,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { awaitHuman } from "awaithumans";
+import {
+	awaitHuman,
+	resolveAdminToken,
+	resolveServerUrl,
+} from "awaithumans";
 import { z } from "zod";
 
 // ─── Config ────────────────────────────────────────────────────────────
 
-const SERVER_URL =
-	process.env.AWAITHUMANS_URL ?? "http://localhost:3001";
-const ADMIN_TOKEN = process.env.AWAITHUMANS_ADMIN_API_TOKEN;
+// Resolve URL + admin token via the same chain `awaitHuman` uses
+// internally (explicit → env var → discovery file written by
+// `awaithumans dev`). Means the smoke "just works" against a
+// running dev server with no env-var dance, mirroring the Python
+// SDK's default DX.
+const SERVER_URL = (await resolveServerUrl()).replace(/\/$/, "");
+const ADMIN_TOKEN = await resolveAdminToken();
 
 if (!ADMIN_TOKEN) {
 	console.error(
-		"AWAITHUMANS_ADMIN_API_TOKEN is required. " +
-			"Run `awaithumans dev` first, then set the env var to the contents " +
-			"of ~/.awaithumans/admin.token (or wherever your dev DB sits).",
+		"Couldn't find an admin token. Either:\n" +
+			"  - Run `awaithumans dev` (writes ~/.awaithumans-dev.json) and try again, OR\n" +
+			"  - Export AWAITHUMANS_ADMIN_API_TOKEN with the token your server uses.",
 	);
 	process.exit(1);
 }

@@ -48,3 +48,11 @@ export {
 } from "./errors.js";
 
 export { awaitAgent, awaitAny } from "./reserved.js";
+
+// ─── Discovery helpers (read the dev-server config) ────────────────
+export type { DiscoveryConfig } from "./discovery.js";
+export {
+	resolveAdminToken,
+	resolveDiscoveryConfig,
+	resolveServerUrl,
+} from "./discovery.js";
