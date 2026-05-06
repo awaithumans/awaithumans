@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchTasks, type Task } from "@/lib/server";
-import { formatRelativeTime } from "@/lib/utils";
+import { completedByLabel, formatRelativeTime } from "@/lib/utils";
 import { AUDIT_PAGE_DEFAULT_LIMIT, TASK_ID_TRUNCATE_LENGTH, TERMINAL_STATUSES } from "@/lib/constants";
 import { ShellEmptyState } from "@/components/shell-empty-state";
 import { StatusBadge } from "@/components/status-badge";
@@ -82,7 +82,7 @@ export default function AuditLogPage() {
 											<StatusBadge status={task.status} />
 										</td>
 										<td className="px-4 py-3 text-sm text-white/60">
-											{task.completed_by_email ?? "—"}
+											{completedByLabel(task) ?? "—"}
 										</td>
 										<td className="px-4 py-3 text-sm text-white/40">
 											{task.completed_via_channel ?? "—"}

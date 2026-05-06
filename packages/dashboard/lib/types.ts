@@ -32,6 +32,9 @@ export interface Task {
 	completed_at: string | null;
 	timed_out_at: string | null;
 	completed_by_email: string | null;
+	completed_by_user_id: string | null;
+	completed_by_display_name: string | null;
+	completed_by_slack_user_id: string | null;
 	completed_via_channel: string | null;
 }
 

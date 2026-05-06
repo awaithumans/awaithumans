@@ -246,6 +246,7 @@ async def complete_task(
     task_id: str,
     response: dict,
     completed_by_email: str | None = None,
+    completed_by_user_id: str | None = None,
     completed_via_channel: str | None = None,
     raw_input: str | None = None,
 ) -> Task:
@@ -322,6 +323,7 @@ async def complete_task(
         "response": final_response,
         "updated_at": now,
         "completed_by_email": completed_by_email,
+        "completed_by_user_id": completed_by_user_id,
         "completed_via_channel": completed_via_channel,
     }
     # Only stamp completed_at on actual completion. REJECTED is

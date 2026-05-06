@@ -62,9 +62,11 @@ logger = logging.getLogger("awaithumans.server.routes.tasks")
 # ─── Helper ──────────────────────────────────────────────────────────────
 
 
-def _assignee_display_name(user: User) -> str:
+def _user_display_name(user: User) -> str:
     """Same fallback chain the user-form picker uses, so the dashboard
-    surfaces a Slack-only user's `@<slack_user_id>` instead of a raw row id."""
+    surfaces a Slack-only user's `@<slack_user_id>` instead of a raw
+    row id. Used for both `assigned_to_*` and `completed_by_*` so
+    Slack-only callers render the same way regardless of role."""
     if user.display_name:
         return user.display_name
     if user.email:
@@ -74,14 +76,20 @@ def _assignee_display_name(user: User) -> str:
     return user.id
 
 
-async def _build_assignee_index(
+async def _build_user_index(
     session: AsyncSession, tasks: Iterable[Task]
 ) -> dict[str, User]:
-    """Bulk-load Users for the assignees of the given tasks.
+    """Bulk-load Users referenced by the tasks (assignee + completer).
 
-    One query per request instead of N — list_tasks_route in particular
-    can return up to 200 rows. Empty when no task has an assignee."""
-    user_ids = {t.assigned_to_user_id for t in tasks if t.assigned_to_user_id}
+    One query per request instead of 2N — list_tasks_route in
+    particular can return up to 200 rows. Empty when no task has
+    either field set."""
+    user_ids: set[str] = set()
+    for t in tasks:
+        if t.assigned_to_user_id:
+            user_ids.add(t.assigned_to_user_id)
+        if t.completed_by_user_id:
+            user_ids.add(t.completed_by_user_id)
     if not user_ids:
         return {}
     result = await session.execute(select(User).where(User.id.in_(user_ids)))
@@ -93,18 +101,23 @@ def _task_to_response(
     *,
     redact: bool = False,
     assignee: User | None = None,
+    completer: User | None = None,
 ) -> TaskResponse:
     """Convert a Task model to a TaskResponse, optionally redacting payload.
 
-    When `assignee` is provided, fills in display_name + slack_user_id
-    so the dashboard can render Slack-only users correctly. Pass None
-    when the task has no resolved directory user."""
+    When `assignee` / `completer` are provided, fills in display_name
+    + slack_user_id so the dashboard can render Slack-only users
+    correctly. Pass None for either when the task has no resolved
+    directory user in that slot."""
     data = TaskResponse.model_validate(task)
     if redact and task.redact_payload:
         data.payload = {"_redacted": True}
     if assignee is not None:
-        data.assigned_to_display_name = _assignee_display_name(assignee)
+        data.assigned_to_display_name = _user_display_name(assignee)
         data.assigned_to_slack_user_id = assignee.slack_user_id
+    if completer is not None:
+        data.completed_by_display_name = _user_display_name(completer)
+        data.completed_by_slack_user_id = completer.slack_user_id
     return data
 
 
@@ -114,11 +127,16 @@ async def _task_to_response_with_lookup(
     *,
     redact: bool = False,
 ) -> TaskResponse:
-    """Single-task convenience that does its own user lookup."""
+    """Single-task convenience that does its own user lookups."""
     assignee: User | None = None
+    completer: User | None = None
     if task.assigned_to_user_id:
         assignee = await get_user(session, task.assigned_to_user_id)
-    return _task_to_response(task, redact=redact, assignee=assignee)
+    if task.completed_by_user_id:
+        completer = await get_user(session, task.completed_by_user_id)
+    return _task_to_response(
+        task, redact=redact, assignee=assignee, completer=completer
+    )
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────
@@ -222,10 +240,13 @@ async def list_tasks_route(
         limit=limit,
         offset=offset,
     )
-    assignees = await _build_assignee_index(session, tasks)
+    users_by_id = await _build_user_index(session, tasks)
     return [
         _task_to_response(
-            t, redact=True, assignee=assignees.get(t.assigned_to_user_id or "")
+            t,
+            redact=True,
+            assignee=users_by_id.get(t.assigned_to_user_id or ""),
+            completer=users_by_id.get(t.completed_by_user_id or ""),
         )
         for t in tasks
     ]
@@ -272,11 +293,17 @@ async def complete_task_route(
     if not completer_email:
         completer_email = await _session_user_email(request, session)
 
+    # Stamp the user_id from the session cookie too — for Slack-only
+    # users (no email column), email-only attribution leaves the audit
+    # trail showing "—" and the operator can't tell who pressed submit.
+    completer_user_id = caller_user_id(request)
+
     task = await complete_task(
         session,
         task_id=task_id,
         response=body.response,
         completed_by_email=completer_email,
+        completed_by_user_id=completer_user_id,
         completed_via_channel=body.completed_via_channel,
     )
 
