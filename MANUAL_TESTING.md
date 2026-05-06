@@ -179,15 +179,24 @@ Once the Slack app is configured and the workspace is connected:
    click "Add user", paste your Slack handle (`@youhandle`), pick
    your workspace from the dropdown. Display name auto-fills.
 
-2. **Run the slack-native example:**
+2. **Run a slack-native example.** Pick the language you want to
+   exercise — the flow is identical, only the SDK differs.
 
+   Python:
    ```sh
    cd examples/slack-native
    python refund.py
    ```
 
-   The script creates a task with `notify=["slack:@youhandle"]` and
-   blocks.
+   TypeScript:
+   ```sh
+   cd examples/slack-native-ts
+   npm install
+   npm start
+   ```
+
+   Either script creates a task with `notify=["slack:@youhandle"]`
+   and blocks.
 
 3. **Open the Slack DM the bot just sent you.** The message has an
    "Open in Dashboard" button (signed handoff URL — works even if
