@@ -79,9 +79,9 @@ import {
 	TaskTimeoutError,
 	VerificationExhaustedError,
 } from "../../errors";
-import { generateIdempotencyKey } from "../../idempotency";
+import { generateIdempotencyKey } from "../../internal/idempotency";
+import { serializeAssignTo } from "../../internal/wire";
 import type { AssignTo, AwaitHumanOptions, VerifierConfig } from "../../types";
-import { serializeAssignTo } from "../../wire";
 
 // Signal-name prefix — must match the Python adapter exactly.
 // Cross-language receivers (Python web server signaling a TS

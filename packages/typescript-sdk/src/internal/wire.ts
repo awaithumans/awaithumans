@@ -10,7 +10,7 @@
  * and only validates user inputs (payload/response against caller schemas).
  */
 
-import type { TaskStatus } from "./types";
+import type { TaskStatus } from "../types";
 
 // ─── POST /api/tasks ─────────────────────────────────────────────────
 
