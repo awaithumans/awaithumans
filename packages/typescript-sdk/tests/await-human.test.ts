@@ -135,11 +135,26 @@ describe("happy path", () => {
 			timeout_seconds: 60,
 			redact_payload: false,
 			callback_url: null,
-			form_definition: null,
 		});
 		expect(typeof body.idempotency_key).toBe("string");
 		expect(body.payload_schema).toBeDefined();
 		expect(body.response_schema).toBeDefined();
+		// `responseSchema` here is `{ approved: boolean }` — extractForm
+		// synthesizes a single Switch. The server uses this to decide
+		// whether the email channel emits magic-link buttons. Pin the
+		// shape so a regression in `forms.ts` is caught here too.
+		expect(body.form_definition).toEqual({
+			fields: [
+				{
+					kind: "switch",
+					name: "approved",
+					label: "Approved",
+					required: true,
+					true_label: "Yes",
+					false_label: "No",
+				},
+			],
+		});
 
 		// Second call: poll.
 		const [pollUrl] = fetchMock.mock.calls[1];

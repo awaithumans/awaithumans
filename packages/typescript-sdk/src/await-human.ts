@@ -36,6 +36,7 @@ import {
 	VerificationExhaustedError,
 } from "./errors";
 import { fetchWithTimeout } from "./fetch";
+import { extractForm } from "./forms";
 import { generateIdempotencyKey } from "./idempotency";
 import type { AwaitHumanOptions } from "./types";
 import {
@@ -93,17 +94,21 @@ export async function awaitHuman<TPayload, TResponse>(
 	const responseJsonSchema = zodToJsonSchema(options.responseSchema);
 	const timeoutSeconds = Math.round(options.timeoutMs / 1000);
 
+	// Synthesize a FormDefinition from the response schema where we can.
+	// The server uses this to decide channel-specific rendering — most
+	// notably whether the email channel emits Approve/Reject magic-link
+	// buttons (single Switch primitive) or just a "Review in dashboard"
+	// link-out (anything else). Returns null for shapes we can't yet
+	// synthesize; the server falls back to JSON-schema rendering in
+	// that case. See `forms.ts` for coverage.
+	const formDefinition = extractForm(options.responseSchema);
+
 	const body: CreateTaskRequestWire = {
 		task: options.task,
 		payload: options.payload,
 		payload_schema: payloadJsonSchema,
 		response_schema: responseJsonSchema,
-		// form_definition is optional on the server. The TS SDK can't yet
-		// extract per-primitive form metadata from a Zod schema the way
-		// the Python SDK does from Pydantic — the dashboard falls back to
-		// generic JSON-schema rendering, which is fine. Future work:
-		// adopt the FormDefinition wire format from the forms framework.
-		form_definition: null,
+		form_definition: formDefinition,
 		timeout_seconds: timeoutSeconds,
 		idempotency_key: idempotencyKey,
 		assign_to: serializeAssignTo(options.assignTo),

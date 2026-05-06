@@ -9,26 +9,19 @@ email path. No mocks; runs against a real `awaithumans dev` server.
 1. Creates an email sender identity using the `file` transport — emails
    are written to a tmp directory instead of being shipped through Resend
    or SMTP. Lets the test capture them deterministically.
-2. Calls `awaitHuman` from the TS SDK with `notify=["email+<id>:..."]`,
-   then immediately starts polling the tmp dir for the rendered email.
-3. Asserts on the captured email's content (task title, payload fields,
-   dashboard link). Confirms the renderer didn't regress on a known good
-   shape.
-4. Completes the task via the admin API; `awaitHuman`'s long-poll
-   resolves with the typed response. Asserts `approved === true`.
+2. Calls `awaitHuman` from the TS SDK with a single-Switch response
+   schema and `notify=["email+<id>:..."]`. The TS SDK now synthesizes a
+   `form_definition` from the Zod schema, so the email renderer emits
+   Approve / Reject magic-link buttons (not the link-out fallback).
+3. Polls the tmp dir for the captured email; asserts on its content
+   (task title, payload), then parses out the Approve magic-link URL.
+4. POSTs the magic-link URL — the public action endpoint completes the
+   task with `approved=true` baked into the signed token.
+5. `awaitHuman`'s long-poll resolves with the typed response. Asserts
+   `approved === true`.
 
 If any step fails, the test exits non-zero with the detail. The email
 identity is cleaned up on both success and failure.
-
-### Why admin-API completion instead of clicking the magic-link button?
-
-The TS SDK doesn't yet synthesize a `form_definition` from a Zod schema
-— Python has `extract_form` (Pydantic-driven), the TS port is
-post-launch work. Without that, the email renderer falls back to a
-"Review in dashboard" link-out and never emits Approve/Reject magic-link
-buttons. Once form synthesis lands in the TS SDK, this script will
-switch to clicking the button instead. The magic-link click path itself
-has full Python coverage in `tests/email/`.
 
 ## Run it
 
@@ -57,9 +50,9 @@ Expected output:
 → created email identity 'smoke-...' (file transport)
 → captured email: subject="Review: Approve wire transfer (smoke test)" to=smoke-recipient@example.test
 → email body content checks: OK
-→ resolved task_id=...
-→ completed task ... via admin API
-✓ smoke pass: TS SDK created task → email captured → SDK polled → resolved
+→ magic-link URL: http://localhost:3001/api/channels/email/action/...
+→ POSTed magic-link → 200
+✓ smoke pass: TS SDK + email channel + magic-link round-trip
 ```
 
 ## Knobs
@@ -85,11 +78,16 @@ Expected output:
 ## What this catches that unit tests don't
 
 - Wire-format drift between the TS SDK and Python server schemas
+- The TS SDK's `extractForm` synthesizing a Switch shape the email
+  renderer actually accepts (the magic-link decision tree only fires
+  on a single Switch / small SingleSelect)
 - The notify route parser accepting the `email+<identity>:<target>`
   syntax against a real DB row
-- The email renderer actually rendering against a real task — task
-  title, payload table, dashboard link
+- The email renderer actually emitting magic-link buttons for a
+  synthesized FormDefinition
+- The action endpoint completing the task without auth (signed token,
+  no session)
 - The TS SDK's `Authorization: Bearer` header reaching the server
 - The TS SDK's poll loop resolving when the task completes via a
-  non-SDK path (the admin completion happens out-of-band, just like
-  a real human review would)
+  non-SDK path (the magic-link POST happens out-of-band, just like a
+  real human review would)

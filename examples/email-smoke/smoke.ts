@@ -188,41 +188,41 @@ function assertEmailLooksRight(email: CapturedEmail): void {
 	if (!email.html.includes("WT-SMOKE-1")) {
 		throw new Error("Email body missing the payload (transferId)");
 	}
-	if (!email.html.includes(`/tasks/`) && !email.html.includes(`/task?id=`)) {
-		throw new Error("Email body missing the dashboard link-out");
-	}
 }
 
-async function completeTaskViaAdmin(taskId: string): Promise<void> {
-	// `awaitHuman` doesn't currently synthesize a `form_definition` from
-	// a Zod schema (Python has `extract_form`; the TS port is a
-	// post-launch task). Without that, the email renderer falls back
-	// to a "Review in dashboard" link-out — no magic-link buttons. So
-	// the smoke test completes the task via the admin completion API
-	// instead of clicking a magic link.
-	//
-	// What this still proves end-to-end:
-	//   - TS SDK's `awaitHuman` creates the task with the right wire shape
-	//   - The notify list resolves to the email channel
-	//   - The email transport actually fires + writes the message
-	//   - Polling resolves when the task transitions to completed
-	//
-	// The magic-link click path has its own Python coverage; once form
-	// synthesis lands in the TS SDK we'll switch this script to click
-	// the link instead.
-	const resp = await adminFetch(`/api/tasks/${taskId}/complete`, {
-		method: "POST",
-		body: JSON.stringify({
-			response: { approved: true },
-			completed_via_channel: "smoke",
-		}),
-	});
-	if (!resp.ok) {
+const ACTION_PATH_RE = /\/api\/channels\/email\/action\/[A-Za-z0-9_\-.]+/;
+
+function findApproveLink(email: CapturedEmail): string {
+	// The renderer emits BOTH Approve and Reject buttons for a single
+	// Switch field. They appear in declaration order — Approve first
+	// (style="primary"), Reject second (style="danger") — per
+	// `_buttons_for_form` in the Python renderer. We grab the first
+	// match and click it; the smoke test always wants the approve
+	// path (so the asserted `approved === true` lines up).
+	const match =
+		email.text.match(ACTION_PATH_RE) ?? email.html.match(ACTION_PATH_RE);
+	if (!match) {
 		throw new Error(
-			`task complete failed: ${resp.status} ${await resp.text()}`,
+			"No magic-link URL found in captured email. Was form_definition " +
+				"synthesized? See packages/typescript-sdk/src/forms.ts.\n" +
+				`text body:\n${email.text}\n\nhtml body:\n${email.html}`,
 		);
 	}
-	console.log(`→ completed task ${taskId} via admin API`);
+	return `${SERVER_URL}${match[0]}`;
+}
+
+async function clickMagicLink(url: string): Promise<void> {
+	// The action endpoint accepts POST with no body — the value is
+	// baked into the signed token. GET renders the "are you sure"
+	// confirmation page; POST is what actually completes the task.
+	// Public endpoint, no auth needed.
+	const resp = await fetch(url, { method: "POST" });
+	if (!resp.ok) {
+		throw new Error(
+			`Magic-link POST returned ${resp.status}: ${await resp.text()}`,
+		);
+	}
+	console.log(`→ POSTed magic-link → ${resp.status}`);
 }
 
 // ─── Orchestration ─────────────────────────────────────────────────────
@@ -268,13 +268,10 @@ async function main(): Promise<void> {
 	assertEmailLooksRight(email);
 	console.log("→ email body content checks: OK");
 
-	// Find the task we just created so we can complete it via admin API.
-	// The list endpoint returns most-recent-first; we filter by our
-	// idempotency_key for an exact match.
-	const taskId = await findTaskByIdempotencyKey(idem);
-	console.log(`→ resolved task_id=${taskId}`);
+	const approveUrl = findApproveLink(email);
+	console.log(`→ magic-link URL: ${approveUrl}`);
 
-	await completeTaskViaAdmin(taskId);
+	await clickMagicLink(approveUrl);
 
 	const decision = await awaitPromise;
 	if (decision.approved !== true) {
@@ -283,29 +280,7 @@ async function main(): Promise<void> {
 		);
 	}
 
-	console.log("✓ smoke pass: TS SDK created task → email captured → SDK polled → resolved");
-}
-
-async function findTaskByIdempotencyKey(idem: string): Promise<string> {
-	// The TS SDK doesn't yet expose the task_id from awaitHuman directly
-	// (it returns the typed response, not the wire record). So the
-	// smoke test recovers the id via the admin list — fine for a
-	// dev-mode test, not a pattern we'd recommend for production code.
-	const resp = await adminFetch("/api/tasks?limit=50");
-	if (!resp.ok) {
-		throw new Error(`task list failed: ${resp.status}`);
-	}
-	const tasks = (await resp.json()) as Array<{
-		id: string;
-		idempotency_key: string;
-	}>;
-	const match = tasks.find((t) => t.idempotency_key === idem);
-	if (!match) {
-		throw new Error(
-			`Couldn't find task with idempotency_key=${idem} in the listing`,
-		);
-	}
-	return match.id;
+	console.log("✓ smoke pass: TS SDK + email channel + magic-link round-trip");
 }
 
 main()
