@@ -124,6 +124,64 @@ def test_no_form_is_link_out() -> None:
     assert "/api/channels/email/action/" not in msg.html
 
 
+# ─── "Open task" button presence ────────────────────────────────────────
+
+
+def test_open_task_button_always_renders() -> None:
+    """The Open-task button is the always-present CTA — whether the
+    form has magic-link shortcuts (Approve/Reject) or not. Pinning
+    the label so a renderer refactor doesn't silently regress to the
+    old tiny inline hyperlink."""
+    # No form → only the Open task CTA.
+    msg_link_out = _build(None)
+    assert "Open task" in msg_link_out.html
+    assert "/task?id=t-abc" in msg_link_out.html
+
+    # Single Switch → magic-link buttons AND Open task alongside.
+    form = FormDefinition(fields=[_name(switch(label="OK?"), "ok")])
+    msg_buttons = _build(form)
+    assert "Open task" in msg_buttons.html
+    # Approve + Reject + Open task = 3 buttons.
+    assert msg_buttons.html.count("display:inline-block") == 3
+
+
+def test_open_task_button_styled_primary_when_alone() -> None:
+    """When there's no Approve/Reject competing for the eye, the
+    Open-task button gets the brand color so it's the obvious CTA.
+    With magic-link buttons present it's neutral so it doesn't
+    out-shout the primary action."""
+    from awaithumans.server.channels.email.templates.palette import (
+        DARK_PALETTE,
+    )
+
+    brand = DARK_PALETTE["bg_primary"]
+
+    # Link-out only — Open task is primary (brand background).
+    msg_link_out = _build(None)
+    assert brand in msg_link_out.html
+
+    # Approve/Reject present — Open task uses neutral, Approve uses
+    # primary (brand). Brand still appears (because Approve), but
+    # the Open task line specifically should NOT use it.
+    form = FormDefinition(fields=[_name(switch(label="OK?"), "ok")])
+    msg_buttons = _build(form)
+    # Locate the Open-task <a> by searching for the label.
+    open_anchor_start = msg_buttons.html.index("Open task")
+    open_anchor_chunk = msg_buttons.html[
+        open_anchor_start - 200 : open_anchor_start
+    ]
+    assert brand not in open_anchor_chunk
+
+
+def test_open_task_url_in_plain_text_body() -> None:
+    """Plain-text alternate (deliverability + accessibility) must
+    surface the Open-task URL so screen readers and text-only clients
+    have the same affordance the HTML buttons give."""
+    msg = _build(None)
+    assert "Open task:" in msg.text
+    assert "/task?id=t-abc" in msg.text
+
+
 # ─── Payload rendering ──────────────────────────────────────────────────
 
 
