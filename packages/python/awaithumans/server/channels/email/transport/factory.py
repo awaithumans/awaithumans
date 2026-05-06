@@ -20,6 +20,7 @@ from awaithumans.server.channels.email.transport.base import (
     EmailTransport,
     EmailTransportError,
 )
+from awaithumans.server.channels.email.transport.file import FileTransport
 from awaithumans.server.channels.email.transport.logging import LoggingTransport
 from awaithumans.server.channels.email.transport.noop import NoopTransport
 from awaithumans.server.channels.email.transport.resend import ResendTransport
@@ -65,9 +66,15 @@ def resolve_transport(name: str, config: dict[str, Any]) -> EmailTransport:
     if name == "noop":
         return NoopTransport()
 
+    if name == "file":
+        directory = config.get("dir")
+        if not directory:
+            raise EmailTransportError("file transport: config.dir is required.")
+        return FileTransport(dir=directory)
+
     raise EmailTransportError(
         f"Unknown email transport: '{name}'. "
-        "Valid: resend, smtp, logging, noop."
+        "Valid: resend, smtp, logging, noop, file."
     )
 
 
