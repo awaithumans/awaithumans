@@ -135,11 +135,26 @@ describe("happy path", () => {
 			timeout_seconds: 60,
 			redact_payload: false,
 			callback_url: null,
-			form_definition: null,
 		});
 		expect(typeof body.idempotency_key).toBe("string");
 		expect(body.payload_schema).toBeDefined();
 		expect(body.response_schema).toBeDefined();
+		// `responseSchema` here is `{ approved: boolean }` — extractForm
+		// synthesizes a single Switch. The server uses this to decide
+		// whether the email channel emits magic-link buttons. Pin the
+		// shape so a regression in `forms.ts` is caught here too.
+		expect(body.form_definition).toEqual({
+			fields: [
+				{
+					kind: "switch",
+					name: "approved",
+					label: "Approved",
+					required: true,
+					true_label: "Yes",
+					false_label: "No",
+				},
+			],
+		});
 
 		// Second call: poll.
 		const [pollUrl] = fetchMock.mock.calls[1];
@@ -202,6 +217,71 @@ describe("happy path", () => {
 
 		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
 		expect(body.idempotency_key).toBe("explicit-key-xyz");
+	});
+
+	it("sends Authorization: Bearer header when apiKey is supplied", async () => {
+		// `awaitHuman` is the agent path — task creation and polling are
+		// admin-only on the server. Without this header the dev server
+		// 403s every direct-mode call.
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		await awaitHuman({ ...BASE_OPTIONS, apiKey: "test-token-abc" });
+
+		const createInit = fetchMock.mock.calls[0][1];
+		expect(createInit.headers.Authorization).toBe("Bearer test-token-abc");
+
+		// Poll request must also carry the header — the poll endpoint is
+		// gated the same way as create.
+		const pollInit = fetchMock.mock.calls[1][1];
+		expect(pollInit.headers.Authorization).toBe("Bearer test-token-abc");
+	});
+
+	it("falls back to AWAITHUMANS_ADMIN_API_TOKEN env var when apiKey omitted", async () => {
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		const original = process.env.AWAITHUMANS_ADMIN_API_TOKEN;
+		process.env.AWAITHUMANS_ADMIN_API_TOKEN = "env-token-xyz";
+		try {
+			await awaitHuman(BASE_OPTIONS);
+		} finally {
+			if (original === undefined) {
+				delete process.env.AWAITHUMANS_ADMIN_API_TOKEN;
+			} else {
+				process.env.AWAITHUMANS_ADMIN_API_TOKEN = original;
+			}
+		}
+
+		const createInit = fetchMock.mock.calls[0][1];
+		expect(createInit.headers.Authorization).toBe("Bearer env-token-xyz");
+	});
+
+	it("omits Authorization header entirely when no apiKey configured", async () => {
+		// Localhost-with-no-admin-token setups should still work — sending
+		// `Authorization: Bearer undefined` would 401 against any sane
+		// validator.
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		const original = process.env.AWAITHUMANS_ADMIN_API_TOKEN;
+		delete process.env.AWAITHUMANS_ADMIN_API_TOKEN;
+		try {
+			await awaitHuman(BASE_OPTIONS);
+		} finally {
+			if (original !== undefined) {
+				process.env.AWAITHUMANS_ADMIN_API_TOKEN = original;
+			}
+		}
+
+		const createInit = fetchMock.mock.calls[0][1];
+		expect(createInit.headers.Authorization).toBeUndefined();
 	});
 });
 

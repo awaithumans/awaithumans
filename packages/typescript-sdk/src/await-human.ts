@@ -22,8 +22,16 @@ import {
 	MIN_TIMEOUT_MS,
 	POLL_FETCH_SLACK_SECONDS,
 	POLL_INTERVAL_SECONDS,
-} from "./constants";
-import { envVar } from "./env";
+} from "./internal/constants";
+import { envVar } from "./internal/env";
+import { fetchWithTimeout } from "./internal/fetch";
+import { generateIdempotencyKey } from "./internal/idempotency";
+import {
+	type CreateTaskRequestWire,
+	type CreateTaskResponseWire,
+	type PollResponseWire,
+	serializeAssignTo,
+} from "./internal/wire";
 import {
 	MarketplaceNotAvailableError,
 	PollError,
@@ -35,15 +43,8 @@ import {
 	TimeoutRangeError,
 	VerificationExhaustedError,
 } from "./errors";
-import { fetchWithTimeout } from "./fetch";
-import { generateIdempotencyKey } from "./idempotency";
+import { extractForm } from "./forms";
 import type { AwaitHumanOptions } from "./types";
-import {
-	type CreateTaskRequestWire,
-	type CreateTaskResponseWire,
-	type PollResponseWire,
-	serializeAssignTo,
-} from "./wire";
 
 export async function awaitHuman<TPayload, TResponse>(
 	options: AwaitHumanOptions<TPayload, TResponse>,
@@ -76,6 +77,13 @@ export async function awaitHuman<TPayload, TResponse>(
 		options.serverUrl ?? envVar("AWAITHUMANS_URL") ?? DEFAULT_SERVER_URL
 	).replace(/\/$/, "");
 
+	// ── Resolve admin token ─────────────────────────────────────────────
+	// `awaitHuman` is the agent path — task creation and polling are
+	// admin-only on the server. The Temporal adapter already had this
+	// pattern; direct mode missed it, so any non-localhost-disabled
+	// server 403'd unless callers hand-rolled a fetch wrapper.
+	const apiKey = options.apiKey ?? envVar("AWAITHUMANS_ADMIN_API_TOKEN");
+
 	// ── Generate idempotency key ────────────────────────────────────────
 	const idempotencyKey =
 		options.idempotencyKey ??
@@ -86,17 +94,21 @@ export async function awaitHuman<TPayload, TResponse>(
 	const responseJsonSchema = zodToJsonSchema(options.responseSchema);
 	const timeoutSeconds = Math.round(options.timeoutMs / 1000);
 
+	// Synthesize a FormDefinition from the response schema where we can.
+	// The server uses this to decide channel-specific rendering — most
+	// notably whether the email channel emits Approve/Reject magic-link
+	// buttons (single Switch primitive) or just a "Review in dashboard"
+	// link-out (anything else). Returns null for shapes we can't yet
+	// synthesize; the server falls back to JSON-schema rendering in
+	// that case. See `forms/extract.ts` for coverage.
+	const formDefinition = extractForm(options.responseSchema);
+
 	const body: CreateTaskRequestWire = {
 		task: options.task,
 		payload: options.payload,
 		payload_schema: payloadJsonSchema,
 		response_schema: responseJsonSchema,
-		// form_definition is optional on the server. The TS SDK can't yet
-		// extract per-primitive form metadata from a Zod schema the way
-		// the Python SDK does from Pydantic — the dashboard falls back to
-		// generic JSON-schema rendering, which is fine. Future work:
-		// adopt the FormDefinition wire format from the forms framework.
-		form_definition: null,
+		form_definition: formDefinition,
 		timeout_seconds: timeoutSeconds,
 		idempotency_key: idempotencyKey,
 		assign_to: serializeAssignTo(options.assignTo),
@@ -107,7 +119,7 @@ export async function awaitHuman<TPayload, TResponse>(
 	};
 
 	// ── POST /api/tasks ─────────────────────────────────────────────────
-	const task = await createTask(serverUrl, body);
+	const task = await createTask(serverUrl, body, apiKey);
 
 	// ── Long-poll until terminal ────────────────────────────────────────
 	return pollUntilTerminal(
@@ -116,20 +128,29 @@ export async function awaitHuman<TPayload, TResponse>(
 		options.task,
 		timeoutSeconds,
 		options.responseSchema,
+		apiKey,
 	);
 }
 
 // ─── Internals ──────────────────────────────────────────────────────────
 
+function authHeaders(apiKey: string | undefined): Record<string, string> {
+	return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+}
+
 async function createTask(
 	serverUrl: string,
 	body: CreateTaskRequestWire,
+	apiKey: string | undefined,
 ): Promise<CreateTaskResponseWire> {
 	const resp = await fetchWithTimeout(
 		`${serverUrl}/api/tasks`,
 		{
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: {
+				"Content-Type": "application/json",
+				...authHeaders(apiKey),
+			},
 			body: JSON.stringify(body),
 		},
 		CREATE_TASK_TIMEOUT_MS,
@@ -151,6 +172,7 @@ async function pollUntilTerminal<TResponse>(
 	// The response schema validates the server's returned response.
 	// Typed as the user-supplied Zod schema to preserve inference.
 	responseSchema: AwaitHumanOptions<unknown, TResponse>["responseSchema"],
+	apiKey: string | undefined,
 ): Promise<TResponse> {
 	const url = `${serverUrl}/api/tasks/${encodeURIComponent(
 		taskId,
@@ -163,7 +185,12 @@ async function pollUntilTerminal<TResponse>(
 	// for ~POLL_INTERVAL_SECONDS and then returns the current status.
 	// When the status is non-terminal we reconnect.
 	while (true) {
-		const resp = await fetchWithTimeout(url, {}, fetchTimeoutMs, serverUrl);
+		const resp = await fetchWithTimeout(
+			url,
+			{ headers: authHeaders(apiKey) },
+			fetchTimeoutMs,
+			serverUrl,
+		);
 
 		if (resp.status === 404) {
 			throw new TaskNotFoundError(taskId);
