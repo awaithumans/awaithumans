@@ -26,6 +26,7 @@ import {
 	TimeoutRangeError,
 	VerificationExhaustedError,
 } from "../src/errors";
+import { _setDiscoveryCacheForTesting } from "../src/internal/discovery";
 
 // ─── Fixtures ────────────────────────────────────────────────────────
 
@@ -74,6 +75,10 @@ function installFetchReject(err: Error): FetchMock {
 
 beforeEach(() => {
 	vi.useRealTimers();
+	// Stub out the discovery file so tests don't depend on whether the
+	// developer has `awaithumans dev` running locally. Each test that
+	// wants to exercise discovery sets its own override.
+	_setDiscoveryCacheForTesting({});
 });
 
 afterEach(() => {
@@ -282,6 +287,58 @@ describe("happy path", () => {
 
 		const createInit = fetchMock.mock.calls[0][1];
 		expect(createInit.headers.Authorization).toBeUndefined();
+	});
+
+	it("falls back to discovery-file admin token when env var omitted", async () => {
+		// When `awaithumans dev` is running, the dev CLI drops a
+		// `~/.awaithumans-dev.json` file with the auto-generated admin
+		// token. The SDK reads it as a third-tier fallback so users
+		// don't have to `export AWAITHUMANS_ADMIN_API_TOKEN=...` before
+		// every run — same DX as the Python SDK.
+		_setDiscoveryCacheForTesting({
+			url: "http://test.local",
+			adminToken: "discovery-file-token-123",
+		});
+
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		const original = process.env.AWAITHUMANS_ADMIN_API_TOKEN;
+		delete process.env.AWAITHUMANS_ADMIN_API_TOKEN;
+		try {
+			await awaitHuman(BASE_OPTIONS);
+		} finally {
+			if (original !== undefined) {
+				process.env.AWAITHUMANS_ADMIN_API_TOKEN = original;
+			}
+		}
+
+		const createInit = fetchMock.mock.calls[0][1];
+		expect(createInit.headers.Authorization).toBe(
+			"Bearer discovery-file-token-123",
+		);
+	});
+
+	it("explicit apiKey overrides discovery-file token", async () => {
+		// Resolution priority: option → env → discovery → undefined.
+		// Operators sometimes run their dev server with one token and
+		// want a script to use a different one (e.g. testing a
+		// rotated token). The explicit option must win.
+		_setDiscoveryCacheForTesting({
+			adminToken: "discovery-file-token",
+		});
+
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		await awaitHuman({ ...BASE_OPTIONS, apiKey: "explicit-wins" });
+
+		const createInit = fetchMock.mock.calls[0][1];
+		expect(createInit.headers.Authorization).toBe("Bearer explicit-wins");
 	});
 });
 
