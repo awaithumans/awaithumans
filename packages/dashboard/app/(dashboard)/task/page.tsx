@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import {
 	fetchTask,
 	fetchAuditTrail,
@@ -58,6 +59,18 @@ function TaskDetailPageInner() {
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [formData, setFormData] = useState<FormValue>({});
+	const [expandedAuditIds, setExpandedAuditIds] = useState<Set<string>>(
+		new Set(),
+	);
+
+	const toggleAuditEntry = (id: string) => {
+		setExpandedAuditIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
 
 	useEffect(() => {
 		loadTask();
@@ -339,36 +352,13 @@ function TaskDetailPageInner() {
 					) : (
 						<div className="space-y-4">
 							{audit.map((entry, i) => (
-								<div key={entry.id} className="relative">
-									{i < audit.length - 1 && (
-										<div className="absolute left-[7px] top-5 bottom-0 w-px bg-white/10" />
-									)}
-									<div className="flex items-start gap-3">
-										<div
-											className={cn(
-												"w-[15px] h-[15px] rounded-full border-2 mt-0.5 flex-shrink-0",
-												entry.to_status === "completed"
-													? "bg-brand/20 border-brand"
-													: entry.to_status === "timed_out" ||
-														  entry.to_status === "cancelled"
-														? "bg-red-400/20 border-red-400"
-														: "bg-white/10 border-white/30",
-											)}
-										/>
-										<div>
-											<div className="text-sm font-medium">{entry.action}</div>
-											<div className="text-white/30 text-xs mt-0.5">
-												{entry.actor_type === "human" && entry.actor_email
-													? entry.actor_email
-													: entry.actor_type}
-												{entry.channel && ` via ${entry.channel}`}
-											</div>
-											<div className="text-white/20 text-xs mt-0.5">
-												{formatRelativeTime(entry.created_at)}
-											</div>
-										</div>
-									</div>
-								</div>
+								<TimelineEntry
+									key={entry.id}
+									entry={entry}
+									isLast={i === audit.length - 1}
+									expanded={expandedAuditIds.has(entry.id)}
+									onToggle={() => toggleAuditEntry(entry.id)}
+								/>
 							))}
 						</div>
 					)}
@@ -401,6 +391,161 @@ function TaskDetailPageInner() {
 					</div>
 				</div>
 			</div>
+		</div>
+	);
+}
+
+// ─── Timeline entry ──────────────────────────────────────────────────
+
+function TimelineEntry({
+	entry,
+	isLast,
+	expanded,
+	onToggle,
+}: {
+	entry: AuditEntry;
+	isLast: boolean;
+	expanded: boolean;
+	onToggle: () => void;
+}) {
+	const hasDetails = entry.extra_data != null;
+	const dotClass =
+		entry.to_status === "completed"
+			? "bg-brand/20 border-brand"
+			: entry.to_status === "timed_out" ||
+				  entry.to_status === "cancelled" ||
+				  entry.to_status === "verification_exhausted"
+				? "bg-red-400/20 border-red-400"
+				: entry.to_status === "rejected"
+					? "bg-amber-400/20 border-amber-400"
+					: "bg-white/10 border-white/30";
+
+	return (
+		<div className="relative">
+			{!isLast && (
+				<div className="absolute left-[7px] top-5 bottom-0 w-px bg-white/10" />
+			)}
+			<div className="flex items-start gap-3">
+				<div
+					className={cn(
+						"w-[15px] h-[15px] rounded-full border-2 mt-0.5 flex-shrink-0",
+						dotClass,
+					)}
+				/>
+				<div className="flex-1 min-w-0">
+					{hasDetails ? (
+						<button
+							type="button"
+							onClick={onToggle}
+							className="flex items-center gap-1.5 text-left group"
+							aria-expanded={expanded}
+						>
+							<span className="text-sm font-medium">{entry.action}</span>
+							<ChevronDown
+								className={cn(
+									"w-3.5 h-3.5 text-white/30 transition-transform group-hover:text-white/60",
+									expanded && "rotate-180",
+								)}
+							/>
+						</button>
+					) : (
+						<div className="text-sm font-medium">{entry.action}</div>
+					)}
+					<div className="text-white/30 text-xs mt-0.5">
+						{entry.actor_type === "human" && entry.actor_email
+							? entry.actor_email
+							: entry.actor_type}
+						{entry.channel && ` via ${entry.channel}`}
+					</div>
+					<div className="text-white/20 text-xs mt-0.5">
+						{formatRelativeTime(entry.created_at)}
+					</div>
+					{expanded && hasDetails && (
+						<TimelineEntryDetails entry={entry} />
+					)}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function TimelineEntryDetails({ entry }: { entry: AuditEntry }) {
+	const data = entry.extra_data ?? {};
+	const verifierReason =
+		typeof data.verifier_reason === "string" ? data.verifier_reason : null;
+	const verificationAttempt =
+		typeof data.verification_attempt === "number"
+			? data.verification_attempt
+			: null;
+	const responseKeys = Array.isArray(data.response_keys)
+		? (data.response_keys as unknown[]).filter(
+				(k): k is string => typeof k === "string",
+			)
+		: null;
+
+	// Verifier-specific keys get dedicated UI; everything else in
+	// extra_data falls through to the generic key-value list below.
+	const VERIFIER_KEYS = new Set([
+		"verifier_reason",
+		"verification_attempt",
+		"verifier_passed",
+		"response_keys",
+	]);
+	const otherEntries = Object.entries(data).filter(
+		([k]) => !VERIFIER_KEYS.has(k),
+	);
+
+	const showVerifierBlock =
+		verifierReason !== null || verificationAttempt !== null;
+
+	return (
+		<div className="mt-3 space-y-3 text-xs">
+			{showVerifierBlock && (
+				<div className="rounded border border-amber-400/20 bg-amber-400/5 p-3 space-y-2">
+					<div className="text-amber-400/80 font-medium">
+						Verifier feedback
+						{verificationAttempt !== null && (
+							<span className="text-amber-400/50 font-normal">
+								{" "}
+								— attempt {verificationAttempt}
+							</span>
+						)}
+					</div>
+					{verifierReason && (
+						<div className="text-white/70 whitespace-pre-wrap break-words">
+							{verifierReason}
+						</div>
+					)}
+					{responseKeys && responseKeys.length > 0 && (
+						<div className="text-white/30">
+							Submitted fields:{" "}
+							<span className="font-mono text-white/50">
+								{responseKeys.join(", ")}
+							</span>
+						</div>
+					)}
+				</div>
+			)}
+			{!showVerifierBlock && responseKeys && responseKeys.length > 0 && (
+				<div className="rounded border border-white/10 p-3 text-white/30">
+					Submitted fields:{" "}
+					<span className="font-mono text-white/50">
+						{responseKeys.join(", ")}
+					</span>
+				</div>
+			)}
+			{otherEntries.length > 0 && (
+				<dl className="rounded border border-white/10 p-3 space-y-1.5">
+					{otherEntries.map(([k, v]) => (
+						<div key={k} className="flex gap-2">
+							<dt className="text-white/40 font-mono">{k}:</dt>
+							<dd className="text-white/70 font-mono break-all">
+								{typeof v === "string" ? v : JSON.stringify(v)}
+							</dd>
+						</div>
+					))}
+				</dl>
+			)}
 		</div>
 	);
 }
