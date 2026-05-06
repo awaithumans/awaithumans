@@ -76,6 +76,13 @@ export async function awaitHuman<TPayload, TResponse>(
 		options.serverUrl ?? envVar("AWAITHUMANS_URL") ?? DEFAULT_SERVER_URL
 	).replace(/\/$/, "");
 
+	// ── Resolve admin token ─────────────────────────────────────────────
+	// `awaitHuman` is the agent path — task creation and polling are
+	// admin-only on the server. The Temporal adapter already had this
+	// pattern; direct mode missed it, so any non-localhost-disabled
+	// server 403'd unless callers hand-rolled a fetch wrapper.
+	const apiKey = options.apiKey ?? envVar("AWAITHUMANS_ADMIN_API_TOKEN");
+
 	// ── Generate idempotency key ────────────────────────────────────────
 	const idempotencyKey =
 		options.idempotencyKey ??
@@ -107,7 +114,7 @@ export async function awaitHuman<TPayload, TResponse>(
 	};
 
 	// ── POST /api/tasks ─────────────────────────────────────────────────
-	const task = await createTask(serverUrl, body);
+	const task = await createTask(serverUrl, body, apiKey);
 
 	// ── Long-poll until terminal ────────────────────────────────────────
 	return pollUntilTerminal(
@@ -116,20 +123,29 @@ export async function awaitHuman<TPayload, TResponse>(
 		options.task,
 		timeoutSeconds,
 		options.responseSchema,
+		apiKey,
 	);
 }
 
 // ─── Internals ──────────────────────────────────────────────────────────
 
+function authHeaders(apiKey: string | undefined): Record<string, string> {
+	return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+}
+
 async function createTask(
 	serverUrl: string,
 	body: CreateTaskRequestWire,
+	apiKey: string | undefined,
 ): Promise<CreateTaskResponseWire> {
 	const resp = await fetchWithTimeout(
 		`${serverUrl}/api/tasks`,
 		{
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: {
+				"Content-Type": "application/json",
+				...authHeaders(apiKey),
+			},
 			body: JSON.stringify(body),
 		},
 		CREATE_TASK_TIMEOUT_MS,
@@ -151,6 +167,7 @@ async function pollUntilTerminal<TResponse>(
 	// The response schema validates the server's returned response.
 	// Typed as the user-supplied Zod schema to preserve inference.
 	responseSchema: AwaitHumanOptions<unknown, TResponse>["responseSchema"],
+	apiKey: string | undefined,
 ): Promise<TResponse> {
 	const url = `${serverUrl}/api/tasks/${encodeURIComponent(
 		taskId,
@@ -163,7 +180,12 @@ async function pollUntilTerminal<TResponse>(
 	// for ~POLL_INTERVAL_SECONDS and then returns the current status.
 	// When the status is non-terminal we reconnect.
 	while (true) {
-		const resp = await fetchWithTimeout(url, {}, fetchTimeoutMs, serverUrl);
+		const resp = await fetchWithTimeout(
+			url,
+			{ headers: authHeaders(apiKey) },
+			fetchTimeoutMs,
+			serverUrl,
+		);
 
 		if (resp.status === 404) {
 			throw new TaskNotFoundError(taskId);

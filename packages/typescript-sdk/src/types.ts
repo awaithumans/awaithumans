@@ -39,6 +39,14 @@ export interface AwaitHumanOptions<TPayload, TResponse> {
 
 	/** Server URL override. Defaults to AWAITHUMANS_URL env var or http://localhost:3001. */
 	serverUrl?: string;
+
+	/**
+	 * Bearer token sent as `Authorization: Bearer <token>` on task creation
+	 * and long-poll requests. Defaults to `AWAITHUMANS_ADMIN_API_TOKEN` env
+	 * var. Required against any server with admin auth enabled — including
+	 * the dev server, which auto-generates a token at first start.
+	 */
+	apiKey?: string;
 }
 
 // ─── Routing ────────────────────────────────────────────────────────────
