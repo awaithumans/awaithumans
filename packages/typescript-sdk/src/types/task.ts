@@ -9,8 +9,8 @@
 import type { ZodType } from "zod";
 import type { JsonSchema7Type } from "zod-to-json-schema";
 
-import type { AssignTo } from "./routing";
-import type { VerifierConfig, VerifierResult } from "./verification";
+import type { AssignTo } from "./routing.js";
+import type { VerifierConfig, VerifierResult } from "./verification.js";
 
 // ─── Core primitive ────────────────────────────────────────────────────
 

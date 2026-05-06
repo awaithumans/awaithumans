@@ -13,8 +13,8 @@ export type {
 	AwaitHumanOptions,
 	TaskRecord,
 	TaskStatus,
-} from "./task";
-export { TERMINAL_STATUSES } from "./task";
+} from "./task.js";
+export { TERMINAL_STATUSES } from "./task.js";
 
 export type {
 	Assignment,
@@ -22,14 +22,14 @@ export type {
 	HumanIdentity,
 	RouteContext,
 	Router,
-} from "./routing";
+} from "./routing.js";
 
 export type {
 	VerificationContext,
 	Verifier,
 	VerifierConfig,
 	VerifierResult,
-} from "./verification";
+} from "./verification.js";
 
 export type {
 	Channel,
@@ -39,4 +39,4 @@ export type {
 	ChannelResponseContext,
 	RenderFormat,
 	TaskTypeHandler,
-} from "./channels";
+} from "./channels.js";
