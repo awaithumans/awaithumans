@@ -7,22 +7,30 @@ The email channel sends an HTML email with the task description, payload context
 
 ## Transport options
 
-Two transport implementations:
-
 | Transport | Best for | Setup |
 |---|---|---|
 | **Resend** | Quick start, good deliverability | API key only |
-| **SMTP** | Existing email infrastructure | Host, port, user, pass |
+| **SMTP** | Existing email infrastructure (Gmail, Hostinger, AWS SES, Mailgun) | Host, port, user, pass |
+| **File** | Local dev + automated tests | Directory path |
+| **Logging** | Manual smoke test ("did the renderer fire?") | None |
+| **Noop** | Disabling email entirely | None |
 
-Plus `logging` (echoes emails to logs — good for tests) and `noop`.
+## Two ways to configure
 
-## Quickstart with Resend
+The server accepts email configuration through **either**:
+
+1. **Environment variables** — picks one default identity, applied to every `notify=["email:..."]` entry. Best for single-tenant deployments and quickstart.
+2. **Per-identity sender records** stored in the DB — each identity has its own transport, `from_email`, and credentials. Routed via `notify=["email+<identity>:..."]`. Best for multi-tenant deployments or when you need multiple senders from one server.
+
+You can mix both: env vars provide the default, per-identity overrides for specific routes.
+
+## Quickstart with Resend (env-var path)
 
 ### 1. Get a Resend API key
 
-Sign up at [resend.com](https://resend.com), create an API key, verify a sender domain.
+Sign up at [resend.com](https://resend.com), create an API key. Either verify a sender domain, or use `onboarding@resend.dev` (no DNS setup needed) for testing.
 
-### 2. Configure the awaithumans server
+### 2. Set env vars
 
 ```bash
 export AWAITHUMANS_EMAIL_TRANSPORT=resend
@@ -33,7 +41,7 @@ export AWAITHUMANS_RESEND_KEY=re_...
 
 Restart `awaithumans dev`.
 
-### 3. Test it
+### 3. Send
 
 ```python
 await_human_sync(
@@ -43,9 +51,13 @@ await_human_sync(
 )
 ```
 
-The reviewer gets an email. Click an action button or the "Review in dashboard" link, fill the form, submit. The script's `await_human` returns.
+The recipient gets an email; clicking through completes the task.
 
-## SMTP
+## SMTP — env-var path
+
+Works against any SMTP server. The transport auto-picks SSL vs STARTTLS based on the port (465 → SSL on connect, anything else → STARTTLS upgrade). Override with `AWAITHUMANS_SMTP_USE_TLS=true` for non-standard ports.
+
+### Gmail (port 587, STARTTLS)
 
 ```bash
 export AWAITHUMANS_EMAIL_TRANSPORT=smtp
@@ -57,39 +69,91 @@ export AWAITHUMANS_SMTP_START_TLS=true
 export AWAITHUMANS_EMAIL_FROM="you@gmail.com"
 ```
 
-For Gmail you need an [app password](https://myaccount.google.com/apppasswords) — regular passwords don't work with SMTP.
+Gmail requires an [App Password](https://myaccount.google.com/apppasswords) (regular passwords don't work over SMTP).
 
-## Sender identities (multi-tenant)
+### Hostinger Mail (port 465, SSL)
 
-If you serve multiple teams from one awaithumans server, each can have its own sender:
+```bash
+export AWAITHUMANS_EMAIL_TRANSPORT=smtp
+export AWAITHUMANS_SMTP_HOST=smtp.hostinger.com
+export AWAITHUMANS_SMTP_PORT=465
+export AWAITHUMANS_SMTP_USER=you@yourdomain.com
+export AWAITHUMANS_SMTP_PASSWORD="<mailbox-password>"
+export AWAITHUMANS_SMTP_USE_TLS=true
+export AWAITHUMANS_EMAIL_FROM="you@yourdomain.com"   # must match SMTP_USER
+```
+
+The mailbox password is the one you set when creating the mailbox in hPanel — **not** your Hostinger account password.
+
+Hostinger gotchas:
+
+- `from_email` must match `SMTP_USER` exactly. Hostinger rejects mismatched senders even on the same domain.
+- Outbound mail is rate-limited per mailbox per hour; one test won't trigger it, a verifier-reject loop might.
+- Some plans only enable port 465 OR 587 (not both). Pick whichever the dashboard shows.
+
+### AWS SES, Mailgun, etc.
+
+Same flags, swap the host. SES uses SMTP credentials (not your IAM key); Mailgun's are in their dashboard.
+
+## Per-identity setup (multi-tenant or named senders)
+
+When you need more than one sender — different teams, different transports per route, or just a clean `acme-prod` vs `acme-dev` distinction — use sender identities.
+
+Each identity has its own `from_email`, `from_name`, `reply_to`, transport, and transport credentials. Stored encrypted at rest (AES-GCM keyed off `PAYLOAD_KEY`).
+
+### Configure via the dashboard
+
+**Settings → Email → Identities → Add identity** (operator-only). Pick the transport, fill in the credentials, save.
+
+### Configure via the admin API
+
+```bash
+TOKEN=$(cat ~/.awaithumans-dev.json | jq -r .admin_token)
+
+curl -X POST http://localhost:3001/api/channels/email/identities \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "acme-prod",
+    "display_name": "Acme Production",
+    "from_email": "notifications@acme.com",
+    "from_name": "Acme Reviews",
+    "reply_to": null,
+    "transport": "resend",
+    "transport_config": {"api_key": "re_..."}
+  }'
+```
+
+POST is upsert — same `id` overwrites. Re-run to rotate credentials in place.
+
+### Route to a specific identity
 
 ```python
-notify=["email+acme:reviewer@acme.com"]    # send via the "acme" identity
-notify=["email+initech:bob@initech.com"]   # send via the "initech" identity
+notify=["email+acme-prod:reviewer@acme.com"]    # send via the "acme-prod" identity
+notify=["email+initech:bob@initech.com"]        # send via the "initech" identity
+notify=["email:reviewer@acme.com"]              # send via the env-var default
 ```
 
-Identities are managed in Settings → Email → Identities (admin-only). Each identity has its own `from_email`, `from_name`, `reply_to`, and transport config.
+## Action buttons vs dashboard link-out
 
-Plain `email:...` (no `+id`) uses the server's default identity (the env-configured one).
+The renderer makes a per-task decision based on the response schema's `form_definition`:
 
-## Action buttons
+- **Single `switch` or small `single_select` (≤4 options)** → action buttons render inline:
+  ```
+  [ Approve ]    [ Reject ]
+  ```
+- **Anything else** (multi-field forms, file uploads, long text) → single "Review in dashboard" link
 
-For simple response shapes (`switch`, single-option `single_select`), the email includes per-option action buttons:
+This is intentional: clicking a button in your inbox completes a yes/no in two seconds; anything more substantive belongs in the dashboard where the form has room to breathe.
 
-```
-[ Approve ]    [ Reject ]
-```
-
-Clicking lands on a confirmation page. The two-step flow (GET shows confirm, POST submits) prevents Outlook SafeLinks / Google image proxy from accidentally completing tasks via prefetch.
-
-For complex schemas (multi-field forms, file uploads, etc.), the email includes a single "Review in dashboard" link.
+For the buttons to fire from a TypeScript-created task, the SDK has to send a `form_definition` describing a single Switch — that's what `extractForm()` in the TS SDK produces from `z.object({ approved: z.boolean() })`. The Python SDK does the equivalent via `extract_form()` against a Pydantic model.
 
 ## Magic-link tokens
 
 Action button URLs encode the task ID, field, value, expiry, and a unique `jti` (replay protection):
 
 ```
-https://YOUR-URL/api/channels/email/action/<token>
+https://YOUR-PUBLIC-URL/api/channels/email/action/<token>
 ```
 
 Each token:
@@ -98,16 +162,44 @@ Each token:
 - Expires in 24h by default
 - Is single-use — `consumed_email_tokens` table records each `jti` on first use; replays return 410 Gone
 
-Forwarded emails, leaked URLs, and SafeLinks fetches all become safe-to-have-in-logs after first use.
+Forwarded emails, leaked URLs, and Outlook SafeLinks fetches all become safe-to-have-in-logs after first use. The two-step flow (GET shows confirm, POST submits) prevents Outlook SafeLinks / Google image proxy from accidentally completing tasks via prefetch.
 
 ## Authorization
 
-Anyone with the magic link can complete the task — the link IS the auth token. So:
+Anyone with the magic-link URL can complete the task — the link IS the auth token. So:
 
 - Don't forward task emails. The recipient list is the authorization list.
 - For tasks with no specific assignee (`assign_to=None`), the email recipient is implicitly the assignee. Audit log records `completed_via_channel=email` so you can see this happened.
 
 For higher-stakes tasks, prefer Slack (which validates the submitter against the directory) or the dashboard (which requires a session).
+
+## File transport (dev / testing)
+
+The `file` transport writes one JSON file per email to a configured directory instead of sending. Used by the smoke tests but also useful for manual dev when you want a deterministic record of every email the server would have shipped.
+
+Per-identity:
+
+```json
+{
+  "transport": "file",
+  "transport_config": {"dir": "/tmp/awaithumans-emails"}
+}
+```
+
+Each captured email is a JSON file with `to`, `subject`, `html`, `text`, `from_email`, `from_name`, `reply_to`, `tags`, plus bookkeeping (`_received_at`, `_message_id`). Filename leads with unix-ms so newest sorts last.
+
+Never use this in production.
+
+## Runnable examples
+
+| Example | Language | Transport | What it tests |
+|---|---|---|---|
+| [`examples/email-smoke/`](https://github.com/awaithumans/awaithumans/tree/main/examples/email-smoke) | TypeScript | `file` | Automated end-to-end: SDK creates task → email captured → magic-link clicked programmatically → SDK resolves |
+| [`examples/email-smoke-py/`](https://github.com/awaithumans/awaithumans/tree/main/examples/email-smoke-py) | Python | `file` | Same loop, Python SDK |
+| [`examples/email-end-to-end/`](https://github.com/awaithumans/awaithumans/tree/main/examples/email-end-to-end) | TypeScript | Resend / SMTP | Real-delivery: email lands in your inbox, you click Approve, SDK resolves |
+| [`examples/email-end-to-end-py/`](https://github.com/awaithumans/awaithumans/tree/main/examples/email-end-to-end-py) | Python | Resend / SMTP | Same, Python SDK. Includes Hostinger walkthrough |
+
+The smoke tests run automatically and prove the SDK ↔ server contract. The end-to-end examples prove the integration with a real email provider — you only run those manually before a release.
 
 ## Resending
 
@@ -116,5 +208,8 @@ If the email is lost (spam folder, address typo, …), the dashboard's task-deta
 ## Common gotchas
 
 - **No domain verification.** Resend / Gmail will silently drop emails from unverified senders. Check your transport's dashboard for delivery logs.
-- **Action button URLs not reachable.** The awaithumans server must be reachable from the recipient's mail client. Localhost-only servers can't be tested by sending real emails — use the `logging` transport.
+- **Action button URLs not reachable.** The awaithumans server must be reachable from the recipient's mail client. Localhost-only servers can't be tested with real emails — use the `file` transport, or expose your dev server via ngrok.
 - **Token expired.** Default TTL is 24 hours. For long-running review windows, raise via `MAGIC_LINK_MAX_AGE_SECONDS` in `utils/constants.py` (operator override planned post-launch).
+- **`from_email` mismatch.** Most providers reject mail when `from_email` doesn't match the authenticated mailbox. For SMTP especially, set `from_email` and `SMTP_USER` to the same value.
+- **TLS mode wrong for the port.** Port 465 is implicit SSL (`use_tls=true`); 587 is STARTTLS (`start_tls=true`). The transport auto-flips based on port; override with `AWAITHUMANS_SMTP_USE_TLS` if your server uses a non-standard port.
+- **No buttons in the email, just a "Review in dashboard" link.** The response schema has more than one input field — that's the link-out fallback. Either reduce to a single boolean for the button shortcut, or accept that complex forms belong in the dashboard.
