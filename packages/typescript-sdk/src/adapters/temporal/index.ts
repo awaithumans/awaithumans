@@ -80,7 +80,10 @@ import {
 	VerificationExhaustedError,
 } from "../../errors.js";
 import { generateIdempotencyKey } from "../../internal/idempotency.js";
-import { serializeAssignTo } from "../../internal/wire.js";
+import {
+	serializeAssignTo,
+	serializeVerifierConfig,
+} from "../../internal/wire.js";
 import type { AssignTo, AwaitHumanOptions, VerifierConfig } from "../../types/index.js";
 
 // Signal-name prefix — must match the Python adapter exactly.
@@ -197,8 +200,9 @@ export async function awaitHuman<TPayload, TResponse>(
 		idempotency_key: idempotencyKey,
 		assign_to: serializeAssignTo(options.assignTo as AssignTo | undefined),
 		notify: options.notify ?? null,
-		verifier_config:
-			(options.verifier as VerifierConfig | undefined) ?? null,
+		verifier_config: serializeVerifierConfig(
+			options.verifier as VerifierConfig | undefined,
+		),
 		redact_payload: options.redactPayload ?? false,
 		callback_url: options.callbackUrl,
 	};

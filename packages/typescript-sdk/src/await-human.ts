@@ -32,6 +32,7 @@ import {
 	type CreateTaskResponseWire,
 	type PollResponseWire,
 	serializeAssignTo,
+	serializeVerifierConfig,
 } from "./internal/wire.js";
 import {
 	MarketplaceNotAvailableError,
@@ -127,7 +128,7 @@ export async function awaitHuman<TPayload, TResponse>(
 		idempotency_key: idempotencyKey,
 		assign_to: serializeAssignTo(options.assignTo),
 		notify: options.notify ?? null,
-		verifier_config: options.verifier ?? null,
+		verifier_config: serializeVerifierConfig(options.verifier),
 		redact_payload: options.redactPayload ?? false,
 		callback_url: null,
 	};

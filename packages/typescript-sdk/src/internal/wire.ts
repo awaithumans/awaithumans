@@ -10,7 +10,7 @@
  * and only validates user inputs (payload/response against caller schemas).
  */
 
-import type { TaskStatus } from "../types/index.js";
+import type { TaskStatus, VerifierConfig } from "../types/index.js";
 
 // ─── POST /api/tasks ─────────────────────────────────────────────────
 
@@ -58,4 +58,36 @@ export function serializeAssignTo(assignTo: unknown): unknown | null {
 	if (Array.isArray(assignTo)) return { emails: assignTo };
 	if (typeof assignTo === "object") return assignTo;
 	return { value: String(assignTo) };
+}
+
+// ─── Verifier translation ────────────────────────────────────────────
+
+interface VerifierConfigWire {
+	provider: string;
+	model?: string;
+	instructions: string;
+	max_attempts: number;
+	api_key_env?: string;
+}
+
+/**
+ * Convert the caller-facing `VerifierConfig` (camelCase, idiomatic TS)
+ * into the snake_case wire shape the Python server's Pydantic
+ * `VerifierConfig` validates against. Without this translation the
+ * server's `extra="ignore"` default silently drops camelCase fields
+ * and the verifier runs with `max_attempts=3` regardless of the
+ * caller's choice.
+ */
+export function serializeVerifierConfig(
+	config: VerifierConfig | undefined | null,
+): VerifierConfigWire | null {
+	if (config == null) return null;
+	const wire: VerifierConfigWire = {
+		provider: config.provider,
+		instructions: config.instructions,
+		max_attempts: config.maxAttempts,
+	};
+	if (config.model !== undefined) wire.model = config.model;
+	if (config.apiKeyEnv !== undefined) wire.api_key_env = config.apiKeyEnv;
+	return wire;
 }
