@@ -54,6 +54,7 @@ from awaithumans.server.services.exceptions import (
     TaskNotFoundError,
 )
 from awaithumans.server.services.task_service import complete_task, get_task
+from awaithumans.server.services.user_service import get_user_by_email
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 router = APIRouter(prefix="/channels/email", tags=["channels"])
@@ -263,12 +264,24 @@ async def action_submit(
             ),
         )
 
+    # Resolve completer attribution from the token's recipient field.
+    # Pre-feature tokens (signed before this field was added) carry
+    # recipient=None — we leave both completed_* fields null and the
+    # audit log shows "—", same behavior as before this change.
+    completer_email = claim.recipient
+    completer_user_id: str | None = None
+    if completer_email:
+        directory_user = await get_user_by_email(session, completer_email)
+        if directory_user is not None and directory_user.active:
+            completer_user_id = directory_user.id
+
     try:
         await complete_task(
             session,
             task_id=claim.task_id,
             response={claim.field_name: claim.value},
-            completed_by_email=None,
+            completed_by_email=completer_email,
+            completed_by_user_id=completer_user_id,
             completed_via_channel="email",
         )
     except TaskAlreadyTerminalError:

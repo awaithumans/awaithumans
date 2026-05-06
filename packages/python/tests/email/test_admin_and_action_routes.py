@@ -218,12 +218,19 @@ async def test_action_post_completes_task(client: AsyncClient) -> None:
         task_id = task.id
         break
 
-    token = sign_action_token(task_id=task_id, field_name="approve", value=True)
+    token = sign_action_token(
+        task_id=task_id,
+        field_name="approve",
+        value=True,
+        recipient="reviewer@acme.com",
+    )
     resp = await client.post(f"/api/channels/email/action/{token}")
     assert resp.status_code == 200
     assert "recorded" in resp.text.lower() or "thanks" in resp.text.lower()
 
-    # Verify the task is actually completed with the signed value.
+    # Verify the task is actually completed with the signed value AND
+    # that the recipient email landed on `completed_by_email` so the
+    # audit log isn't a black hole for email completions.
     async for session in _direct_session(client):
         from awaithumans.server.services.task_service import get_task
 
@@ -231,6 +238,49 @@ async def test_action_post_completes_task(client: AsyncClient) -> None:
         assert updated.status == TaskStatus.COMPLETED
         assert updated.response == {"approve": True}
         assert updated.completed_via_channel == "email"
+        assert updated.completed_by_email == "reviewer@acme.com"
+        # No directory user with that email → user_id stays null;
+        # email-only attribution still wins over the previous
+        # null-everything behavior.
+        assert updated.completed_by_user_id is None
+        break
+
+
+@pytest.mark.asyncio
+async def test_action_post_pre_feature_token_leaves_completed_by_null(
+    client: AsyncClient,
+) -> None:
+    """A token signed without the new `recipient` field (i.e., before
+    this fix shipped) must still verify and complete the task — just
+    without the email attribution. Pre-feature in-flight tokens at
+    deploy time would otherwise 500."""
+    async for session in _direct_session(client):
+        task = await create_task(
+            session,
+            task="Approve wire",
+            payload={},
+            payload_schema={},
+            response_schema={},
+            timeout_seconds=3600,
+            idempotency_key="k-no-recipient",
+        )
+        task_id = task.id
+        break
+
+    # `recipient=None` (default) → token's signed body omits `r`.
+    token = sign_action_token(
+        task_id=task_id, field_name="approve", value=True
+    )
+    resp = await client.post(f"/api/channels/email/action/{token}")
+    assert resp.status_code == 200
+
+    async for session in _direct_session(client):
+        from awaithumans.server.services.task_service import get_task
+
+        updated = await get_task(session, task_id)
+        assert updated.status == TaskStatus.COMPLETED
+        assert updated.completed_by_email is None
+        assert updated.completed_by_user_id is None
         break
 
 

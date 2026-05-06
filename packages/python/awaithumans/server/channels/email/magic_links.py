@@ -81,23 +81,35 @@ def sign_action_token(
     task_id: str,
     field_name: str,
     value: Any,
+    recipient: str | None = None,
     ttl_seconds: int | None = None,
     jti: str | None = None,
 ) -> str:
-    """Produce a signed token encoding (task_id, field_name, value, expiry, jti).
+    """Produce a signed token encoding (task_id, field_name, value, expiry, jti, recipient).
+
+    `recipient` is the email address the link is being issued for —
+    needed at click time so the action route can stamp the task's
+    `completed_by_email`. The renderer always knows who it's sending
+    to, so it threads that through here. Pre-feature tokens omit `r`
+    and verify_action_token returns recipient=None for them.
 
     `jti` is a random unique identifier the route uses to enforce
     single-use. Pass an explicit value only in tests where determinism
     helps; production callers leave it None and we generate a fresh
     random one per token."""
     ttl = ttl_seconds if ttl_seconds is not None else MAGIC_LINK_MAX_AGE_SECONDS
-    payload = {
+    payload: dict[str, Any] = {
         "t": task_id,
         "f": field_name,
         "v": value,
         "e": int(time.time()) + ttl,
         "j": jti or secrets.token_urlsafe(_JTI_BYTES),
     }
+    if recipient:
+        # Only include the field when set, so tokens minted without
+        # a recipient stay byte-identical to the old shape (helps
+        # operators eyeballing token payloads across releases).
+        payload["r"] = recipient
     body = _canonical(payload)
     mac = hmac.new(_hmac_key(), body, hashlib.sha256).digest()
     blob = mac + body
@@ -140,10 +152,19 @@ def verify_action_token(token: str) -> ActionClaim:
     if time.time() > expires_at:
         raise InvalidActionTokenError("expired")
 
+    # Recipient is opt-in: pre-feature tokens don't carry it, and
+    # the action route falls back to None for those (audit log will
+    # still show "—" for completed_by, same as before this change).
+    recipient_raw = payload.get("r")
+    recipient = (
+        recipient_raw if isinstance(recipient_raw, str) and recipient_raw else None
+    )
+
     return ActionClaim(
         task_id=task_id,
         field_name=field_name,
         value=value,
         expires_at=expires_at,
         jti=jti,
+        recipient=recipient,
     )
