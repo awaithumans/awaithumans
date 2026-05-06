@@ -212,6 +212,73 @@ describe("happy path", () => {
 		});
 	});
 
+	it("translates verifier camelCase fields into snake_case wire shape", async () => {
+		// The server's Pydantic VerifierConfig expects snake_case keys.
+		// Without translation the SDK silently drops `maxAttempts` /
+		// `apiKeyEnv` and the server defaults `max_attempts` to 3.
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		await awaitHuman({
+			...BASE_OPTIONS,
+			verifier: {
+				provider: "claude",
+				model: "claude-sonnet-4-20250514",
+				instructions: "Check consistency.",
+				maxAttempts: 5,
+				apiKeyEnv: "ANTHROPIC_API_KEY",
+			},
+		});
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.verifier_config).toEqual({
+			provider: "claude",
+			model: "claude-sonnet-4-20250514",
+			instructions: "Check consistency.",
+			max_attempts: 5,
+			api_key_env: "ANTHROPIC_API_KEY",
+		});
+	});
+
+	it("omits optional verifier fields when not provided", async () => {
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		await awaitHuman({
+			...BASE_OPTIONS,
+			verifier: {
+				provider: "claude",
+				instructions: "Check it.",
+				maxAttempts: 3,
+			},
+		});
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.verifier_config).toEqual({
+			provider: "claude",
+			instructions: "Check it.",
+			max_attempts: 3,
+		});
+		expect(body.verifier_config.model).toBeUndefined();
+		expect(body.verifier_config.api_key_env).toBeUndefined();
+	});
+
+	it("passes null verifier_config when no verifier is provided", async () => {
+		const fetchMock = installFetchSequence([
+			makeResponse(200, { id: "t", status: "created" }),
+			makeResponse(200, { status: "completed", response: { approved: true } }),
+		]);
+
+		await awaitHuman(BASE_OPTIONS);
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.verifier_config).toBeNull();
+	});
+
 	it("passes through explicit idempotency key", async () => {
 		const fetchMock = installFetchSequence([
 			makeResponse(200, { id: "t", status: "created" }),
