@@ -24,6 +24,12 @@ from awaithumans.server.core.auth import (
     sign_session,
     verify_session,
 )
+from awaithumans.server.core.email_handoff import (
+    InvalidHandoffError as InvalidEmailHandoffError,
+)
+from awaithumans.server.core.email_handoff import (
+    verify_handoff as verify_email_handoff,
+)
 from awaithumans.server.core.slack_handoff import (
     InvalidHandoffError,
     verify_handoff,
@@ -37,7 +43,11 @@ from awaithumans.server.core.rate_limit import (
 )
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.auth import LoginRequest, MeResponse
-from awaithumans.server.services.user_service import get_user, get_user_by_email
+from awaithumans.server.services.user_service import (
+    create_user,
+    get_user,
+    get_user_by_email,
+)
 from awaithumans.utils.constants import (
     DASHBOARD_SESSION_COOKIE_NAME,
     DASHBOARD_SESSION_MAX_AGE_SECONDS,
@@ -211,4 +221,91 @@ async def slack_handoff(
         path="/",
     )
     logger.info("Slack handoff: signed in user=%s for task=%s", user.id, t)
+    return response
+
+
+@router.get("/email-handoff")
+async def email_handoff(
+    request: Request,
+    to: str = Query(..., description="Recipient email the URL was issued to."),
+    t: str = Query(..., description="Task id the URL is bound to."),
+    e: int = Query(..., description="Unix expiry — usually task.timeout_at."),
+    s: str = Query(..., description="HMAC signature over (to|t|e)."),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Sign in an email recipient and redirect to the task page.
+
+    Mirror of `/api/auth/slack-handoff` for the email channel. The
+    "Review in dashboard" link in a notification email points here so
+    the recipient can clear the dashboard login wall even when their
+    email isn't a registered reviewer yet.
+
+    Auto-provisioning: if no directory user has the recipient's email,
+    we create a passwordless reviewer on first click. Same trust
+    boundary as task creation — the agent's `notify=` already
+    expressed intent to delegate to that address. Operators can
+    deactivate or delete the row later if they don't want it.
+
+    The minted session is for that user exactly. The URL is not a
+    privilege escalator — auto-created users are reviewers, never
+    operators.
+    """
+    try:
+        verify_email_handoff(recipient=to, task_id=t, exp_unix=e, signature=s)
+    except InvalidEmailHandoffError as exc:
+        logger.info("Rejected email handoff: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Sign-in link is invalid or expired. Open the latest "
+            "notification email for this task to get a fresh one.",
+        ) from exc
+
+    normalized_email = to.lower()
+    user = await get_user_by_email(session, normalized_email)
+
+    if user is None:
+        # Auto-provision a passwordless reviewer. The agent already
+        # vetted this address by passing it to `notify=`; we trust
+        # that boundary the same way we trust the agent's task
+        # creation.
+        user = await create_user(
+            session,
+            email=normalized_email,
+            display_name=None,
+            is_operator=False,
+            password=None,
+        )
+        logger.info(
+            "Email handoff: auto-provisioned reviewer for %s on task=%s",
+            normalized_email,
+            t,
+        )
+    elif not user.active:
+        # Don't auto-reactivate — the operator may have deliberately
+        # taken this user offline. Same response shape as the Slack
+        # handoff so attackers probing user state get a uniform 403.
+        logger.info(
+            "Email handoff rejected: user=%s inactive", normalized_email
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="That reviewer is no longer active. Ask an operator "
+            "to re-add you to the directory.",
+        )
+
+    token = sign_session(user_id=user.id, is_operator=user.is_operator)
+    target = f"/task?id={t}"
+    response = RedirectResponse(url=target, status_code=303)
+    response.set_cookie(
+        key=DASHBOARD_SESSION_COOKIE_NAME,
+        value=token,
+        max_age=DASHBOARD_SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=settings.PUBLIC_URL.startswith("https://"),
+        samesite="lax",
+        path="/",
+    )
+    logger.info(
+        "Email handoff: signed in user=%s for task=%s", user.id, t
+    )
     return response

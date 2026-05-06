@@ -185,11 +185,21 @@ class TestNote(BaseModel):
 
 
 class ApprovalResponse(BaseModel):
-    """Single boolean → server-side `extract_form` produces a Switch
-    primitive, which is what the email renderer uses to decide whether
-    to emit Approve/Reject magic-link buttons."""
+    """Multi-field response — exercises the email renderer's
+    *dashboard link-out* path (the magic-link button shortcut only
+    fires for single Switch / small SingleSelect responses).
+
+    The recipient gets an email with no inline buttons, just a
+    "Review in dashboard" link. They click → land at /task?id=…
+    → fill the form (Yes/No + reason) → Submit. The Python SDK's
+    long-poll resolves with both fields set.
+
+    To test the magic-link button path instead, drop the `reason`
+    field and re-run.
+    """
 
     approved: bool = Field(..., description="Approve this test?")
+    reason: str = Field(..., description="Why approve / reject? Short answer.")
 
 
 # ─── Run ───────────────────────────────────────────────────────────────
@@ -204,8 +214,13 @@ async def main() -> None:
 
     print("")
     print(
-        "→ creating task — check your inbox in a few seconds and click "
-        "the Approve button to complete it"
+        "→ creating task — multi-field response so you'll get a "
+        "'Review in dashboard' link-out (not inline magic-link "
+        "buttons)"
+    )
+    print(
+        "  Click the link in your inbox → log in to the dashboard → "
+        "fill the form → Submit"
     )
 
     decision: ApprovalResponse = await await_human(
@@ -217,18 +232,18 @@ async def main() -> None:
         ),
         response_schema=ApprovalResponse,
         # 30-minute window — generous so you have time to find the
-        # email, click through, and walk back. The post-completion
-        # updater will mark the message done either way.
+        # email, click through, log in, fill the form, and walk back.
+        # The post-completion updater will mark the message done
+        # either way.
         timeout_seconds=30 * 60,
         notify=[f"email+{IDENTITY_ID}:{RECIPIENT}"],
         idempotency_key=f"email-e2e-real-py:{int(__import__('time').time())}",
     )
 
     print("")
-    if decision.approved:
-        print("✓ Approved — task completed end-to-end via real email")
-    else:
-        print("✗ Rejected — task completed end-to-end via real email")
+    verdict = "✓ Approved" if decision.approved else "✗ Rejected"
+    print(f"{verdict} — task completed end-to-end via real email")
+    print(f"  reason: {decision.reason}")
 
 
 if __name__ == "__main__":

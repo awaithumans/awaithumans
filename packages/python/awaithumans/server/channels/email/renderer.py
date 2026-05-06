@@ -32,7 +32,49 @@ def _magic_link_url(public_url: str, token: str) -> str:
 
 
 def _review_url(public_url: str, task_id: str) -> str:
-    return f"{public_url.rstrip('/')}/tasks/{task_id}"
+    """Plain dashboard URL — used when no recipient handoff is available
+    (broadcast routes, email channel without a known recipient, etc.).
+
+    The dashboard's task detail page is `/task?id=<id>` — the
+    `/tasks/<id>` legacy form was removed when the dashboard switched
+    to a static-export build (dynamic segments don't survive
+    `output: "export"`). Slack's review URL was updated earlier; this
+    line is the email-side fix.
+    """
+    return f"{public_url.rstrip('/')}/task?id={task_id}"
+
+
+def _review_url_for_recipient(
+    *,
+    public_url: str,
+    task_id: str,
+    recipient: str,
+    handoff_exp_unix: int | None,
+) -> str:
+    """Dashboard URL signed for the recipient when an expiry is given,
+    plain URL otherwise.
+
+    The signed URL hits `/api/auth/email-handoff?to=...&t=...&e=...&s=...`
+    which mints a session for that email and redirects to /task. Lets
+    a recipient with no dashboard password through the login wall —
+    same DX the Slack channel has.
+    """
+    if handoff_exp_unix is None or not recipient:
+        return _review_url(public_url, task_id)
+
+    # Lazy import to avoid pulling the crypto path into modules that
+    # only need the renderer for tests / docs preview.
+    import urllib.parse
+
+    from awaithumans.server.core.email_handoff import sign_handoff
+
+    sig = sign_handoff(
+        recipient=recipient, task_id=task_id, exp_unix=handoff_exp_unix
+    )
+    qs = urllib.parse.urlencode(
+        {"to": recipient, "t": task_id, "e": handoff_exp_unix, "s": sig}
+    )
+    return f"{public_url.rstrip('/')}/api/auth/email-handoff?{qs}"
 
 
 def _find_single_input_primitive(form: FormDefinition) -> Any | None:
@@ -141,9 +183,24 @@ def build_notification_email(
     from_name: str | None,
     reply_to: str | None,
     public_url: str,
+    handoff_exp_unix: int | None = None,
 ) -> EmailMessage:
-    """Assemble the EmailMessage for one recipient."""
-    review_url = _review_url(public_url, task_id)
+    """Assemble the EmailMessage for one recipient.
+
+    `handoff_exp_unix` (when provided) signs the "Review in dashboard"
+    URL so the recipient lands authenticated even if they don't have
+    a dashboard password yet — the endpoint auto-provisions a
+    reviewer on first click. Pass `task.timeout_at` so the link
+    expires when the task does. None falls back to the unsigned
+    URL (existing behavior — recipients with no session bounce to
+    /login).
+    """
+    review_url = _review_url_for_recipient(
+        public_url=public_url,
+        task_id=task_id,
+        recipient=to,
+        handoff_exp_unix=handoff_exp_unix,
+    )
     buttons = _buttons_for_form(
         form, task_id=task_id, recipient=to, public_url=public_url
     )

@@ -234,3 +234,12 @@ DASHBOARD_SESSION_HKDF_INFO = b"v1"
 # whole task lifetime, no matter how long that is.
 SLACK_HANDOFF_HKDF_SALT = b"awaithumans-slack-handoff"
 SLACK_HANDOFF_HKDF_INFO = b"v1"
+
+# HKDF parameters for the Email-handoff URL signature. Mirror of the
+# Slack-handoff but for the email channel — the link in a "Review in
+# dashboard" email is signed so the recipient can clear the dashboard
+# login wall even when their email isn't registered as a reviewer
+# yet. The endpoint auto-provisions a passwordless directory user on
+# first click (the agent's `notify=` is implicit consent to provision).
+EMAIL_HANDOFF_HKDF_SALT = b"awaithumans-email-handoff"
+EMAIL_HANDOFF_HKDF_INFO = b"v1"
