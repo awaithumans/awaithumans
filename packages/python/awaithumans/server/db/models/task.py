@@ -90,6 +90,12 @@ class Task(SQLModel, table=True):
 
     # Metadata
     completed_by_email: str | None = Field(default=None)
+    # Resolved user_id of whoever completed the task. Mirrors
+    # `assigned_to_user_id` so a Slack-only completer (no email) is
+    # still identifiable in the audit log. Populated alongside
+    # `completed_by_email`; either or both can be null when the
+    # completer isn't in the directory (raw admin-bearer call).
+    completed_by_user_id: str | None = Field(default=None, index=True)
     completed_via_channel: str | None = Field(default=None)
 
     __table_args__ = (

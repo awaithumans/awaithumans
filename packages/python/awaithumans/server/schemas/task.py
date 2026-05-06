@@ -62,6 +62,12 @@ class TaskResponse(BaseModel):
     completed_at: datetime | None = None
     timed_out_at: datetime | None = None
     completed_by_email: str | None = None
+    # Mirror the assignee fallback chain so a Slack-only completer
+    # (no email column) doesn't render as "—" in the audit log.
+    # Populated via a join on User at response time.
+    completed_by_user_id: str | None = None
+    completed_by_display_name: str | None = None
+    completed_by_slack_user_id: str | None = None
     completed_via_channel: str | None = None
 
     model_config = {"from_attributes": True}

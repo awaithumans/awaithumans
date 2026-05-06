@@ -40,6 +40,24 @@ export function assigneeLabel(task: Pick<
 	return null;
 }
 
+/**
+ * Pick the best label for whoever completed the task. Same fallback
+ * shape as `assigneeLabel` so a Slack-only completer renders the
+ * same way the assignee does.
+ */
+export function completedByLabel(task: Pick<
+	Task,
+	"completed_by_display_name"
+	| "completed_by_email"
+	| "completed_by_slack_user_id"
+	| "completed_by_user_id"
+>): string | null {
+	if (task.completed_by_display_name) return task.completed_by_display_name;
+	if (task.completed_by_email) return task.completed_by_email;
+	if (task.completed_by_slack_user_id) return `@${task.completed_by_slack_user_id}`;
+	return null;
+}
+
 export function statusBadgeColor(status: string): string {
 	switch (status) {
 		case "completed":

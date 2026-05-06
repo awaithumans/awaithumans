@@ -13,7 +13,7 @@ import {
 	type Task,
 	type AuditEntry,
 } from "@/lib/server";
-import { assigneeLabel, cn, formatRelativeTime } from "@/lib/utils";
+import { assigneeLabel, cn, completedByLabel, formatRelativeTime } from "@/lib/utils";
 import {
 	IDEMPOTENCY_KEY_DISPLAY_LENGTH,
 	SECONDS_PER_MINUTE,
@@ -318,9 +318,9 @@ function TaskDetailPageInner() {
 									</div>
 								))}
 							</div>
-							{task.completed_by_email && (
+							{completedByLabel(task) && (
 								<div className="mt-4 text-white/30 text-xs">
-									Completed by {task.completed_by_email} via{" "}
+									Completed by {completedByLabel(task)} via{" "}
 									{task.completed_via_channel ?? "unknown"}{" "}
 									{task.completed_at && formatRelativeTime(task.completed_at)}
 								</div>

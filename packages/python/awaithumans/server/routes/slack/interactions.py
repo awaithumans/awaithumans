@@ -515,10 +515,13 @@ async def _handle_view_submission(
     # which is just the @handle. Looking up via the directory makes
     # `completed_by_email` consistent across channels (Slack
     # completions look the same as dashboard ones in the audit log).
+    # `completed_by_user_id` is also stamped so a Slack-only user
+    # (no email) is still identifiable in the audit log.
     directory_user = await get_user_by_slack(
         session, slack_team_id=team_id, slack_user_id=slack_user_id
     )
     completer_email = directory_user.email if directory_user else None
+    completer_user_id = directory_user.id if directory_user else None
 
     form = FormDefinition.model_validate(task.form_definition)
     response = slack_values_to_response(form, view.get("state") or {})
@@ -528,6 +531,7 @@ async def _handle_view_submission(
         task_id=task_id,
         response=response,
         completed_by_email=completer_email,
+        completed_by_user_id=completer_user_id,
         completed_via_channel="slack",
     )
 
