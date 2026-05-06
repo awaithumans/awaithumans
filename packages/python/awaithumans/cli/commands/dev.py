@@ -188,6 +188,17 @@ def dev(
     logger.info("Starting awaithumans server on http://%s:%d", host, actual_port)
     logger.info("Dashboard at http://%s:%d", host, actual_port)
     logger.info("SQLite database at %s", db_path)
+    # Tell the user where the admin token is + that they don't have to
+    # do anything with it. The Python and TypeScript SDKs both read
+    # it from the discovery file automatically, so a fresh shell
+    # running `python refund.py` or `npm start` "just works." The
+    # only time an operator needs to copy this is when they're
+    # talking to the API from curl.
+    logger.info(
+        "Admin token written to %s (SDKs auto-detect via "
+        "~/.awaithumans-dev.json — copy only for curl)",
+        Path(db_path).parent / "admin.token",
+    )
     logger.info("Ready — waiting for tasks...")
 
     from awaithumans.server.app import create_app

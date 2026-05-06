@@ -48,16 +48,23 @@ import httpx
 from pydantic import BaseModel, Field
 
 from awaithumans import await_human
+from awaithumans.utils.discovery import resolve_admin_token, resolve_server_url
 
 # ─── Config ────────────────────────────────────────────────────────────
 
-SERVER_URL = os.environ.get("AWAITHUMANS_URL", "http://localhost:3001").rstrip("/")
-ADMIN_TOKEN = os.environ.get("AWAITHUMANS_ADMIN_API_TOKEN")
+# Resolve URL + admin token via the same chain `await_human` itself
+# uses internally — explicit env var → discovery file written by
+# `awaithumans dev`. Means the smoke "just works" against a running
+# dev server with no env-var dance, mirroring the Python SDK's
+# default DX.
+SERVER_URL = resolve_server_url().rstrip("/")
+ADMIN_TOKEN = resolve_admin_token()
 
 if not ADMIN_TOKEN:
     print(
-        "AWAITHUMANS_ADMIN_API_TOKEN is required. Run `awaithumans dev` first, "
-        "then export the token from the path it printed.",
+        "Couldn't find an admin token. Either:\n"
+        "  - Run `awaithumans dev` (writes ~/.awaithumans-dev.json) and try again, OR\n"
+        "  - Export AWAITHUMANS_ADMIN_API_TOKEN with the token your server uses.",
         file=sys.stderr,
     )
     sys.exit(1)
