@@ -23,6 +23,7 @@ import {
 	POLL_FETCH_SLACK_SECONDS,
 	POLL_INTERVAL_SECONDS,
 } from "./internal/constants.js";
+import { resolveDiscoveryConfig } from "./internal/discovery.js";
 import { envVar } from "./internal/env.js";
 import { fetchWithTimeout } from "./internal/fetch.js";
 import { generateIdempotencyKey } from "./internal/idempotency.js";
@@ -72,17 +73,30 @@ export async function awaitHuman<TPayload, TResponse>(
 		throw new MarketplaceNotAvailableError();
 	}
 
-	// ── Resolve server URL ──────────────────────────────────────────────
+	// ── Resolve server URL + admin token ────────────────────────────────
+	// Resolution priority (matches the Python SDK's `resolve_*` helpers):
+	//   explicit option → env var → discovery file → default / undefined
+	//
+	// The discovery file lives at `~/.awaithumans-dev.json` and is
+	// written by `awaithumans dev`. Reading it lets a developer run
+	// `awaithumans dev` in one terminal and `npm start` in another
+	// with zero env-var dance — same DX the Python SDK has.
+	const discovery = await resolveDiscoveryConfig();
 	const serverUrl = (
-		options.serverUrl ?? envVar("AWAITHUMANS_URL") ?? DEFAULT_SERVER_URL
+		options.serverUrl ??
+		envVar("AWAITHUMANS_URL") ??
+		discovery.url ??
+		DEFAULT_SERVER_URL
 	).replace(/\/$/, "");
 
-	// ── Resolve admin token ─────────────────────────────────────────────
 	// `awaitHuman` is the agent path — task creation and polling are
 	// admin-only on the server. The Temporal adapter already had this
-	// pattern; direct mode missed it, so any non-localhost-disabled
-	// server 403'd unless callers hand-rolled a fetch wrapper.
-	const apiKey = options.apiKey ?? envVar("AWAITHUMANS_ADMIN_API_TOKEN");
+	// pattern; direct mode missed it, so any admin-gated server
+	// (including dev) 403'd unless callers hand-rolled a fetch wrapper.
+	const apiKey =
+		options.apiKey ??
+		envVar("AWAITHUMANS_ADMIN_API_TOKEN") ??
+		discovery.adminToken;
 
 	// ── Generate idempotency key ────────────────────────────────────────
 	const idempotencyKey =
