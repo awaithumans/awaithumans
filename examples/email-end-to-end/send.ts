@@ -95,15 +95,27 @@ function buildTransportSetup(): TransportSetup {
 			);
 			process.exit(1);
 		}
+		const port = Number(process.env.SMTP_PORT ?? 587);
+		// Port 465 is implicit TLS (SSL on connect — what Hostinger,
+		// Gmail SSL, and most "secure" SMTP setups use). Port 587 is
+		// STARTTLS (plain connect, upgrade with STARTTLS — what Gmail
+		// modern, O365, AWS SES, Mailgun use). The server's aiosmtplib
+		// rejects setting both modes — pick one based on port.
+		// Override with `SMTP_TLS_MODE=ssl|starttls` if your server
+		// uses a non-standard port.
+		const tlsMode =
+			process.env.SMTP_TLS_MODE ?? (port === 465 ? "ssl" : "starttls");
+		const useTls = tlsMode === "ssl";
 		return {
 			from_email: fromEmail,
 			transport: "smtp",
 			transport_config: {
 				host,
-				port: Number(process.env.SMTP_PORT ?? 587),
+				port,
 				username: process.env.SMTP_USER,
 				password: process.env.SMTP_PASSWORD,
-				start_tls: true,
+				use_tls: useTls,
+				start_tls: !useTls,
 			},
 		};
 	}

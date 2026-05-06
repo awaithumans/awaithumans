@@ -81,6 +81,51 @@ For other SMTP providers, swap `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/
 credentials (not your IAM key); Mailgun's SMTP creds are in their
 dashboard. The same flags work everywhere.
 
+### Option B-bis — Hostinger Mail (custom domain on Hostinger hPanel)
+
+Hostinger uses port 465 with SSL (implicit TLS). The script
+auto-detects port 465 and switches off STARTTLS — no extra flag
+needed.
+
+1. **Get your mailbox credentials.** In Hostinger hPanel → Emails
+   → pick the mailbox → "Connect Apps & Devices" (or "Configure
+   Desktop App"). Hostinger shows the SMTP host, port, and the
+   password is whatever you set when you created the mailbox.
+   Common values:
+   - **SMTP host**: `smtp.hostinger.com`
+   - **SMTP port**: `465` (SSL — preferred) or `587` (STARTTLS)
+   - **Username**: your full email address (`you@yourdomain.com`)
+   - **Password**: the mailbox password you set in hPanel
+     (NOT your Hostinger account password)
+2. **Run:**
+   ```sh
+   cd examples/email-end-to-end
+   npm install
+   AWAITHUMANS_TEST_TRANSPORT=smtp \
+     SMTP_HOST=smtp.hostinger.com \
+     SMTP_PORT=465 \
+     SMTP_USER=you@yourdomain.com \
+     SMTP_PASSWORD="<your-mailbox-password>" \
+     FROM_EMAIL=you@yourdomain.com \
+     RECIPIENT_EMAIL=you@yourdomain.com \
+     npm start
+   ```
+3. Click Approve in your inbox; script returns.
+
+Hostinger-specific gotchas:
+
+- **`from_email` must be the same mailbox you authenticated as.**
+  Hostinger's SMTP rejects sending from a different address even if
+  the domain matches. Set `FROM_EMAIL` and `SMTP_USER` to the same
+  value.
+- **Use port 465 if 587 fails.** Some Hostinger plans only enable
+  one — the dashboard shows you which. The script auto-flips
+  between SSL and STARTTLS based on the port.
+- **Check the "Sending limits" page** in hPanel before running this
+  in a loop. Hostinger throttles outbound mail per mailbox per
+  hour; one test send won't hit it but a verifier-rejection cycle
+  could.
+
 ## What this catches that the smoke test doesn't
 
 - Real DNS resolution + TLS / STARTTLS to the provider
