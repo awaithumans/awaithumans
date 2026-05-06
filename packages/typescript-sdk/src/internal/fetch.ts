@@ -10,7 +10,7 @@
  * non-2xx to different SDK errors (TaskCreateError, PollError, etc.).
  */
 
-import { ServerUnreachableError } from "./errors";
+import { ServerUnreachableError } from "../errors";
 
 export async function fetchWithTimeout(
 	url: string,

@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { generateIdempotencyKey } from "../src/idempotency";
+import { generateIdempotencyKey } from "../src/internal/idempotency";
 
 describe("generateIdempotencyKey", () => {
 	it("returns the same key for the same inputs", async () => {
