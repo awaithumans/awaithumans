@@ -433,13 +433,18 @@ async def get_audit_trail_route(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> list[AuditEntryResponse]:
-    """Get the full audit trail for a task. Operator / admin only.
+    """Get the full audit trail for a task. Admin / operator / assignee.
 
-    The audit trail can quote response keys, completer emails, and
-    verifier reasoning — sensitive enough that a non-operator
-    assignee shouldn't see other reviewers' work even if they're
-    listed on the task. Operators legitimately need it for review."""
+    Same allow-list as `GET /tasks/{id}` — the assignee already sees
+    the task's payload, response, and verifier_result via the parent
+    fetch, so withholding their own task's audit trail just broke the
+    /task page (any 4xx on this endpoint blanked the whole view) without
+    actually protecting any data they couldn't already see.
+
+    Cross-assignee enumeration is still blocked: a non-operator can
+    only read tasks where `assigned_to_user_id == claims.user_id`.
+    """
     task = await get_task(session, task_id)  # raises TaskNotFoundError
-    require_operator_or_admin(request)
+    require_task_read(request, task)
     entries = await get_audit_trail(session, task.id)
     return [AuditEntryResponse.model_validate(e) for e in entries]

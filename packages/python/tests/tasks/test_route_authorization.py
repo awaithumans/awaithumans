@@ -153,12 +153,29 @@ def test_cancel_blocked_for_non_operator(
     assert resp.status_code == 403
 
 
-def test_audit_blocked_for_non_operator(
+def test_audit_visible_to_assignee(
     client: TestClient, reviewer_user: User
 ) -> None:
-    """Audit can quote response keys + completer emails + verifier
-    reasoning; not for non-operator eyes."""
+    """The assignee can read their own task's audit trail.
+
+    The earlier policy was operator-only; that 403'd the dashboard's
+    /task page for any non-operator assignee because the page fetches
+    audit alongside the task. The audit only quotes data the assignee
+    already sees on the task itself (their own response, completer
+    email, verifier reasoning), so withholding it just broke the UI
+    without protecting anything."""
     task_id = _make_task(client, assigned_to_email=REVIEWER_EMAIL)
+    _login(client, REVIEWER_EMAIL, REVIEWER_PASSWORD)
+    resp = client.get(f"/api/tasks/{task_id}/audit")
+    assert resp.status_code == 200
+
+
+def test_audit_blocked_for_non_assignee(
+    client: TestClient, reviewer_user: User, other_user: User
+) -> None:
+    """Cross-assignee enumeration is still refused — a logged-in
+    reviewer can't read someone else's audit trail."""
+    task_id = _make_task(client, assigned_to_email=OTHER_USER_EMAIL)
     _login(client, REVIEWER_EMAIL, REVIEWER_PASSWORD)
     resp = client.get(f"/api/tasks/{task_id}/audit")
     assert resp.status_code == 403
