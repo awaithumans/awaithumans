@@ -12,7 +12,7 @@
 
 import type { JsonSchema7Type } from "zod-to-json-schema";
 
-import type { HumanIdentity } from "./routing";
+import type { HumanIdentity } from "./routing.js";
 
 // ─── Channel ───────────────────────────────────────────────────────────
 

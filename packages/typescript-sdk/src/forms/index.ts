@@ -6,5 +6,5 @@
  * the consumer having to know which file owns which export.
  */
 
-export type { FormDefinition, FormField } from "./definition";
-export { extractForm } from "./extract";
+export type { FormDefinition, FormField } from "./definition.js";
+export { extractForm } from "./extract.js";

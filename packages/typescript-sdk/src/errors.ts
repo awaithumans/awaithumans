@@ -1,4 +1,4 @@
-import { DOCS_ROADMAP_URL, DOCS_TROUBLESHOOTING_URL } from "./internal/constants";
+import { DOCS_ROADMAP_URL, DOCS_TROUBLESHOOTING_URL } from "./internal/constants.js";
 
 export interface AwaitHumansErrorOptions {
 	code: string;

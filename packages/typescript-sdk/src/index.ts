@@ -1,4 +1,4 @@
-export { awaitHuman } from "./await-human";
+export { awaitHuman } from "./await-human.js";
 
 // ─── SDK types (used by developers in their agent code) ─────────────
 export type {
@@ -10,9 +10,9 @@ export type {
 	VerifierConfig,
 	VerificationContext,
 	VerifierResult,
-} from "./types";
+} from "./types/index.js";
 
-export { TERMINAL_STATUSES } from "./types";
+export { TERMINAL_STATUSES } from "./types/index.js";
 
 // ─── Server-side interfaces (exported for reference / adapter authors only) ──
 // These interfaces are implemented by the Python server, not the TS SDK.
@@ -28,9 +28,9 @@ export type {
 	ChannelHandleResult,
 	TaskTypeHandler,
 	RenderFormat,
-} from "./types";
+} from "./types/index.js";
 
-export { awaitHumanInputSchema } from "./schemas";
+export { awaitHumanInputSchema } from "./schemas.js";
 
 export {
 	AwaitHumansError,
@@ -45,6 +45,6 @@ export {
 	TaskTimeoutError,
 	TimeoutRangeError,
 	VerificationExhaustedError,
-} from "./errors";
+} from "./errors.js";
 
-export { awaitAgent, awaitAny } from "./reserved";
+export { awaitAgent, awaitAny } from "./reserved.js";

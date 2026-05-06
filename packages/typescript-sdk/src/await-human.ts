@@ -22,16 +22,16 @@ import {
 	MIN_TIMEOUT_MS,
 	POLL_FETCH_SLACK_SECONDS,
 	POLL_INTERVAL_SECONDS,
-} from "./internal/constants";
-import { envVar } from "./internal/env";
-import { fetchWithTimeout } from "./internal/fetch";
-import { generateIdempotencyKey } from "./internal/idempotency";
+} from "./internal/constants.js";
+import { envVar } from "./internal/env.js";
+import { fetchWithTimeout } from "./internal/fetch.js";
+import { generateIdempotencyKey } from "./internal/idempotency.js";
 import {
 	type CreateTaskRequestWire,
 	type CreateTaskResponseWire,
 	type PollResponseWire,
 	serializeAssignTo,
-} from "./internal/wire";
+} from "./internal/wire.js";
 import {
 	MarketplaceNotAvailableError,
 	PollError,
@@ -42,9 +42,9 @@ import {
 	TaskTimeoutError,
 	TimeoutRangeError,
 	VerificationExhaustedError,
-} from "./errors";
-import { extractForm } from "./forms";
-import type { AwaitHumanOptions } from "./types";
+} from "./errors.js";
+import { extractForm } from "./forms/index.js";
+import type { AwaitHumanOptions } from "./types/index.js";
 
 export async function awaitHuman<TPayload, TResponse>(
 	options: AwaitHumanOptions<TPayload, TResponse>,

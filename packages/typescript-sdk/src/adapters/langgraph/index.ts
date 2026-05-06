@@ -18,7 +18,7 @@
  * Requires: npm install @langchain/langgraph
  */
 
-import type { AwaitHumanOptions } from "../../types";
+import type { AwaitHumanOptions } from "../../types/index.js";
 
 /**
  * LangGraph-durable version of awaitHuman.

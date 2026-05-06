@@ -26,7 +26,7 @@
 
 import type { ZodType, ZodTypeAny } from "zod";
 
-import type { FormDefinition, FormField } from "./definition";
+import type { FormDefinition, FormField } from "./definition.js";
 
 // ─── Zod introspection helpers ─────────────────────────────────────────
 

@@ -78,10 +78,10 @@ import {
 	TaskCancelledError,
 	TaskTimeoutError,
 	VerificationExhaustedError,
-} from "../../errors";
-import { generateIdempotencyKey } from "../../internal/idempotency";
-import { serializeAssignTo } from "../../internal/wire";
-import type { AssignTo, AwaitHumanOptions, VerifierConfig } from "../../types";
+} from "../../errors.js";
+import { generateIdempotencyKey } from "../../internal/idempotency.js";
+import { serializeAssignTo } from "../../internal/wire.js";
+import type { AssignTo, AwaitHumanOptions, VerifierConfig } from "../../types/index.js";
 
 // Signal-name prefix — must match the Python adapter exactly.
 // Cross-language receivers (Python web server signaling a TS
