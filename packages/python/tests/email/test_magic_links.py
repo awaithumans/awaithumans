@@ -109,6 +109,32 @@ def test_short_ttl_honored() -> None:
             verify_action_token(token)
 
 
+def test_recipient_round_trips_through_token() -> None:
+    """The renderer signs the recipient email into every action token.
+    The action route reads `claim.recipient` and stamps it as
+    `completed_by_email` so the audit log isn't a black hole for
+    email completions. Pin the round-trip."""
+    token = sign_action_token(
+        task_id="t1",
+        field_name="approve",
+        value=True,
+        recipient="alice@acme.com",
+    )
+    claim = verify_action_token(token)
+    assert claim.recipient == "alice@acme.com"
+
+
+def test_recipient_omitted_yields_none() -> None:
+    """Pre-feature tokens (no `r` field in the signed body) verify
+    cleanly — the audit log just shows "—" the way it did before
+    this change. Tested by signing without `recipient=`."""
+    token = sign_action_token(
+        task_id="t1", field_name="approve", value=True
+    )
+    claim = verify_action_token(token)
+    assert claim.recipient is None
+
+
 def test_malformed_inputs_rejected() -> None:
     with pytest.raises(InvalidActionTokenError):
         verify_action_token("")

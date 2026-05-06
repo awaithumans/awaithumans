@@ -52,9 +52,15 @@ def _buttons_for_form(
     form: FormDefinition | None,
     *,
     task_id: str,
+    recipient: str,
     public_url: str,
 ) -> list[ButtonSpec]:
-    """Build magic-link buttons, or empty list for link-out-only forms."""
+    """Build magic-link buttons, or empty list for link-out-only forms.
+
+    `recipient` is baked into each token so the action route can
+    stamp `completed_by_email` on the task. Without it, the audit
+    log shows "—" for every email completion.
+    """
     if form is None:
         return []
 
@@ -64,10 +70,16 @@ def _buttons_for_form(
 
     if isinstance(field, Switch):
         approve_token = sign_action_token(
-            task_id=task_id, field_name=field.name, value=True
+            task_id=task_id,
+            field_name=field.name,
+            value=True,
+            recipient=recipient,
         )
         reject_token = sign_action_token(
-            task_id=task_id, field_name=field.name, value=False
+            task_id=task_id,
+            field_name=field.name,
+            value=False,
+            recipient=recipient,
         )
         return [
             ButtonSpec(
@@ -89,7 +101,10 @@ def _buttons_for_form(
                 url=_magic_link_url(
                     public_url,
                     sign_action_token(
-                        task_id=task_id, field_name=field.name, value=opt.value
+                        task_id=task_id,
+                        field_name=field.name,
+                        value=opt.value,
+                        recipient=recipient,
                     ),
                 ),
                 style="primary" if i == 0 else "neutral",
@@ -129,7 +144,9 @@ def build_notification_email(
 ) -> EmailMessage:
     """Assemble the EmailMessage for one recipient."""
     review_url = _review_url(public_url, task_id)
-    buttons = _buttons_for_form(form, task_id=task_id, public_url=public_url)
+    buttons = _buttons_for_form(
+        form, task_id=task_id, recipient=to, public_url=public_url
+    )
     lines = _payload_lines(task_payload, redact_payload)
 
     html = notification_html(
