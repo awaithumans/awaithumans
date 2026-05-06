@@ -54,6 +54,22 @@ async def notify_task(
     form = _parse_form(form_definition)
 
     async with factory() as session:
+        # Pull the task once so we can sign the dashboard handoff URL
+        # with the correct expiry. If the task was deleted between the
+        # route handler and this background run there's nothing to
+        # notify about — bail.
+        from awaithumans.server.services.task_service import get_task
+
+        try:
+            task = await get_task(session, task_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notify_task (email): task %s missing: %s", task_id, exc)
+            return
+
+        handoff_exp_unix = (
+            int(task.timeout_at.timestamp()) if task.timeout_at else None
+        )
+
         for route in routes:
             try:
                 await _deliver_one(
@@ -64,6 +80,7 @@ async def notify_task(
                     task_payload=task_payload,
                     redact_payload=redact_payload,
                     form=form,
+                    handoff_exp_unix=handoff_exp_unix,
                 )
             except EmailTransportError as exc:
                 logger.error(
@@ -90,6 +107,7 @@ async def _deliver_one(
     task_payload: dict[str, Any] | None,
     redact_payload: bool,
     form: FormDefinition | None,
+    handoff_exp_unix: int | None = None,
 ) -> None:
     identity = await _resolve_identity(session, route.identity)
     transport = await _resolve_transport_for(identity)
@@ -122,6 +140,7 @@ async def _deliver_one(
         from_name=from_name,
         reply_to=reply_to,
         public_url=settings.PUBLIC_URL,
+        handoff_exp_unix=handoff_exp_unix,
     )
     result = await transport.send(message)
     logger.info(

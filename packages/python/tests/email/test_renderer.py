@@ -79,7 +79,7 @@ def test_single_select_over_4_falls_back_to_link_out() -> None:
     )
     msg = _build(form)
     assert "/api/channels/email/action/" not in msg.html
-    assert "/tasks/t-abc" in msg.html  # link-out URL
+    assert "/task?id=t-abc" in msg.html  # link-out URL
 
 
 # ─── Forms that can't use magic links ───────────────────────────────────
@@ -89,7 +89,7 @@ def test_long_text_only_form_is_link_out() -> None:
     form = FormDefinition(fields=[_name(long_text(label="Why?"), "why")])
     msg = _build(form)
     assert "/api/channels/email/action/" not in msg.html
-    assert "/tasks/t-abc" in msg.html
+    assert "/task?id=t-abc" in msg.html
 
 
 def test_multi_input_form_is_link_out() -> None:
@@ -104,7 +104,7 @@ def test_multi_input_form_is_link_out() -> None:
     )
     msg = _build(form)
     assert "/api/channels/email/action/" not in msg.html
-    assert "/tasks/t-abc" in msg.html
+    assert "/task?id=t-abc" in msg.html
 
 
 def test_display_text_doesnt_count_as_input() -> None:
