@@ -79,12 +79,28 @@ import {
 	TaskTimeoutError,
 	VerificationExhaustedError,
 } from "../../errors.js";
-import { generateIdempotencyKey } from "../../internal/idempotency.js";
 import {
 	serializeAssignTo,
 	serializeVerifierConfig,
 } from "../../internal/wire.js";
 import type { AssignTo, AwaitHumanOptions, VerifierConfig } from "../../types/index.js";
+
+// Static import of @temporalio/workflow.
+//
+// Why static (vs the lazy require this file used to do): Temporal's
+// worker bundles the workflow file via webpack and resolves
+// `@temporalio/workflow` as an external module — its sandbox VM
+// provides the API at runtime, NOT a bundled copy. A `import("...")`
+// expression (even with a literal) gets compiled to webpack
+// require.ensure / `__webpack_require__.e`, which assumes a browser
+// publicPath the VM doesn't have, and crashes with "Automatic
+// publicPath is not supported in this browser."
+//
+// The trade-off: users importing `awaithumans/temporal` from a non-
+// Temporal context now also load this file's transitive references,
+// but those are tiny and tree-shake under any modern bundler. Users
+// who never touch the temporal subpath aren't affected.
+import * as wfApi from "@temporalio/workflow";
 
 // Signal-name prefix — must match the Python adapter exactly.
 // Cross-language receivers (Python web server signaling a TS
@@ -163,13 +179,21 @@ function signalName(idempotencyKey: string): string {
 export async function awaitHuman<TPayload, TResponse>(
 	options: AwaitHumanTemporalOptions<TPayload, TResponse>,
 ): Promise<TResponse> {
-	// Lazy require: peer dep, optional. Importing temporalio at the
-	// top of this module would force every TS SDK user to install it.
-	const wf = await loadWorkflowApi();
+	// Use the statically-imported workflow API. See the import at
+	// the top of this file for why static (Temporal's bundler treats
+	// `@temporalio/workflow` as a sandbox-provided external).
+	const wf = wfApi;
 
+	// Default the idempotency key to the workflow ID — already unique
+	// by construction and doesn't need a content hash. The previous
+	// default reached for `generateIdempotencyKey`, which uses
+	// `crypto.subtle.digest`; Temporal's workflow sandbox VM has no
+	// `crypto` global, so the default crashed every first awaitHuman
+	// call. Users can still override via `options.idempotencyKey`
+	// when they want a content-derived key (e.g. de-duping retries
+	// that share the same business identifier).
 	const idempotencyKey =
-		options.idempotencyKey ??
-		`temporal:${(await generateIdempotencyKey(options.task, options.payload)).slice(0, 32)}`;
+		options.idempotencyKey ?? `temporal:${wf.workflowInfo().workflowId}`;
 	const signal = signalName(idempotencyKey);
 
 	// Captured by the closure below. We use a 1-element wrapper
@@ -177,12 +201,10 @@ export async function awaitHuman<TPayload, TResponse>(
 	// scalars without a class.
 	const received: { value: CompletionSignal | null } = { value: null };
 
-	wf.setHandler<[CompletionSignal]>(
-		wf.defineSignal<[CompletionSignal]>(signal),
-		(payload) => {
-			received.value = payload;
-		},
-	);
+	const completionSignalDef = wf.defineSignal<[CompletionSignal]>(signal);
+	wf.setHandler(completionSignalDef, (payload) => {
+		received.value = payload;
+	});
 
 	const payloadJsonSchema = zodToJsonSchema(options.payloadSchema);
 	const responseJsonSchema = zodToJsonSchema(options.responseSchema);
@@ -207,20 +229,25 @@ export async function awaitHuman<TPayload, TResponse>(
 		callback_url: options.callbackUrl,
 	};
 
-	await wf.executeActivity<CreateTaskActivityInput, CreateTaskActivityResult>(
-		"awaithumansCreateTask",
-		{
-			args: [
-				{
-					serverUrl: options.serverUrl,
-					apiKey: options.apiKey,
-					body,
-				},
-			],
-			startToCloseTimeout:
-				options.createActivityTimeoutMs ?? DEFAULT_CREATE_ACTIVITY_TIMEOUT_MS,
-		},
-	);
+	// Proxy the create-task activity through Temporal's activity stub.
+	// `proxyActivities` returns a typed object whose methods, when
+	// called, schedule the activity and return its result. The
+	// activity itself is registered worker-side; users wire it up by
+	// passing `awaithumansCreateTask` to `Worker.create({activities})`.
+	const { awaithumansCreateTask } = wf.proxyActivities<{
+		awaithumansCreateTask(
+			input: CreateTaskActivityInput,
+		): Promise<CreateTaskActivityResult>;
+	}>({
+		startToCloseTimeout:
+			options.createActivityTimeoutMs ?? DEFAULT_CREATE_ACTIVITY_TIMEOUT_MS,
+	});
+
+	await awaithumansCreateTask({
+		serverUrl: options.serverUrl,
+		apiKey: options.apiKey,
+		body,
+	});
 
 	// Race: signal received OR timeout. `wf.condition` returns true
 	// when the predicate fires, false when it timed out.
@@ -506,46 +533,3 @@ function toUint8Array(body: ArrayBuffer | Uint8Array | string): Uint8Array {
 	return new TextEncoder().encode(body);
 }
 
-// ─── Lazy peer-dep loader ───────────────────────────────────────────
-
-interface WorkflowApi {
-	defineSignal<TArgs extends unknown[]>(
-		name: string,
-	): { name: string };
-	setHandler<TArgs extends unknown[]>(
-		def: { name: string },
-		handler: (...args: TArgs) => void,
-	): void;
-	executeActivity<TInput, TOut>(
-		name: string,
-		opts: { args: [TInput]; startToCloseTimeout: number },
-	): Promise<TOut>;
-	condition(
-		predicate: () => boolean,
-		timeoutMs?: number,
-	): Promise<boolean>;
-}
-
-let cachedWorkflowApi: WorkflowApi | null = null;
-
-async function loadWorkflowApi(): Promise<WorkflowApi> {
-	if (cachedWorkflowApi !== null) return cachedWorkflowApi;
-	try {
-		// Dynamic import so the base SDK doesn't pull Temporal in at
-		// load time. The peer dep is declared optional in
-		// package.json; users who never call awaitHuman from a workflow
-		// don't need to install it. Module specifier is constructed at
-		// runtime so `tsc` in a base install (no @temporalio installed)
-		// doesn't complain about a missing module.
-		const moduleName = "@temporalio/workflow";
-		const mod = (await import(/* @vite-ignore */ moduleName)) as unknown as WorkflowApi;
-		cachedWorkflowApi = mod;
-		return mod;
-	} catch (cause) {
-		throw new Error(
-			"The Temporal adapter requires `@temporalio/workflow`.\n" +
-				"Install with: npm install @temporalio/workflow @temporalio/client\n" +
-				`Underlying error: ${(cause as Error).message}`,
-		);
-	}
-}
