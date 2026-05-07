@@ -52,7 +52,7 @@ from awaithumans.server.services.task_service import (
     list_tasks,
 )
 from awaithumans.server.services.user_service import get_user
-from awaithumans.server.services.webhook_dispatch import fire_completion_webhook
+from awaithumans.server.services.webhook_dispatch import enqueue_completion_webhook
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -307,13 +307,15 @@ async def complete_task_route(
         completed_via_channel=body.completed_via_channel,
     )
 
-    # Fire the outbound webhook AFTER the response so a slow callback
-    # endpoint never blocks the human's submit. Only fires when the
-    # task actually transitioned to a terminal state — REJECTED is
+    # Enqueue the outbound webhook (the actual POST happens via the
+    # background dispatcher with retry-and-backoff). REJECTED is
     # non-terminal, the agent shouldn't get a "complete" callback for
-    # a verifier-rejected attempt.
-    if task.callback_url and task.status in TERMINAL_STATUSES_SET:
-        background_tasks.add_task(fire_completion_webhook, task)
+    # a verifier-rejected attempt — only enqueue on a real terminal.
+    # Enqueue inline so the row is committed in the same unit of work
+    # as the task transition; if the request fails after this we don't
+    # want a delivery for state that never landed.
+    if task.status in TERMINAL_STATUSES_SET:
+        await enqueue_completion_webhook(session, task)
 
     # Replace the original Slack message so the recipient stops
     # seeing "open" action buttons after they (or someone else) has
@@ -356,9 +358,10 @@ async def cancel_task_route(
 
     # Cancellation is also a terminal transition the durable adapter
     # cares about — without the webhook, a Temporal workflow would
-    # sit waiting for a signal that never comes.
-    if task.callback_url:
-        background_tasks.add_task(fire_completion_webhook, task)
+    # sit waiting for a signal that never comes. Enqueueing rides the
+    # same DB transaction as the cancel so we can't end up with one
+    # without the other.
+    await enqueue_completion_webhook(session, task)
 
     # Mirror the completion path: replace the now-stale "open" Slack
     # messages with a "Cancelled" surface so the operator who got
