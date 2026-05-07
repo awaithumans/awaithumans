@@ -51,7 +51,10 @@
   },
   "devDependencies": {
     "vitest": "^2.1.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@temporalio/workflow": "^1.0.0",
+    "@temporalio/client": "^1.0.0",
+    "@langchain/langgraph": "^0.2.0"
   },
   "license": "MIT",
   "repository": {
