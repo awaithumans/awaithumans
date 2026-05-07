@@ -222,7 +222,21 @@ async def derive_implicit_assignee(
     from awaithumans.server.channels.slack.resolution import resolve_slack_target
 
     route = parse_route(notify[0])
-    if route is None or route.channel != "slack":
+    if route is None:
+        return RoutingResult(user_id=None, email=None)
+
+    # Email path — `notify=["email+id:reviewer@acme.com"]` means
+    # "send a review email to that address." If the address is
+    # already in the directory we pin them as the assignee at
+    # task-create time. If not, the email handoff endpoint
+    # claims the task on first click (see `routes/auth.py`).
+    if route.channel == "email":
+        user = await _get_by_email(session, route.target.lower())
+        if user is None or not user.active:
+            return RoutingResult(user_id=None, email=route.target)
+        return _result_from_user(user)
+
+    if route.channel != "slack":
         return RoutingResult(user_id=None, email=None)
 
     # Channel sigils (`#general`, raw `C…`/`G…`) are broadcasts; the

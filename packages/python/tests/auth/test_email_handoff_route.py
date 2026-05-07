@@ -243,3 +243,117 @@ def test_missing_signature_rejected(client: TestClient) -> None:
         },
     )
     assert resp.status_code == 422
+
+
+# ─── Handoff-claim path ──────────────────────────────────────────────
+
+
+def test_handoff_claims_unassigned_task_for_recipient(
+    client: TestClient,
+) -> None:
+    """An auto-provisioned reviewer who clicks the handoff URL must
+    be able to actually READ the task they were sent. Without
+    handoff-claim, the recipient lands signed-in but with no perms
+    (not operator, not assignee → 403 from `require_task_read`).
+
+    The fix: when the task has no assignee yet, the handoff route
+    sets `assigned_to_user_id` to the recipient. Same intent the
+    Slack DM flow encodes via implicit-assignee derivation at
+    create time."""
+    from awaithumans.server.db.connection import get_async_session_factory
+    from awaithumans.server.services.task_service import (
+        create_task,
+        get_task,
+    )
+
+    new_email = "claim-recipient@example.com"
+
+    async def _make_task() -> str:
+        factory = get_async_session_factory()
+        async with factory() as session:
+            task = await create_task(
+                session,
+                task="Approve refund",
+                payload={},
+                payload_schema={},
+                response_schema={},
+                timeout_seconds=3600,
+                idempotency_key="claim-test-1",
+            )
+            return task.id
+
+    task_id = asyncio.new_event_loop().run_until_complete(_make_task())
+
+    exp = _far_future()
+    sig = sign_handoff(recipient=new_email, task_id=task_id, exp_unix=exp)
+
+    resp = client.get(
+        "/api/auth/email-handoff",
+        params={"to": new_email, "t": task_id, "e": exp, "s": sig},
+    )
+    assert resp.status_code == 303
+
+    # Task is now assigned to the auto-provisioned reviewer.
+    async def _read() -> tuple[str | None, str | None]:
+        factory = get_async_session_factory()
+        async with factory() as session:
+            task = await get_task(session, task_id)
+            return task.assigned_to_user_id, task.assigned_to_email
+
+    user_id, email = asyncio.new_event_loop().run_until_complete(_read())
+    assert email == new_email
+    assert user_id is not None  # the just-provisioned user
+
+
+def test_handoff_does_not_steal_existing_assignee(
+    client: TestClient, operator_user: User
+) -> None:
+    """If the task already has an assignee, the handoff signs the
+    user in (so they can read the task if they're an operator) but
+    DOESN'T overwrite the assignee. First-writer-wins protects
+    against a second recipient stealing the queue position from
+    the first."""
+    from awaithumans.server.db.connection import get_async_session_factory
+    from awaithumans.server.services.task_service import (
+        create_task,
+        get_task,
+    )
+
+    async def _make_assigned_task() -> str:
+        factory = get_async_session_factory()
+        async with factory() as session:
+            task = await create_task(
+                session,
+                task="Approve",
+                payload={},
+                payload_schema={},
+                response_schema={},
+                timeout_seconds=3600,
+                idempotency_key="claim-test-2",
+                assign_to={"email": operator_user.email},  # pre-assigned
+            )
+            return task.id
+
+    task_id = asyncio.new_event_loop().run_until_complete(
+        _make_assigned_task()
+    )
+
+    # Sign for a different recipient than the assignee.
+    other_email = "later-clicker@example.com"
+    exp = _far_future()
+    sig = sign_handoff(recipient=other_email, task_id=task_id, exp_unix=exp)
+
+    resp = client.get(
+        "/api/auth/email-handoff",
+        params={"to": other_email, "t": task_id, "e": exp, "s": sig},
+    )
+    assert resp.status_code == 303  # session minted
+
+    async def _read() -> str | None:
+        factory = get_async_session_factory()
+        async with factory() as session:
+            task = await get_task(session, task_id)
+            return task.assigned_to_user_id
+
+    user_id = asyncio.new_event_loop().run_until_complete(_read())
+    assert user_id == operator_user.id  # original assignee untouched
