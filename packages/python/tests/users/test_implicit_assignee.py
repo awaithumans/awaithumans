@@ -201,16 +201,49 @@ async def test_inactive_directory_user_skipped(
 
 
 @pytest.mark.asyncio
-async def test_email_channel_does_not_derive(session: AsyncSession) -> None:
-    """`notify=["email:alice@..."]` doesn't go through the Slack
-    resolver — different channel, different lookup story. Stay
-    unassigned. (Future: add an email-channel derivation if there's
-    demand.)"""
-    await _seed_user(session, email="alice@acme.com")
+async def test_email_channel_derives_when_recipient_is_directory_user(
+    session: AsyncSession,
+) -> None:
+    """`notify=["email:alice@..."]` → look up alice in the directory
+    and pin her as assignee, mirroring the Slack DM derivation.
+    Without this, the auto-provisioned-on-handoff flow would always
+    have to claim — for recipients who already have directory rows
+    the create-time path is cleaner."""
+    user = await _seed_user(session, email="alice@acme.com")
     result = await derive_implicit_assignee(
         session, ["email:alice@acme.com"]
     )
+    assert result.user_id == user.id
+    assert result.email == user.email
+
+
+@pytest.mark.asyncio
+async def test_email_channel_with_unknown_recipient_stays_unassigned(
+    session: AsyncSession,
+) -> None:
+    """Recipient isn't in the directory yet → derivation can't pin
+    a user_id but still threads the address through so the email
+    channel knows where to send. The handoff endpoint claims at
+    click time when the user is auto-provisioned."""
+    result = await derive_implicit_assignee(
+        session, ["email:nobody@acme.com"]
+    )
     assert result.user_id is None
+    assert result.email == "nobody@acme.com"
+
+
+@pytest.mark.asyncio
+async def test_email_channel_handles_identity_suffix(
+    session: AsyncSession,
+) -> None:
+    """`notify=["email+acme:alice@..."]` (identity-suffixed) works
+    the same way — derivation looks up the recipient regardless of
+    which identity routes the email."""
+    user = await _seed_user(session, email="alice@acme.com")
+    result = await derive_implicit_assignee(
+        session, ["email+acme-prod:alice@acme.com"]
+    )
+    assert result.user_id == user.id
 
 
 @pytest.mark.asyncio

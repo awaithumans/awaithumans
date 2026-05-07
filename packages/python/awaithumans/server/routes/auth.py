@@ -293,6 +293,18 @@ async def email_handoff(
             "to re-add you to the directory.",
         )
 
+    # Claim the task for the recipient when nobody owns it yet.
+    # Without this, the auto-provisioned reviewer would land on the
+    # dashboard and immediately see "Couldn't load task" — they're
+    # signed in but `require_task_read` denies them because they're
+    # neither operator nor assignee. The handoff URL is itself proof
+    # they had access to the email; promoting them to assignee on
+    # first click is the same intent shape the Slack DM flow
+    # encodes via the implicit-assignee derivation at create time.
+    await _claim_task_for_recipient_if_unassigned(
+        session, task_id=t, user_id=user.id, user_email=normalized_email
+    )
+
     token = sign_session(user_id=user.id, is_operator=user.is_operator)
     target = f"/task?id={t}"
     response = RedirectResponse(url=target, status_code=303)
@@ -309,3 +321,41 @@ async def email_handoff(
         "Email handoff: signed in user=%s for task=%s", user.id, t
     )
     return response
+
+
+async def _claim_task_for_recipient_if_unassigned(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    user_id: str,
+    user_email: str,
+) -> None:
+    """First-writer-wins update — sets `assigned_to_user_id` only when
+    the row is currently null. Two recipients clicking simultaneously
+    is exceedingly rare for email (typical notify list is one address)
+    but we still race-safe via the WHERE clause.
+
+    Best-effort: if the task was deleted, terminal, or already assigned
+    we no-op. The handoff still mints the session — operators who want
+    to read other people's tasks are operators, not auto-provisioned
+    reviewers.
+    """
+    from sqlalchemy import update
+
+    from awaithumans.server.db.models import Task
+    from awaithumans.utils.constants import TERMINAL_STATUSES_SET
+
+    result = await session.execute(
+        update(Task)
+        .where(Task.id == task_id)
+        .where(Task.assigned_to_user_id.is_(None))
+        .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
+        .values(assigned_to_user_id=user_id, assigned_to_email=user_email)
+    )
+    if result.rowcount > 0:
+        await session.commit()
+        logger.info(
+            "Email handoff: claimed task=%s for user=%s",
+            task_id,
+            user_id,
+        )
