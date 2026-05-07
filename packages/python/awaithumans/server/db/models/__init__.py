@@ -14,6 +14,10 @@ from awaithumans.server.db.models.slack_installation import SlackInstallation
 from awaithumans.server.db.models.slack_task_message import SlackTaskMessage
 from awaithumans.server.db.models.task import Task
 from awaithumans.server.db.models.user import User
+from awaithumans.server.db.models.webhook_delivery import (
+    WebhookDelivery,
+    WebhookDeliveryStatus,
+)
 from awaithumans.types import TaskStatus
 
 __all__ = [
@@ -25,4 +29,6 @@ __all__ = [
     "Task",
     "TaskStatus",
     "User",
+    "WebhookDelivery",
+    "WebhookDeliveryStatus",
 ]

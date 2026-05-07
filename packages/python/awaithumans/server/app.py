@@ -33,9 +33,11 @@ from awaithumans.server.routes import (
     status,
     tasks,
     users,
+    webhook_deliveries,
 )
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
 from awaithumans.server.services.user_service import count_users
+from awaithumans.server.services.webhook_scheduler import run_webhook_scheduler
 
 logger = logging.getLogger("awaithumans.server")
 
@@ -54,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_url = await _first_run_setup_url()
 
     scheduler_task = asyncio.create_task(run_timeout_scheduler())
+    webhook_task = asyncio.create_task(run_webhook_scheduler())
     banner_task: asyncio.Task[None] | None = None
     if setup_url:
         banner_task = asyncio.create_task(_print_banner_after_startup(setup_url))
@@ -65,8 +68,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await banner_task
     scheduler_task.cancel()
+    webhook_task.cancel()
     with suppress(asyncio.CancelledError):
         await scheduler_task
+    with suppress(asyncio.CancelledError):
+        await webhook_task
     await close_db()
     logger.info("Server shut down")
 
@@ -202,6 +208,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(email.router, prefix="/api")
     app.include_router(users.router, prefix="/api")
     app.include_router(setup.router, prefix="/api")
+    app.include_router(webhook_deliveries.router, prefix="/api")
 
     # ── Dashboard static files ───────────────────────────────────────
     # The bundled dashboard lives inside the package

@@ -16,6 +16,7 @@ from awaithumans.server.schemas.task import (
     PollResponse,
     TaskResponse,
 )
+from awaithumans.server.schemas.webhook import WebhookDeliveryResponse
 
 __all__ = [
     "AuditEntryResponse",
@@ -30,4 +31,5 @@ __all__ = [
     "TaskResponse",
     "TaskStats",
     "TaskStatsByDay",
+    "WebhookDeliveryResponse",
 ]

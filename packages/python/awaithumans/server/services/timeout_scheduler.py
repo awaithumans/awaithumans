@@ -14,7 +14,7 @@ from awaithumans.server.channels.slack.post_completion import (
 from awaithumans.server.db.connection import get_async_session_factory
 from awaithumans.server.db.models import Task
 from awaithumans.server.services.task_service import timeout_task
-from awaithumans.server.services.webhook_dispatch import fire_completion_webhook
+from awaithumans.server.services.webhook_dispatch import enqueue_completion_webhook
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET, TIMEOUT_CHECK_INTERVAL_SECONDS
 
 logger = logging.getLogger("awaithumans.timeout_scheduler")
@@ -55,16 +55,13 @@ async def _check_and_timeout_expired_tasks() -> None:
         for task_id in expired_ids:
             logger.info("Timing out task '%s'", task_id)
             task = await timeout_task(session, task_id)
-            # Fire webhook for callback-equipped tasks. Without this,
-            # a Temporal workflow waiting on a signal would sit
-            # forever on tasks the server timed out — the workflow's
-            # own timer would eventually fire, but operators reading
-            # the dashboard would see a `timed_out` task with no
-            # signal ever sent. asyncio.create_task makes it
-            # fire-and-forget so a slow callback doesn't block the
-            # next iteration of the scheduler loop.
-            if task.callback_url:
-                asyncio.create_task(fire_completion_webhook(task))
+            # Enqueue the webhook for callback-equipped tasks. The
+            # actual POST runs out of the webhook scheduler with retry
+            # and backoff, so a flaky receiver no longer leaves a
+            # Temporal workflow hanging for its own timer to fire —
+            # the dispatcher will keep retrying for up to 3 days and
+            # an operator can redrive past that.
+            await enqueue_completion_webhook(session, task)
 
             # Replace the original Slack notification ("Approve / Reject"
             # buttons) with a "Timed out" surface so the recipient
