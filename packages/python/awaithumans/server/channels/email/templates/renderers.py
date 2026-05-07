@@ -43,12 +43,28 @@ def notification_html(
     buttons: list[ButtonSpec],
     review_url: str,
 ) -> str:
-    """The primary email: task title, payload preview, buttons, link-out footer."""
+    """The primary email: task title, payload preview, buttons.
+
+    The buttons row always carries an "Open task" CTA pointing at the
+    dashboard. When the form has magic-link shortcuts (single Switch /
+    small SingleSelect → Approve / Reject style buttons), they render
+    first and "Open task" rides alongside as an alternative path. When
+    the form has no shortcuts (multi-field response, file upload,
+    etc.), "Open task" is the only call to action — clearer than the
+    tiny inline hyperlink the previous template used.
+    """
     payload_html = _render_payload_html(payload_lines, redacted)
-    buttons_inner = "".join(render_button(b) for b in buttons)
-    buttons_section = (
-        f'<div style="margin:24px 0;">{buttons_inner}</div>' if buttons else ""
+    # `neutral` style for "Open task" when there's already a primary
+    # action button (Approve/Reject) — don't compete for the eye.
+    # `primary` when it's the only call to action so the brand color
+    # makes it the obvious next step.
+    open_button_style = "neutral" if buttons else "primary"
+    open_task_button = ButtonSpec(
+        label="Open task", url=review_url, style=open_button_style
     )
+    all_buttons = [*buttons, open_task_button]
+    buttons_inner = "".join(render_button(b) for b in all_buttons)
+    buttons_section = f'<div style="margin:24px 0;">{buttons_inner}</div>'
 
     return _load("notification.html").substitute(
         task_title=escape(task_title),
