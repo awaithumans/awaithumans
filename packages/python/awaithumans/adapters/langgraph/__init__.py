@@ -235,6 +235,33 @@ async def await_human(
         idem,
     )
 
+    # Idempotency-collision short-circuit. If the server returned an
+    # already-terminal task — e.g. the dev re-ran the example with
+    # the same idempotency_key after a previous completion — there's
+    # no webhook coming and `Command(resume=...)` would never fire.
+    # Pre-#72 this hung the graph on `interrupt()` until the
+    # checkpointer's timeout (or forever, if there isn't one). Treat
+    # this as the Stripe-style retry-returns-cached-response contract:
+    # log loudly, then resolve from `task_record["response"]` and
+    # skip `interrupt()` entirely. Subsequent nodes run normally.
+    existing_status = task_record.get("status")
+    if existing_status in _TERMINAL_STATUS_VALUES:
+        logger.warning(
+            "LangGraph adapter: idempotency_key=%s already exists, status=%s, "
+            "completed_at=%s. Returning cached response without calling "
+            "interrupt(). Pass a fresh idempotency_key= for a new attempt.",
+            idem,
+            existing_status,
+            task_record.get("completed_at") or task_record.get("timed_out_at"),
+        )
+        return _resolve_terminal(
+            existing_status,
+            task_record,
+            response_schema,
+            task=task,
+            timeout_seconds=timeout_seconds,
+        )
+
     # First run: throws GraphInterrupt, graph pauses, caller returns.
     # Resume: returns the dict the callback handler passed to
     # Command(resume=...). We hand the FULL webhook body through (not
@@ -277,6 +304,46 @@ async def await_human(
     raise RuntimeError(
         f"LangGraph adapter saw unknown terminal status "
         f"'{status}' for task '{task}'"
+    )
+
+
+# Terminal status values as wire strings (server returns them as
+# strings on the task JSON; no need to import the TaskStatus enum
+# just for this set).
+_TERMINAL_STATUS_VALUES = frozenset(
+    {"completed", "timed_out", "cancelled", "verification_exhausted"}
+)
+
+
+def _resolve_terminal(
+    status: str,
+    task_record: dict[str, Any],
+    response_schema: type[T],
+    *,
+    task: str,
+    timeout_seconds: int,
+) -> T:
+    """Map a server-returned terminal task to the right return value.
+
+    Used by the idempotency-collision short-circuit. Mirrors the
+    post-resume branches in `await_human` but takes the full task
+    dict from the server instead of the webhook resume payload —
+    only difference is where the `response` field lives."""
+    if status == "completed":
+        try:
+            return response_schema.model_validate(task_record.get("response"))
+        except Exception as exc:  # noqa: BLE001
+            raise SchemaValidationError("response", str(exc)) from exc
+    if status == "timed_out":
+        raise TaskTimeoutError(task=task, timeout_seconds=timeout_seconds)
+    if status == "cancelled":
+        raise TaskCancelledError(task)
+    if status == "verification_exhausted":
+        raise VerificationExhaustedError(
+            task, task_record.get("verification_attempt", 0)
+        )
+    raise RuntimeError(
+        f"LangGraph adapter saw unknown terminal status '{status}' for task '{task}'"
     )
 
 

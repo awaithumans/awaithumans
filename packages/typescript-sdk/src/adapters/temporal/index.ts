@@ -84,7 +84,10 @@ import {
 	serializeAssignTo,
 	serializeVerifierConfig,
 } from "../../internal/wire.js";
-import type { AssignTo, AwaitHumanOptions, VerifierConfig } from "../../types/index.js";
+import type { AssignTo, AwaitHumanOptions, TaskStatus, VerifierConfig } from "../../types/index.js";
+import { TERMINAL_STATUSES } from "../../types/index.js";
+
+import type { ZodType as ZodTypeRef } from "zod";
 
 // Static import of @temporalio/workflow.
 //
@@ -148,6 +151,15 @@ interface CreateTaskActivityInput {
 interface CreateTaskActivityResult {
 	id: string;
 	idempotencyKey: string;
+	// Echoed from the server so `awaitHuman` can short-circuit when an
+	// idempotency-key collision returns an already-terminal task. PR
+	// #72 — without this, a re-run with the same key would park the
+	// workflow on `wf.condition` until timeout.
+	status: string;
+	response: unknown | null;
+	completedAt: string | null;
+	timedOutAt: string | null;
+	verificationAttempt: number;
 }
 
 // The signal payload the user's web server delivers — mirrors the
@@ -162,6 +174,45 @@ interface CompletionSignal {
 	completed_by_email?: string | null;
 	completed_via_channel?: string | null;
 	verification_attempt?: number;
+}
+
+/**
+ * Map a server-returned terminal task to the right return value.
+ * Used by both the idempotency-collision short-circuit (PR #72) and
+ * the post-signal branches at the bottom of `awaitHuman` — only
+ * difference is where the `response` field lives.
+ *
+ * Kept as a non-async function (no Temporal API touched) so it's
+ * callable from the workflow sandbox without ceremony.
+ */
+function resolveTerminal<TResponse>(
+	status: string,
+	source: { response?: unknown; verificationAttempt?: number; verification_attempt?: number },
+	responseSchema: ZodTypeRef<TResponse>,
+	taskName: string,
+	timeoutMs: number,
+): TResponse {
+	if (status === "completed") {
+		const validated = responseSchema.safeParse(source.response);
+		if (!validated.success) {
+			throw new SchemaValidationError("response", validated.error.message);
+		}
+		return validated.data;
+	}
+	if (status === "timed_out") {
+		throw new TaskTimeoutError(taskName, timeoutMs);
+	}
+	if (status === "cancelled") {
+		throw new TaskCancelledError(taskName);
+	}
+	if (status === "verification_exhausted") {
+		const attempt =
+			source.verificationAttempt ?? source.verification_attempt ?? 0;
+		throw new VerificationExhaustedError(taskName, attempt);
+	}
+	throw new Error(
+		`Temporal adapter saw unknown terminal status '${status}' for task '${taskName}'`,
+	);
 }
 
 function signalName(idempotencyKey: string): string {
@@ -250,11 +301,34 @@ export async function awaitHuman<TPayload, TResponse>(
 			options.createActivityTimeoutMs ?? DEFAULT_CREATE_ACTIVITY_TIMEOUT_MS,
 	});
 
-	await awaithumansCreateTask({
+	const taskRecord = await awaithumansCreateTask({
 		serverUrl: options.serverUrl,
 		apiKey: options.apiKey,
 		body,
 	});
+
+	// Idempotency-collision short-circuit. If the server returned an
+	// already-terminal task — e.g. a dev re-ran the example with the
+	// same idempotency_key after a previous completion — there's no
+	// signal coming. Pre-#72 the workflow parked on `wf.condition`
+	// for the full `timeoutMs` and then threw `TaskTimeoutError`,
+	// which made the example look broken on retry. Treat this as the
+	// Stripe-style retry-returns-cached-response contract.
+	if (TERMINAL_STATUSES.includes(taskRecord.status as TaskStatus)) {
+		console.warn(
+			`[awaithumans/temporal] idempotency_key=${idempotencyKey} already exists, ` +
+				`status=${taskRecord.status}, completed_at=${taskRecord.completedAt ?? taskRecord.timedOutAt}. ` +
+				`Returning cached response without waiting for a new signal. ` +
+				`Pass a fresh idempotencyKey for a new attempt.`,
+		);
+		return resolveTerminal(
+			taskRecord.status,
+			taskRecord,
+			options.responseSchema,
+			options.task,
+			options.timeoutMs,
+		);
+	}
 
 	// Race: signal received OR timeout. `wf.condition` returns true
 	// when the predicate fires, false when it timed out.
@@ -339,8 +413,28 @@ export async function awaithumansCreateTask(
 		);
 	}
 
-	const data = (await resp.json()) as { id: string; idempotency_key: string };
-	return { id: data.id, idempotencyKey: data.idempotency_key };
+	// We need more than `id` + `idempotency_key` so the workflow can
+	// short-circuit when an idempotency-key collision returns an
+	// already-terminal task (PR #72). Fields that aren't yet set are
+	// null on the wire.
+	const data = (await resp.json()) as {
+		id: string;
+		idempotency_key: string;
+		status: string;
+		response: unknown | null;
+		completed_at: string | null;
+		timed_out_at: string | null;
+		verification_attempt: number;
+	};
+	return {
+		id: data.id,
+		idempotencyKey: data.idempotency_key,
+		status: data.status,
+		response: data.response,
+		completedAt: data.completed_at,
+		timedOutAt: data.timed_out_at,
+		verificationAttempt: data.verification_attempt,
+	};
 }
 
 // ─── User-web-server-side: dispatchSignal ───────────────────────────
