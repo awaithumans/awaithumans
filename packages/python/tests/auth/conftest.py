@@ -58,13 +58,34 @@ def _isolated_db() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _payload_key() -> Iterator[None]:
     """Every auth test needs PAYLOAD_KEY — sessions and encrypted columns
-    both derive their keys from it."""
-    original = settings.PAYLOAD_KEY
-    settings.PAYLOAD_KEY = secrets.token_urlsafe(32)
+    both derive their keys from it.
+
+    We swap BOTH the pydantic-settings copy AND the `os.environ` value
+    because the new `awaithumans.utils.webhook_signing` module (PR #71)
+    reads directly from `os.environ` to stay free of the [server]
+    extra. Without the env-var swap, a test that signs a body via the
+    server gets a different HMAC key than a test that verifies via the
+    adapter, and signature checks flap."""
+    import os
+
+    from awaithumans.utils import webhook_signing
+
+    fresh = secrets.token_urlsafe(32)
+    original_settings = settings.PAYLOAD_KEY
+    original_env = os.environ.get("AWAITHUMANS_PAYLOAD_KEY")
+
+    settings.PAYLOAD_KEY = fresh
+    os.environ["AWAITHUMANS_PAYLOAD_KEY"] = fresh
     encryption.reset_key_cache()
+    webhook_signing.reset_cache()
     yield
-    settings.PAYLOAD_KEY = original
+    settings.PAYLOAD_KEY = original_settings
+    if original_env is None:
+        os.environ.pop("AWAITHUMANS_PAYLOAD_KEY", None)
+    else:
+        os.environ["AWAITHUMANS_PAYLOAD_KEY"] = original_env
     encryption.reset_key_cache()
+    webhook_signing.reset_cache()
 
 
 @pytest.fixture(autouse=True)

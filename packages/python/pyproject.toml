@@ -91,9 +91,15 @@ server = [
 ]
 temporal = [
     "temporalio>=1.7.0",
+    # HMAC verification of awaithumans callbacks. Lives in
+    # `awaithumans.utils.webhook_signing` (PR #71); the temporal
+    # callback receiver imports it without needing [server].
+    "cryptography>=43.0.0",
 ]
 langgraph = [
     "langgraph>=0.2.0",
+    # Same as [temporal]: callback handlers verify webhook HMACs.
+    "cryptography>=43.0.0",
 ]
 verifier-claude = [
     "anthropic>=0.40.0",

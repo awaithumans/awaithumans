@@ -5,10 +5,9 @@
 # this checkout. Pre-PyPI this gets you the LangGraph adapter import.
 # Post-launch users can replace with `awaithumans[langgraph]>=0.1.0`.
 #
-# We also pull [server] because dispatch_resume reuses the canonical
-# HMAC verification from awaithumans.server.services.webhook_dispatch
-# (same trade-off the Temporal adapter makes — see adapter docstring).
--e ../../packages/python[langgraph,server]
+# Post-PR-#71 the [langgraph] extra includes `cryptography`, so the
+# callback receiver verifies webhook HMACs without needing [server].
+-e ../../packages/python[langgraph]
 
 # FastAPI + uvicorn for the app process. The awaithumans package
 # already depends on these via [server], but listing them explicitly
