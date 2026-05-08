@@ -1,10 +1,12 @@
-"""Service-key CRUD and verification.
+"""Service-key CRUD and verification (async).
 
 Public API: create_service_key, verify_service_key, list_service_keys,
             revoke_service_key.
 Private helpers: _hash, _ulid.
 
-No FastAPI imports. Session is passed explicitly by the caller.
+All functions take an `AsyncSession` (the codebase is async-first; the
+mint endpoint and `with_session()` CLI helper both yield AsyncSession).
+No FastAPI imports.
 """
 
 from __future__ import annotations
@@ -14,7 +16,8 @@ import secrets
 import time
 from datetime import UTC, datetime
 
-from sqlmodel import Session, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 
 from awaithumans.server.db.models import ServiceAPIKey
 from awaithumans.server.services.exceptions import ServiceKeyNotFoundError
@@ -25,7 +28,8 @@ from awaithumans.utils.constants import (
     SERVICE_KEY_RAW_BYTES,
 )
 
-# ── Private helpers ────────────────────────────────────────────────────────────
+
+# ── Private helpers ────────────────────────────────────────────────────
 
 
 def _hash(raw_key: str) -> str:
@@ -38,39 +42,32 @@ def _ulid() -> str:
 
     Produces a 29-character lowercase hex string. Not a true ULID (no
     Crockford base32) but satisfies timestamp-ms + secrets.token_hex(8)
-    uniqueness — same shape as _token_id in embed_token_service.py.
+    uniqueness — same shape as `_token_id` in embed_token_service.py.
     """
     ts_hex = format(int(time.time() * 1000), "013x")
     rand_hex = secrets.token_hex(8)
     return f"{ts_hex}{rand_hex}"
 
 
-# ── Public API ─────────────────────────────────────────────────────────────────
+# ── Public API ─────────────────────────────────────────────────────────
 
 
-def create_service_key(session: Session, *, name: str) -> tuple[str, ServiceAPIKey]:
+async def create_service_key(
+    session: AsyncSession, *, name: str
+) -> tuple[str, ServiceAPIKey]:
     """Create a new service key and persist its hash.
 
-    Args:
-        session: Active SQLModel session.
-        name: Human-readable display name (1–80 chars).
-
-    Returns:
-        (raw, row) — the raw plaintext key (shown once, never stored) and the
-        persisted ServiceAPIKey row.
-
-    Raises:
-        ValueError: if name is empty or exceeds SERVICE_KEY_MAX_NAME_LENGTH.
+    Returns (raw, row). The raw key is shown once, never stored.
+    Raises ValueError on empty/oversize name.
     """
     if not name or len(name) > SERVICE_KEY_MAX_NAME_LENGTH:
         raise ValueError(
-            f"Service key name must be between 1 and {SERVICE_KEY_MAX_NAME_LENGTH} characters, "
+            f"Service key name must be 1..{SERVICE_KEY_MAX_NAME_LENGTH} chars, "
             f"got {len(name)}."
         )
 
     raw = f"{SERVICE_KEY_PREFIX}{secrets.token_hex(SERVICE_KEY_RAW_BYTES)}"
     key_hash = _hash(raw)
-
     row = ServiceAPIKey(
         id=_ulid(),
         name=name,
@@ -79,71 +76,54 @@ def create_service_key(session: Session, *, name: str) -> tuple[str, ServiceAPIK
         created_at=datetime.now(UTC),
     )
     session.add(row)
-    session.commit()
-    session.refresh(row)
+    await session.commit()
+    await session.refresh(row)
     return raw, row
 
 
-def verify_service_key(session: Session, raw_key: str) -> ServiceAPIKey:
-    """Verify a raw service key and update last_used_at.
+async def verify_service_key(
+    session: AsyncSession, raw_key: str
+) -> ServiceAPIKey:
+    """Verify a raw service key and touch last_used_at.
 
-    Args:
-        session: Active SQLModel session.
-        raw_key: The plaintext key presented by the caller.
-
-    Returns:
-        The matching ServiceAPIKey row.
-
-    Raises:
-        ServiceKeyNotFoundError: if no row matches the hash or the key is revoked.
-            Revoked and missing keys raise the same error to avoid leaking state.
+    Raises ServiceKeyNotFoundError on miss OR revoked — same error in
+    both cases to avoid leaking row existence to bearer-of-bad-key.
     """
     h = _hash(raw_key)
-    row = session.exec(select(ServiceAPIKey).where(ServiceAPIKey.key_hash == h)).first()
+    result = await session.execute(
+        select(ServiceAPIKey).where(ServiceAPIKey.key_hash == h)
+    )
+    row = result.scalar_one_or_none()
     if row is None or row.revoked_at is not None:
         raise ServiceKeyNotFoundError()
     row.last_used_at = datetime.now(UTC)
     session.add(row)
-    session.commit()
-    session.refresh(row)
+    await session.commit()
+    await session.refresh(row)
     return row
 
 
-def list_service_keys(session: Session, *, include_revoked: bool = False) -> list[ServiceAPIKey]:
-    """Return all service keys ordered by created_at.
-
-    Args:
-        session: Active SQLModel session.
-        include_revoked: When False (default), excludes rows with revoked_at set.
-
-    Returns:
-        Ordered list of ServiceAPIKey rows.
-    """
+async def list_service_keys(
+    session: AsyncSession, *, include_revoked: bool = False
+) -> list[ServiceAPIKey]:
+    """Return service keys ordered by created_at."""
     stmt = select(ServiceAPIKey).order_by(ServiceAPIKey.created_at)
     if not include_revoked:
         stmt = stmt.where(ServiceAPIKey.revoked_at.is_(None))  # type: ignore[union-attr]
-    return list(session.exec(stmt).all())
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
 
 
-def revoke_service_key(session: Session, key_id: str) -> ServiceAPIKey:
-    """Set revoked_at on a service key. Idempotent — safe to call twice.
-
-    Args:
-        session: Active SQLModel session.
-        key_id: The primary-key id of the row to revoke.
-
-    Returns:
-        The (now-revoked) ServiceAPIKey row.
-
-    Raises:
-        ServiceKeyNotFoundError: if no row exists with the given key_id.
-    """
-    row = session.get(ServiceAPIKey, key_id)
+async def revoke_service_key(
+    session: AsyncSession, key_id: str
+) -> ServiceAPIKey:
+    """Idempotently revoke a service key. Raises ServiceKeyNotFoundError on miss."""
+    row = await session.get(ServiceAPIKey, key_id)
     if row is None:
         raise ServiceKeyNotFoundError()
     if row.revoked_at is None:
         row.revoked_at = datetime.now(UTC)
         session.add(row)
-        session.commit()
-        session.refresh(row)
+        await session.commit()
+        await session.refresh(row)
     return row

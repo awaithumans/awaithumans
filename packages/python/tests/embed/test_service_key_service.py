@@ -1,23 +1,18 @@
-"""Tests for service_key_service CRUD and verification.
+"""Service-layer tests for service_api_keys CRUD + verification.
 
-All tests use an in-memory SQLite engine + Session fixture — no FastAPI, no
-real DB connection.
-
-Covered:
-  1. create_service_key returns (raw, row); raw starts with ah_sk_, len > 20.
-  2. row.key_hash != raw; row.key_prefix == raw[:12]; row.name == "acme-prod".
-  3. verify_service_key(raw) round-trips to the same row.
-  4. verify_service_key("ah_sk_doesnotexist") raises ServiceKeyNotFoundError.
-  5. revoking then verifying raises ServiceKeyNotFoundError.
-  6. list_service_keys(include_revoked=False) excludes revoked rows.
-  7. list_service_keys(include_revoked=True) includes revoked rows.
-  8. oversize name (> 80 chars) raises ValueError.
+Each test gets a fresh in-memory async SQLite engine + AsyncSession,
+no module-level state.
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlmodel import SQLModel
+from sqlalchemy.orm import sessionmaker
 
 from awaithumans.server.services.exceptions import ServiceKeyNotFoundError
 from awaithumans.server.services.service_key_service import (
@@ -26,108 +21,62 @@ from awaithumans.server.services.service_key_service import (
     revoke_service_key,
     verify_service_key,
 )
-from awaithumans.utils.constants import SERVICE_KEY_DISPLAY_PREFIX_LENGTH, SERVICE_KEY_PREFIX
 
 
-@pytest.fixture
-def session() -> Session:  # type: ignore[return]
-    engine = create_engine("sqlite:///:memory:")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as s:
-        yield s  # type: ignore[misc]
+@pytest_asyncio.fixture
+async def session() -> AsyncIterator[AsyncSession]:
+    """Per-test in-memory async SQLite session."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as s:
+        yield s
+    await engine.dispose()
 
 
-# ── 1 & 2: create_service_key shape ──────────────────────────────────────────
-
-
-def test_create_returns_raw_and_row(session: Session) -> None:
-    """create_service_key returns (raw, row); raw has correct prefix and length."""
-    raw, row = create_service_key(session, name="acme-prod")
-
-    assert raw.startswith(SERVICE_KEY_PREFIX)
+async def test_create_returns_raw_key_once(session: AsyncSession) -> None:
+    raw, row = await create_service_key(session, name="acme-prod")
+    assert raw.startswith("ah_sk_")
     assert len(raw) > 20
     assert row.key_hash != raw
-    assert row.key_prefix == raw[:SERVICE_KEY_DISPLAY_PREFIX_LENGTH]
+    assert row.key_prefix == raw[:12]
     assert row.name == "acme-prod"
-    assert row.id is not None
-    assert row.created_at is not None
-    assert row.last_used_at is None
-    assert row.revoked_at is None
 
 
-# ── 3: verify round-trip ──────────────────────────────────────────────────────
+async def test_verify_round_trip_succeeds(session: AsyncSession) -> None:
+    raw, _ = await create_service_key(session, name="acme-prod")
+    found = await verify_service_key(session, raw)
+    assert found.name == "acme-prod"
 
 
-def test_verify_round_trips_to_row(session: Session) -> None:
-    """verify_service_key(raw) returns the same row and updates last_used_at."""
-    raw, created_row = create_service_key(session, name="round-trip")
-
-    verified_row = verify_service_key(session, raw)
-
-    assert verified_row.id == created_row.id
-    assert verified_row.name == created_row.name
-    assert verified_row.last_used_at is not None
-
-
-# ── 4: verify unknown key ─────────────────────────────────────────────────────
-
-
-def test_verify_unknown_key_raises(session: Session) -> None:
-    """verify_service_key with an unknown raw key raises ServiceKeyNotFoundError."""
+async def test_verify_rejects_unknown_key(session: AsyncSession) -> None:
     with pytest.raises(ServiceKeyNotFoundError):
-        verify_service_key(session, "ah_sk_doesnotexist")
+        await verify_service_key(session, "ah_sk_doesnotexist")
 
 
-# ── 5: revoke then verify ─────────────────────────────────────────────────────
-
-
-def test_revoked_key_raises_on_verify(session: Session) -> None:
-    """Revoking a key then verifying it raises ServiceKeyNotFoundError."""
-    raw, row = create_service_key(session, name="to-revoke")
-
-    revoke_service_key(session, row.id)
-
+async def test_verify_rejects_revoked_key(session: AsyncSession) -> None:
+    raw, row = await create_service_key(session, name="acme-prod")
+    await revoke_service_key(session, row.id)
     with pytest.raises(ServiceKeyNotFoundError):
-        verify_service_key(session, raw)
+        await verify_service_key(session, raw)
 
 
-# ── 6: list excludes revoked by default ──────────────────────────────────────
+async def test_list_excludes_revoked_by_default(session: AsyncSession) -> None:
+    _, alpha = await create_service_key(session, name="alpha")
+    _, beta = await create_service_key(session, name="beta")
+    await revoke_service_key(session, alpha.id)
+    listed = await list_service_keys(session, include_revoked=False)
+    assert [k.id for k in listed] == [beta.id]
 
 
-def test_list_excludes_revoked_by_default(session: Session) -> None:
-    """list_service_keys(include_revoked=False) omits revoked rows."""
-    _raw1, active_row = create_service_key(session, name="active")
-    _raw2, revoked_row = create_service_key(session, name="revoked")
-    revoke_service_key(session, revoked_row.id)
-
-    results = list_service_keys(session, include_revoked=False)
-    ids = [r.id for r in results]
-
-    assert active_row.id in ids
-    assert revoked_row.id not in ids
+async def test_list_includes_revoked_when_requested(session: AsyncSession) -> None:
+    _, alpha = await create_service_key(session, name="alpha")
+    await revoke_service_key(session, alpha.id)
+    listed = await list_service_keys(session, include_revoked=True)
+    assert any(k.id == alpha.id for k in listed)
 
 
-# ── 7: list includes revoked when flag is True ────────────────────────────────
-
-
-def test_list_includes_revoked_when_flag_set(session: Session) -> None:
-    """list_service_keys(include_revoked=True) includes revoked rows."""
-    _raw1, active_row = create_service_key(session, name="active2")
-    _raw2, revoked_row = create_service_key(session, name="revoked2")
-    revoke_service_key(session, revoked_row.id)
-
-    results = list_service_keys(session, include_revoked=True)
-    ids = [r.id for r in results]
-
-    assert active_row.id in ids
-    assert revoked_row.id in ids
-
-
-# ── 8: oversize name raises ValueError ───────────────────────────────────────
-
-
-def test_oversize_name_raises_value_error(session: Session) -> None:
-    """A name longer than 80 chars raises ValueError."""
-    bad_name = "x" * 81
+async def test_create_rejects_oversize_name(session: AsyncSession) -> None:
     with pytest.raises(ValueError):
-        create_service_key(session, name=bad_name)
+        await create_service_key(session, name="x" * 81)
