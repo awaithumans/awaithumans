@@ -61,12 +61,16 @@ def main() -> None:
         ),
         response_schema=Decision,
         timeout_seconds=900,  # 15 minutes — plenty of time to walk to the kitchen
-        # Ties retries of the same order to the same task. If the agent
-        # crashes after creating the task and the orchestrator retries,
-        # the server returns the existing task instead of stacking
-        # duplicates. Without an explicit key the SDK auto-hashes
-        # (task, payload) — fine for dev, but tie to your real business
-        # event (order_id, transfer_id, request_id) in production.
+        # Ties this call to the order. Same key, same task — forever.
+        # If the agent crashes mid-call and the human approves during
+        # the outage, re-running with the same key returns the stored
+        # decision (this `if decision.approved:` block runs as if
+        # nothing happened). Without an explicit key the SDK
+        # auto-hashes (task, payload) — fine for dev, but tie to your
+        # real business event (order_id, transfer_id, request_id) in
+        # production. To start a fresh review for the same event
+        # (e.g. yesterday's task timed out), use a distinct key like
+        # f"refund:{order_id}:retry-1".
         idempotency_key=f"refund:{order_id}",
     )
 

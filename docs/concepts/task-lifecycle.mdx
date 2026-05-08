@@ -102,4 +102,4 @@ If the verifier rejects an attempt and we marked the task terminal, the human co
 - `max_attempts` is exhausted → `VERIFICATION_EXHAUSTED` (terminal)
 - Timeout fires → `TIMED_OUT` (terminal)
 
-This matches Stripe's idempotency-with-retry model: safe to retry, eventually settles.
+The lifecycle is shaped to settle exactly once. Once a task hits any terminal status, that status is the canonical answer for that idempotency key — re-invoking `await_human()` with the same key returns the same outcome rather than starting over. See [Idempotency](/concepts/idempotency).

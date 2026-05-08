@@ -13,15 +13,20 @@ from awaithumans.types import TaskStatus
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 # Partial unique index — only ACTIVE tasks have unique idempotency keys.
-# After a task reaches a terminal state, another task with the same key
-# can be created. This lets developers retry failed/timed-out tasks
-# with the same content without hitting a duplicate-key error.
+# Terminal rows are excluded from the index so the application-layer
+# lookup (`_find_task_by_idempotency_key`) can return ANY task with a
+# given key — including terminal ones — for the resumable-direct-mode
+# recovery path: an agent that crashes during a human review and
+# re-invokes `await_human()` with the same key gets back the stored
+# response instead of creating a duplicate. The partial index is kept
+# purely for race safety on concurrent INSERTs of *new* keys; in
+# practice it never fires on the recovery path because the lookup
+# returns the existing row before any INSERT is attempted.
 #
 # SQLAlchemy stores enum columns as the enum's NAME (uppercase),
 # not .value (lowercase). The WHERE clause has to match, or the
-# partial index never filters anything and the "retry after terminal"
-# story silently fails with a raw UNIQUE violation. Derive the names
-# from TERMINAL_STATUSES_SET so this can't drift.
+# partial index never filters anything. Derive the names from
+# TERMINAL_STATUSES_SET so this can't drift.
 _TERMINAL_STATUS_VALUES = (
     "(" + ", ".join(f"'{s.name}'" for s in sorted(TERMINAL_STATUSES_SET, key=lambda s: s.name)) + ")"
 )
