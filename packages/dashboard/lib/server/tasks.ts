@@ -9,6 +9,7 @@ export async function fetchTasks(params?: {
 	status?: TaskStatus;
 	assigned_to?: string;
 	unassigned?: boolean;
+	terminal?: boolean;
 	limit?: number;
 	offset?: number;
 }): Promise<Task[]> {
@@ -16,6 +17,7 @@ export async function fetchTasks(params?: {
 	if (params?.status) searchParams.set("status", params.status);
 	if (params?.assigned_to) searchParams.set("assigned_to", params.assigned_to);
 	if (params?.unassigned) searchParams.set("unassigned", "true");
+	if (params?.terminal) searchParams.set("terminal", "true");
 	if (params?.limit) searchParams.set("limit", String(params.limit));
 	if (params?.offset !== undefined) searchParams.set("offset", String(params.offset));
 
