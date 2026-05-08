@@ -68,13 +68,31 @@ from awaithumans.utils.constants import (
 
 @pytest.fixture(autouse=True)
 def _payload_key() -> Iterator[None]:
-    """HKDF derives the webhook key from PAYLOAD_KEY — required."""
-    original = settings.PAYLOAD_KEY
-    settings.PAYLOAD_KEY = secrets.token_urlsafe(32)
+    """HKDF derives the webhook key from PAYLOAD_KEY — required.
+
+    Swaps both the pydantic-settings copy and the `os.environ` value
+    because `awaithumans.utils.webhook_signing` reads directly from
+    `os.environ` (PR #71)."""
+    import os
+
+    from awaithumans.utils import webhook_signing
+
+    fresh = secrets.token_urlsafe(32)
+    original_settings = settings.PAYLOAD_KEY
+    original_env = os.environ.get("AWAITHUMANS_PAYLOAD_KEY")
+
+    settings.PAYLOAD_KEY = fresh
+    os.environ["AWAITHUMANS_PAYLOAD_KEY"] = fresh
     encryption.reset_key_cache()
+    webhook_signing.reset_cache()
     yield
-    settings.PAYLOAD_KEY = original
+    settings.PAYLOAD_KEY = original_settings
+    if original_env is None:
+        os.environ.pop("AWAITHUMANS_PAYLOAD_KEY", None)
+    else:
+        os.environ["AWAITHUMANS_PAYLOAD_KEY"] = original_env
     encryption.reset_key_cache()
+    webhook_signing.reset_cache()
 
 
 @pytest_asyncio.fixture

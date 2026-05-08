@@ -414,7 +414,13 @@ async def dispatch_signal(
     `temporal_client` is whatever you got back from
     `await temporalio.client.Client.connect(...)` at startup —
     typically a long-lived module-level singleton."""
-    from awaithumans.server.services.webhook_dispatch import verify_signature
+    # HMAC verification lives in `utils.webhook_signing` so importing
+    # it doesn't transitively pull in the [server] extra (FastAPI,
+    # SQLModel, etc.). Pre-PR-#71 this import resolved through the
+    # server package and the callback receiver crashed with
+    # `ModuleNotFoundError: cryptography` when only [temporal] was
+    # installed.
+    from awaithumans.utils.webhook_signing import verify_signature
 
     if not verify_signature(body=body, signature=signature_header):
         # PermissionError is the right shape — the wrapper renders

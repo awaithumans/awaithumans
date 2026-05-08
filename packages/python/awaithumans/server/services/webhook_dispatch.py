@@ -50,78 +50,36 @@ Delivery semantics:
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from awaithumans.server.core.encryption import get_key
 from awaithumans.server.db.models import (
     Task,
     WebhookDelivery,
     WebhookDeliveryStatus,
 )
 from awaithumans.utils.constants import (
-    HMAC_SHA256_DIGEST_BYTES,
     WEBHOOK_DELIVERY_TIMEOUT_SECONDS,
-    WEBHOOK_HKDF_INFO,
-    WEBHOOK_HKDF_SALT,
     WEBHOOK_RETRY_BACKOFF_SECONDS,
     WEBHOOK_RETRY_MAX_AGE_SECONDS,
     WEBHOOK_SIGNATURE_HEADER,
 )
 
+# HMAC primitives moved to a server-package-free module (PR #71) so
+# the durable adapters can verify callbacks without pulling in
+# FastAPI / SQLModel / etc. We re-export the same names here for
+# backward compat — every existing caller still does
+# `from awaithumans.server.services.webhook_dispatch import sign_body`
+# and that continues to work.
+from awaithumans.utils.webhook_signing import sign_body, verify_signature  # noqa: F401
+
 logger = logging.getLogger("awaithumans.server.services.webhook_dispatch")
-
-
-def _hmac_key() -> bytes:
-    """Derive a 32-byte HMAC key from PAYLOAD_KEY via HKDF-SHA256.
-
-    Channel-scoped salt — the same root key signs sessions, magic
-    links, AND webhooks, but each one derives a distinct subkey via
-    HKDF so a leak of any one downstream key doesn't compromise the
-    others."""
-    return HKDF(
-        algorithm=SHA256(),
-        length=HMAC_SHA256_DIGEST_BYTES,
-        salt=WEBHOOK_HKDF_SALT,
-        info=WEBHOOK_HKDF_INFO,
-    ).derive(get_key())
-
-
-def sign_body(body: bytes) -> str:
-    """Compute the `sha256=<hex>` signature header value.
-
-    Public so callback handlers in the SDK adapters (and the docs
-    examples) can use the same canonical computation when verifying
-    incoming requests on the user's web server."""
-    mac = hmac.new(_hmac_key(), body, hashlib.sha256).hexdigest()
-    return f"sha256={mac}"
-
-
-def verify_signature(*, body: bytes, signature: str | None) -> bool:
-    """Constant-time check of the `X-Awaithumans-Signature` header.
-
-    Used by the SDK adapters' callback handlers (Temporal, LangGraph)
-    to verify incoming webhook bodies before signalling a workflow.
-    `signature` is the header value as received (may include the
-    `sha256=` prefix or just be the hex digest). Both shapes are
-    accepted; missing/empty signatures fail closed."""
-    if not signature:
-        return False
-    expected = sign_body(body)
-    if hmac.compare_digest(signature, expected):
-        return True
-    # Tolerate header-value-without-prefix (some routing layers strip).
-    return hmac.compare_digest(signature, expected.removeprefix("sha256="))
 
 
 def _build_payload(task: Task) -> dict[str, Any]:

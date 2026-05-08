@@ -320,15 +320,12 @@ async def dispatch_resume(
     _require_langgraph()
     from langgraph.types import Command
 
-    # `verify_signature` lives in the server package because the
-    # canonical implementation (HKDF + HMAC over PAYLOAD_KEY) is
-    # already there. Importing here forces the user to have the
-    # [server] extra installed too, which they typically do in the
-    # web-server process — this is the same trade-off the Temporal
-    # adapter's `dispatch_signal` makes. A future refactor could
-    # move HMAC to a shared `awaithumans.utils.webhook_sig` module
-    # and let both the server and the adapters import it.
-    from awaithumans.server.services.webhook_dispatch import verify_signature
+    # HMAC verification lives in `utils.webhook_signing` so importing
+    # it doesn't transitively pull in the [server] extra (FastAPI,
+    # SQLModel, etc.). Pre-PR-#71 this import resolved through the
+    # server package and a callback receiver running with only
+    # [langgraph] installed crashed on the first webhook.
+    from awaithumans.utils.webhook_signing import verify_signature
 
     if not verify_signature(body=body, signature=signature_header):
         raise PermissionError("Invalid awaithumans webhook signature.")
