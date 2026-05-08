@@ -85,11 +85,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         awaithumans_api_key=api_key,
         callback_base=CALLBACK_BASE,
         auto_approve_threshold_usd=100.0,
+        # Demo convenience: pre-assign tasks to the operator who'll
+        # approve them in the dashboard, so the response form
+        # renders without needing a Claim flow. Leave unset in
+        # production; operators claim from the dashboard once that
+        # button ships.
+        assign_to_email=os.environ.get("AWAITHUMANS_DEMO_ASSIGN_TO") or None,
     )
     _graph = build_refund_graph(cfg, _thread_id_ref)
     logger.info("[app] graph + callback at http://localhost:%s", PORT)
     logger.info("[app] awaithumans server: %s", server_url)
     logger.info("[app] callback base: %s", CALLBACK_BASE)
+    if cfg.assign_to_email:
+        logger.info(
+            "[app] tasks will be assigned to %s (AWAITHUMANS_DEMO_ASSIGN_TO)",
+            cfg.assign_to_email,
+        )
     yield
 
 

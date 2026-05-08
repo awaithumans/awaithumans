@@ -80,6 +80,16 @@ class GraphConfig(BaseModel):
     callback_base: str          # e.g. "http://localhost:8765"
     auto_approve_threshold_usd: float
 
+    # Optional: assign every human-review task to this email on
+    # creation. Leaving this unset creates unassigned tasks, which is
+    # fine in production (operators claim from the dashboard) but
+    # awkward in the demo because the dashboard has no Claim button
+    # YET — see https://github.com/awaithumans/awaithumans/issues/...
+    # The cleanest demo-time fix is to assign tasks to whichever
+    # operator email is logged into the dashboard so the response form
+    # renders immediately.
+    assign_to_email: str | None = None
+
 
 # ─── Nodes ─────────────────────────────────────────────────────────
 
@@ -142,6 +152,8 @@ def _make_human_review(cfg: GraphConfig, thread_id_ref: list[str]):
             server_url=cfg.awaithumans_server_url,
             api_key=cfg.awaithumans_api_key,
             idempotency_key=f"langgraph:{thread_id}:human_review",
+            # See `GraphConfig.assign_to_email` — None in production.
+            assign_to=cfg.assign_to_email,
         )
 
         logger.info(

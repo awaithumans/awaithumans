@@ -70,6 +70,14 @@ export interface BuildGraphOptions {
 		callbackBase: string; // e.g. "http://localhost:8765"
 	};
 	autoApproveThresholdUsd: number;
+	// Optional: assign every human-review task to this email on
+	// creation. Leaving this unset creates unassigned tasks, which
+	// is fine in production (operators claim from the dashboard) but
+	// awkward in the demo because the dashboard's Claim button isn't
+	// shipped yet. The cleanest demo-time fix is to assign tasks to
+	// whichever operator email is logged into the dashboard so the
+	// response form renders immediately.
+	assignToEmail?: string;
 }
 
 // ─── Nodes ──────────────────────────────────────────────────────────
@@ -130,6 +138,8 @@ function makeHumanReview(opts: BuildGraphOptions, threadId: () => string) {
 			serverUrl: opts.awaithumans.serverUrl,
 			apiKey: opts.awaithumans.apiKey,
 			idempotencyKey: `langgraph:${threadId()}:humanReview`,
+			// See `BuildGraphOptions.assignToEmail` — undefined in production.
+			assignTo: opts.assignToEmail,
 		});
 
 		console.log(

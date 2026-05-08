@@ -59,6 +59,10 @@ awaithumans dev
 cd examples/langgraph-ts
 npm install
 export AWAITHUMANS_PAYLOAD_KEY=$(cat /tmp/<your-dev-cwd>/.awaithumans/payload.key)
+# Demo-only: pre-assign every human-review task to your dashboard
+# login so the Approve / Reject form renders immediately. Leave
+# unset in production — operators claim tasks from the dashboard.
+export AWAITHUMANS_DEMO_ASSIGN_TO="you@example.com"
 npm run app
 
 # Terminal 3 — kick off a run
