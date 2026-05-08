@@ -211,3 +211,49 @@ def test_ttl_clamped_to_min() -> None:
     actual_ttl = exp_unix - now
     assert actual_ttl >= EMBED_TOKEN_MIN_TTL_SECONDS - 2
     assert actual_ttl <= EMBED_TOKEN_MIN_TTL_SECONDS + 2
+
+
+# ── 8. Unsupported kind rejected ──────────────────────────────────────────
+
+
+def test_unsupported_kind_rejected() -> None:
+    """A token with kind='operator' must raise InvalidEmbedTokenError.
+
+    Even if all other claims are valid, unsupported kinds are rejected
+    during verification.
+    """
+    token, _ = _sign_default(kind="operator")
+
+    with pytest.raises(InvalidEmbedTokenError):
+        verify_embed_token(token, secret=_SECRET)
+
+
+# ── 9. Missing required claim rejected ────────────────────────────────────
+
+
+def test_token_with_missing_required_claim_rejected() -> None:
+    """A token missing a required claim (e.g., iat) must raise InvalidEmbedTokenError.
+
+    pyjwt.decode(options={'require': [...]}) enforces the check at decode
+    time, routing through InvalidEmbedTokenError instead of crashing at
+    int(decoded['iat']).
+    """
+    import jwt as pyjwt
+
+    now = int(time.time())
+    # Construct a token with all custom claims but missing 'iat' (a required claim).
+    payload = {
+        "iss": "awaithumans",
+        "aud": "awaithumans-embed",
+        "exp": now + 300,
+        # Intentionally omit 'iat' — it's required.
+        "task_id": _TASK_ID,
+        "sub": _SUB,
+        "kind": _KIND,
+        "parent_origin": _ORIGIN,
+        "jti": "jti-test-missing-iat",
+    }
+    token = pyjwt.encode(payload, _SECRET, algorithm="HS256")
+
+    with pytest.raises(InvalidEmbedTokenError):
+        verify_embed_token(token, secret=_SECRET)

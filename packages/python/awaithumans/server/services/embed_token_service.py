@@ -35,6 +35,9 @@ from awaithumans.utils.constants import (
 _ALGORITHM = "HS256"
 _ALGORITHMS = [_ALGORITHM]
 
+# Supported token kinds. When operator-kind lands (Phase 4), add "operator" here.
+_SUPPORTED_KINDS = ("end_user",)
+
 
 # ── Data shape ─────────────────────────────────────────────────────────────
 
@@ -60,12 +63,12 @@ class EmbedClaims:
 # ── Private helpers ────────────────────────────────────────────────────────
 
 
-def _ulid() -> str:
-    """Sortable, unique token ID: 13-hex timestamp-ms + 16-hex random.
+def _token_id() -> str:
+    """Generate a sortable, unique token ID: 13-hex timestamp-ms + 16-hex random.
 
-    Not a true ULID (no Crockford base32) but satisfies the spec's
-    requirement of timestamp-ms + secrets.token_hex(8) uniqueness.
-    Produces a 29-character lowercase hex string.
+    Produces a 29-character lowercase hex string. Not a true ULID (no
+    Crockford base32) but satisfies the spec's requirement of timestamp-ms +
+    secrets.token_hex(8) uniqueness.
     """
     ts_hex = format(int(time.time() * 1000), "013x")
     rand_hex = secrets.token_hex(8)
@@ -107,7 +110,7 @@ def sign_embed_token(
 
     now = int(time.time())
     exp = now + clamped_ttl
-    jti = _ulid()
+    jti = _token_id()
 
     payload: dict[str, object] = {
         "iss": EMBED_TOKEN_ISSUER,
@@ -152,6 +155,9 @@ def verify_embed_token(token: str, *, secret: str) -> EmbedClaims:
             audience=EMBED_TOKEN_AUDIENCE,
             issuer=EMBED_TOKEN_ISSUER,
             leeway=EMBED_TOKEN_LEEWAY_SECONDS,
+            options={
+                "require": ["exp", "iat", "aud", "iss"]
+            },  # reject tokens missing required claims
         )
     except pyjwt.ExpiredSignatureError as exc:
         raise InvalidEmbedTokenError(reason="token has expired") from exc
@@ -170,7 +176,7 @@ def verify_embed_token(token: str, *, secret: str) -> EmbedClaims:
             raise InvalidEmbedTokenError(reason=f"missing required claim: {field}")
 
     kind = decoded["kind"]
-    if kind not in ("end_user",):
+    if kind not in _SUPPORTED_KINDS:
         raise InvalidEmbedTokenError(reason=f"unsupported kind: {kind}")
 
     return EmbedClaims(
