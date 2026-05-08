@@ -133,6 +133,17 @@ class Settings(BaseSettings):
     # fail-fast in `app.py` when the dependent code path runs without
     # an explicit operator-set value, mirroring the PAYLOAD_KEY guard.
 
+    # ── Dashboard embedding ──────────────────────────────────────────
+    # See docs/superpowers/specs/2026-05-06-dashboard-embedding-design.md
+    # §5.4 for the operational story; §4.2 for the JWT shape these
+    # secrets sign. With env_prefix="AWAITHUMANS_" applied below, these
+    # fields read from AWAITHUMANS_EMBED_SIGNING_SECRET,
+    # AWAITHUMANS_EMBED_PARENT_ORIGINS, and AWAITHUMANS_SERVICE_API_KEY
+    # respectively.
+    EMBED_SIGNING_SECRET: str | None = None
+    EMBED_PARENT_ORIGINS: str = ""
+    SERVICE_API_KEY: str | None = None
+
     model_config = {
         "env_prefix": "AWAITHUMANS_",
         "env_file": ".env",
