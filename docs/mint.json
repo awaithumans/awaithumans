@@ -109,6 +109,12 @@
       "pages": [
         "troubleshooting"
       ]
+    },
+    {
+      "group": "Community",
+      "pages": [
+        "community/roadmap"
+      ]
     }
   ],
   "footerSocials": {

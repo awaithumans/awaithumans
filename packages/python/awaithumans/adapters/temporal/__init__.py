@@ -169,8 +169,9 @@ def _default_idempotency_key(task: str, payload: BaseModel) -> str:
     Mirrors the direct-mode SDK's hashing so a workflow that does
     `await_human(task=..., payload=...)` ends up with the same key
     on every replay AND the same key as a non-Temporal call to the
-    same content. The server's idempotency-after-terminal semantics
-    handle re-runs cleanly."""
+    same content. Stripe-style idempotency on the server means
+    replays of a completed activity recover the stored response
+    instead of creating a duplicate task."""
     import hashlib
 
     canonical = json.dumps(
@@ -327,16 +328,10 @@ async def await_human(
         # The webhook payload doesn't carry max_attempts; the
         # server's verification_attempt counter at terminal state is
         # the closest signal of how many tries the human got.
-        attempt = (
-            received[0].get("verification_attempt", 0)
-            if isinstance(received[0], dict)
-            else 0
-        )
+        attempt = received[0].get("verification_attempt", 0) if isinstance(received[0], dict) else 0
         raise VerificationExhaustedError(task, attempt)
     # Unknown status — shouldn't happen, but fail loud rather than silent.
-    raise RuntimeError(
-        f"Temporal adapter saw unknown terminal status '{status}' for task '{task}'"
-    )
+    raise RuntimeError(f"Temporal adapter saw unknown terminal status '{status}' for task '{task}'")
 
 
 # ─── User-web-server-side: dispatch_signal ──────────────────────────

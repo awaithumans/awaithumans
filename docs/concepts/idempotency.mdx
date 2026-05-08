@@ -7,34 +7,29 @@ description: "Safe-retry semantics for await_human(). What the key actually does
 
 ## The model
 
-awaithumans follows Stripe's idempotency model: **safe-retry-while-active, NOT eternal uniqueness.**
+awaithumans follows Stripe's idempotency model: **same key, same task, always.**
 
-A key is "active" while the task is in a non-terminal status (`CREATED`, `NOTIFIED`, `IN_PROGRESS`, `SUBMITTED`, `VERIFIED`, `REJECTED`). After the task reaches a terminal status (`COMPLETED`, `TIMED_OUT`, `CANCELLED`, `VERIFICATION_EXHAUSTED`), the key is released — a new task with the same key can be created.
+The first call with a given `idempotency_key` creates the task. Every subsequent call with that key — while the task is in flight, after it completes, after it times out, after it's cancelled, after the verifier exhausts — returns the same task. Different result, same row.
 
 This is what you want. It means:
 
-- ✅ Calling `await_human(...)` twice with the same key while a human is reviewing → returns the same task (safe retry)
-- ✅ Calling `await_human(...)` again the next day with the same key → creates a fresh task (you can re-trigger a review)
+- ✅ Calling `await_human(...)` twice with the same key while a human is reviewing → returns the same task (in-flight dedup)
 - ✅ Network blip during task creation → safe to retry without creating a duplicate
+- ✅ **Agent process crashes mid-`await_human()` and the human completes during the outage → re-invoking on restart returns the stored response and your `if decision.approved:` block runs**
+- ✅ The original timed out → re-invoking returns the timed-out task; your code gets a typed `TaskTimeoutError`, not a phantom new task
 
-It's NOT a permanent dedup gate. If you want "this task has been seen before, never run it again" semantics, that's your application's job — store the task's terminal outcome and check before calling.
+If you want "this is a fresh review for the same business event," pass a distinct key — see [Re-triggering a review](#re-triggering-a-review) below.
 
 ## What happens under the hood
 
-The `tasks.idempotency_key` column has a **partial unique index**:
-
-```sql
-CREATE UNIQUE INDEX ix_tasks_active_idempotency_key
-  ON tasks (idempotency_key)
-  WHERE status NOT IN ('COMPLETED', 'TIMED_OUT', 'CANCELLED', 'VERIFICATION_EXHAUSTED');
-```
-
 When you call `await_human(...)`:
 
-1. Server looks up active tasks with this key
-2. **Found?** Return the existing task. The SDK long-polls it.
-3. **Not found?** INSERT a fresh task. The partial index lets us race-safely insert even if a previous task with the same key is now terminal.
-4. **Race condition** (two concurrent INSERTs)? The unique constraint catches it; the loser re-fetches the winner.
+1. Server looks up tasks with this key — any status, terminal or not.
+2. **Found?** Return the existing task. The SDK long-polls it. If the status is already terminal the long-poll returns immediately with the stored response or the appropriate typed error.
+3. **Not found?** INSERT a fresh task.
+4. **Race condition** (two concurrent INSERTs with the same new key)? The unique constraint catches it; the loser re-fetches the winner.
+
+The `tasks.idempotency_key` column has a partial unique index gated on non-terminal status, kept from earlier versions for race safety on concurrent insertion. With the application-layer lookup now covering terminal rows, the index never gets exercised on the recovery path — the lookup returns the existing row before any INSERT is attempted.
 
 ## Default keys
 
@@ -66,29 +61,48 @@ Why: the `(task, payload)` default is content-addressed, so two refund requests 
 
 A natural-key approach (`refund:{order_id}`) makes intent explicit:
 
-- Same `order_id` while task is active → same task (intentional)
-- Same `order_id` after task closed → fresh task (intentional re-review)
-- Different `order_id` → different task (intentional)
+- Same `order_id` while task is active → same task (intentional dedup)
+- Same `order_id` after task closed → same task (intentional recovery — see [What about retries](#what-about-retries-from-the-agents-side))
+- Different `order_id` → different task
+
+## Re-triggering a review
+
+When you genuinely want to start a *fresh* review for the same logical event — for example, a refund timed out yesterday and you want to surface it again today — encode that intent in the key:
+
+```python
+attempt = 1
+decision = await_human_sync(
+    task=f"Approve refund for {order_id}?",
+    # ...
+    idempotency_key=f"refund:{order_id}:retry-{attempt}",
+)
+```
+
+The previous task (under `refund:{order_id}` or `refund:{order_id}:retry-0`) stays in the audit log; the new key creates a new task that the human can act on independently. Same approach Stripe recommends for retried payment intents.
 
 ## What about retries from the agent's side?
 
-If your agent crashes mid-`await_human()` and restarts, it'll call `await_human(...)` again with the same args. The default-keyed task gets dedup'd, you long-poll the same row, the human only sees one ticket. No duplicate work.
+Two cases. Both work; the second is the one that distinguishes awaithumans from a naive long-poll.
+
+**Crash *before* the human completes.** Agent re-invokes with the same key, the server returns the still-in-flight task, the SDK resumes the long-poll. The human only ever sees one ticket. No duplicate work.
+
+**Crash *during* human review, human completes during the outage, agent restarts.** Agent re-invokes with the same key, the server returns the now-`COMPLETED` task with the stored response, the SDK skips long-polling and returns the typed result immediately. Your `if decision.approved:` block runs as if the agent had been alive the whole time.
 
 This is the entire point. `await_human()` is the durable-but-with-humans equivalent of Temporal's `await activity()` — your retry loop just works.
 
 ## What about the verifier?
 
-When the verifier rejects an attempt, the task goes to `REJECTED` (non-terminal). The idempotency key is still active. If your agent calls `await_human(...)` again with the same key, it returns the same task — the human can still resubmit and run another verifier attempt.
+When the verifier rejects an attempt, the task goes to `REJECTED` (non-terminal). If your agent calls `await_human(...)` again with the same key, it returns the same task — the human can still resubmit and run another verifier attempt.
 
-If the verifier exhausts attempts → `VERIFICATION_EXHAUSTED` (terminal). Now the key is released. Next call creates a fresh task with attempt counter reset.
+If the verifier exhausts attempts → `VERIFICATION_EXHAUSTED` (terminal). Subsequent calls with the same key return the same exhausted task and the SDK raises `VerificationExhaustedError`. To retry the whole pipeline with a fresh attempt counter, pass a new key (see [Re-triggering a review](#re-triggering-a-review)).
 
 ## Example: a refund pipeline
 
 ```python
 async def process_refund(order):
     # First HITL: approval. If we ever retry this whole function,
-    # the same order_id maps to the same task (or a new one if the
-    # previous run's task already terminated).
+    # the same order_id maps to the same task — including the stored
+    # decision if the human completed it during a previous outage.
     decision = await_human_sync(
         task=f"Approve ${order.amount} refund for {order.customer_id}?",
         # ...

@@ -12,7 +12,21 @@ into a versioned release when tagged.
 
 ## [Unreleased]
 
-Nothing queued. Next tag will be `0.1.0` (pre-launch).
+### Changed (BREAKING)
+
+- **Idempotency keys now follow strict Stripe semantics.** A task's
+  `idempotency_key` always returns the same task, regardless of
+  status. Previously a terminal task's key was released, allowing a
+  fresh task with the same key — convenient for "re-trigger a
+  review" but silently lost the human's response when an agent
+  restart raced with task completion in direct mode. To request a
+  fresh task for the same logical event, pass a distinct key (e.g.
+  suffix with `:retry-1`). Direct-mode `await_human()` is now
+  resumable across agent restarts: a re-invocation with the same
+  key returns the stored response (for `COMPLETED` tasks) or the
+  typed terminal error (for `TIMED_OUT` / `CANCELLED` /
+  `VERIFICATION_EXHAUSTED`). Aligns the implementation with the
+  Stripe model the docs already claimed.
 
 ---
 
