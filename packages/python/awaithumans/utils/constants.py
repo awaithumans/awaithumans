@@ -17,12 +17,12 @@ DOCS_ROADMAP_URL = f"{DOCS_BASE_URL}/roadmap"
 
 # ─── Timeout ─────────────────────────────────────────────────────────────
 
-MIN_TIMEOUT_SECONDS = 60          # 1 minute — minimum allowed timeout
-MAX_TIMEOUT_SECONDS = 2_592_000   # 30 days — maximum allowed timeout
+MIN_TIMEOUT_SECONDS = 60  # 1 minute — minimum allowed timeout
+MAX_TIMEOUT_SECONDS = 2_592_000  # 30 days — maximum allowed timeout
 
 # ─── Long-Poll ───────────────────────────────────────────────────────────
 
-POLL_INTERVAL_SECONDS = 25        # reconnection interval, must stay under gateway timeouts (60s)
+POLL_INTERVAL_SECONDS = 25  # reconnection interval, must stay under gateway timeouts (60s)
 
 # ─── Timeout Scheduler ───────────────────────────────────────────────────
 
@@ -30,16 +30,18 @@ TIMEOUT_CHECK_INTERVAL_SECONDS = 5  # how often the scheduler checks for expired
 
 # ─── Task Status Sets ────────────────────────────────────────────────────
 
-TERMINAL_STATUSES_SET = frozenset({
-    TaskStatus.COMPLETED,
-    TaskStatus.TIMED_OUT,
-    TaskStatus.CANCELLED,
-    TaskStatus.VERIFICATION_EXHAUSTED,
-})
+TERMINAL_STATUSES_SET = frozenset(
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.TIMED_OUT,
+        TaskStatus.CANCELLED,
+        TaskStatus.VERIFICATION_EXHAUSTED,
+    }
+)
 
 # ─── Payload ─────────────────────────────────────────────────────────────
 
-MAX_PAYLOAD_SIZE_BYTES = 5 * 1024 * 1024   # 5 MB hard limit
+MAX_PAYLOAD_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB hard limit
 
 # ─── Port Discovery ──────────────────────────────────────────────────────
 
@@ -115,8 +117,7 @@ SDK_POLL_TIMEOUT_BUFFER_SECONDS = 10
 # channels/slack/app_manifest.yaml. Used as the default value for
 # SLACK_OAUTH_SCOPES when the env var isn't overridden.
 SLACK_DEFAULT_OAUTH_SCOPES = (
-    "chat:write,im:write,channels:read,groups:read,"
-    "users:read,files:write,files:read"
+    "chat:write,im:write,channels:read,groups:read,users:read,files:write,files:read"
 )
 
 # Name of the cookie holding the OAuth state nonce — read from both
@@ -129,7 +130,7 @@ SLACK_OAUTH_STATE_COOKIE_NAME = "awaithumans_slack_oauth_state"
 SLACK_HEADER_TEXT_MAX = 150
 SLACK_PLAIN_TEXT_MAX = 3000
 SLACK_SELECT_MAX_OPTIONS = 100
-SLACK_CONTEXT_VALUE_MAX = 200   # payload-context key:value truncation in the modal header
+SLACK_CONTEXT_VALUE_MAX = 200  # payload-context key:value truncation in the modal header
 
 # ─── Email Channel ───────────────────────────────────────────────────────
 
@@ -243,3 +244,28 @@ SLACK_HANDOFF_HKDF_INFO = b"v1"
 # first click (the agent's `notify=` is implicit consent to provision).
 EMAIL_HANDOFF_HKDF_SALT = b"awaithumans-email-handoff"
 EMAIL_HANDOFF_HKDF_INFO = b"v1"
+
+# ─── Dashboard embedding ────────────────────────────────────────────────────
+
+# Embed token TTL constants: default (5 min), minimum (1 min), maximum (1 hour).
+# Used by the token-mint endpoint to set and validate expiration times.
+EMBED_TOKEN_DEFAULT_TTL_SECONDS = 300
+EMBED_TOKEN_MIN_TTL_SECONDS = 60
+EMBED_TOKEN_MAX_TTL_SECONDS = 3600
+
+# JWT claims for embed tokens. Audience and issuer are bound to the token's
+# purpose (embedding) and origin (awaithumans service) to prevent token reuse.
+EMBED_TOKEN_AUDIENCE = "embed"
+EMBED_TOKEN_ISSUER = "awaithumans"
+
+# Leeway for JWT verification (clock skew tolerance). Accounts for minor
+# time drift between the token issuer and validator.
+EMBED_TOKEN_LEEWAY_SECONDS = 60
+
+# Service key format constants: prefix on the display string, raw key material
+# length in bytes, how many chars of the prefix to show in logs/UIs,
+# and the maximum display name length.
+SERVICE_KEY_PREFIX = "ah_sk_"
+SERVICE_KEY_RAW_BYTES = 20
+SERVICE_KEY_DISPLAY_PREFIX_LENGTH = 12
+SERVICE_KEY_MAX_NAME_LENGTH = 80
