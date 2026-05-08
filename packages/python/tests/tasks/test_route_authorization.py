@@ -375,3 +375,52 @@ def test_claim_terminal_task_returns_409(
     _login(client, OPERATOR_EMAIL, OPERATOR_PASSWORD)
     resp = client.post(f"/api/tasks/{task_id}/claim")
     assert resp.status_code == 409
+
+
+# ─── List filter: ?unassigned=true ─────────────────────────────────────
+
+
+def test_list_unassigned_true_returns_only_unassigned(
+    client: TestClient, operator_user: User
+) -> None:
+    """Operator's "Unassigned" filter on the dashboard must surface
+    ONLY tasks where no human owns the row yet. Mixed-state lists hide
+    the broadcast queue under regular routed tasks."""
+    unassigned_id = _make_task(client, idempotency_key="filter-1")
+    assigned_id = _make_task(
+        client,
+        assigned_to_email=OPERATOR_EMAIL,
+        idempotency_key="filter-2",
+    )
+
+    resp = client.get(
+        "/api/tasks?unassigned=true", headers=_admin_headers()
+    )
+    assert resp.status_code == 200
+    rows = resp.json()
+    ids = {r["id"] for r in rows}
+    assert unassigned_id in ids
+    assert assigned_id not in ids
+
+
+def test_list_unassigned_ignored_for_non_operator(
+    client: TestClient, reviewer_user: User
+) -> None:
+    """A non-operator passing `?unassigned=true` would otherwise widen
+    their visibility past their own assigned tasks. The route must
+    drop the flag for non-operators (server-side scoping wins)."""
+    _make_task(client, idempotency_key="filter-3")  # unassigned
+    own = _make_task(
+        client,
+        assigned_to_email=REVIEWER_EMAIL,
+        idempotency_key="filter-4",
+    )
+    _login(client, REVIEWER_EMAIL, REVIEWER_PASSWORD)
+
+    resp = client.get("/api/tasks?unassigned=true")
+    assert resp.status_code == 200
+    rows = resp.json()
+    ids = {r["id"] for r in rows}
+    # The reviewer should see only their own task — the unassigned
+    # broadcast does not leak into their queue.
+    assert ids == {own}

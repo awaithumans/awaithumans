@@ -7,6 +7,10 @@ import type { TaskStatus } from "./types";
 /** Polling interval for task list auto-refresh (milliseconds). */
 export const TASK_LIST_POLL_INTERVAL_MS = 5000;
 
+/** Page size options for the tasks list. The server caps at 200. */
+export const TASK_LIST_PAGE_SIZES: readonly number[] = [25, 50, 100] as const;
+export const TASK_LIST_DEFAULT_PAGE_SIZE = 25;
+
 /** Default limit for the audit page task fetch. */
 export const AUDIT_PAGE_DEFAULT_LIMIT = 100;
 

@@ -154,6 +154,7 @@ async def list_tasks(
     status: TaskStatus | None = None,
     assigned_to_email: str | None = None,
     assigned_to_user_id: str | None = None,
+    unassigned: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Task]:
@@ -162,14 +163,26 @@ async def list_tasks(
     `assigned_to_user_id` is the authoritative scope for non-operator
     callers — it filters on the resolved directory user ID stamped at
     routing time, which is stable across email changes and works for
-    Slack-only users (where `assigned_to_email` is null)."""
+    Slack-only users (where `assigned_to_email` is null).
+
+    `unassigned=True` surfaces only broadcast tasks that no human has
+    claimed yet (BOTH user_id AND email columns null). Useful for the
+    dashboard's "Unassigned" filter so operators can spot tasks that
+    need a Claim. Wins over `assigned_to_email` / `assigned_to_user_id`
+    if both are passed — those filters are nonsensical alongside
+    "show only unassigned."
+    """
     query = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
     if status is not None:
         query = query.where(Task.status == status)
-    if assigned_to_email is not None:
-        query = query.where(Task.assigned_to_email == assigned_to_email)
-    if assigned_to_user_id is not None:
-        query = query.where(Task.assigned_to_user_id == assigned_to_user_id)
+    if unassigned:
+        query = query.where(Task.assigned_to_user_id.is_(None))
+        query = query.where(Task.assigned_to_email.is_(None))
+    else:
+        if assigned_to_email is not None:
+            query = query.where(Task.assigned_to_email == assigned_to_email)
+        if assigned_to_user_id is not None:
+            query = query.where(Task.assigned_to_user_id == assigned_to_user_id)
     result = await session.execute(query)
     return list(result.scalars().all())
 
