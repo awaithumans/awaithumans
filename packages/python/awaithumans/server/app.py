@@ -19,21 +19,13 @@ from starlette.middleware.cors import CORSMiddleware
 from awaithumans.server.core.auth import DashboardAuthMiddleware
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.dashboard_static import DashboardStaticFiles
+from awaithumans.server.core.embed_auth import EmbedAuthMiddleware
 from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
 from awaithumans.server.db.connection import close_db, init_db
-from awaithumans.server.routes import (
-    auth,
-    email,
-    health,
-    setup,
-    slack,
-    stats,
-    status,
-    tasks,
-    users,
-)
+from awaithumans.server.routes import auth, email, health, setup, slack, stats, status, tasks, users
+from awaithumans.server.routes import embed as embed_routes
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
 from awaithumans.server.services.user_service import count_users
 
@@ -184,6 +176,10 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     # RequestID (so failed-auth responses carry a request ID).
     app.add_middleware(DashboardAuthMiddleware)
     app.add_middleware(
+        EmbedAuthMiddleware,
+        secret_provider=lambda: settings.EMBED_SIGNING_SECRET,
+    )
+    app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_credentials=settings.CORS_ORIGINS != "*",
@@ -202,6 +198,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(email.router, prefix="/api")
     app.include_router(users.router, prefix="/api")
     app.include_router(setup.router, prefix="/api")
+    app.include_router(embed_routes.router)
 
     # ── Dashboard static files ───────────────────────────────────────
     # The bundled dashboard lives inside the package
