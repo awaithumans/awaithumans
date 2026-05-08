@@ -246,6 +246,7 @@ EMAIL_HANDOFF_HKDF_SALT = b"awaithumans-email-handoff"
 EMAIL_HANDOFF_HKDF_INFO = b"v1"
 
 # ─── Dashboard embedding ────────────────────────────────────────────────────
+# See docs/superpowers/specs/2026-05-06-dashboard-embedding-design.md (§4.2, §5.3).
 
 # Embed token TTL constants: default (5 min), minimum (1 min), maximum (1 hour).
 # Used by the token-mint endpoint to set and validate expiration times.
