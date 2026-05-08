@@ -1,0 +1,24 @@
+---
+title: "Help wanted"
+description: "Substantial features we'd love community help shipping. Pick one up, drop a proposal in the linked issue, and we'll review."
+---
+
+`awaithumans` ships small surface area on purpose. A few things on the roadmap are big enough that they make better community projects than founder-built features — well-bounded, self-contained, and meaty enough to be a real systems-design exercise.
+
+If one of these resonates, comment on the linked issue with a short proposal (your read on the open questions, a rough split into PR-sized chunks). We'll iterate, agree on the shape, and merge in stages so a contributor isn't blocked on one giant PR review.
+
+## Local task book — durable resumption without an orchestrator
+
+**Status:** open · **Issue:** [#64](https://github.com/awaithumans/awaithumans/issues/64) · **Effort:** ~1–2 weeks
+
+Today direct-mode `await_human()` is resumable across agent restarts as long as your runtime re-invokes it (we ship the idempotent-recovery primitive on the server side — see [Idempotency](/concepts/idempotency)). Workflow engines like Temporal and LangGraph automate that re-invocation via their own state management; users not on either currently have to wire up a supervisor or queue themselves.
+
+This feature builds the smallest possible "client-side workflow state" into the SDK: a local SQLite task book that records each in-flight call, plus a decorator + boot-time recovery scan that re-invokes registered handlers automatically. End result: your `if decision.approved:` block runs after a crash without you having to think about retry loops.
+
+Picking this up means designing the persistence shape (where state lives, how handlers are identified, how args round-trip), the recovery semantics (auto vs. explicit, single-process vs. multi-process), and the cross-language story (Python first, TypeScript follow-up). [Full design space and open questions in the issue.](https://github.com/awaithumans/awaithumans/issues/64)
+
+This is exactly the kind of thing that's a good portfolio piece: real systems-design tradeoffs, a self-contained subsystem you don't have to refactor the server for, and direct user impact for the long tail of agent builders running on FastAPI / cron / serverless.
+
+---
+
+Other "help wanted" issues land here as they're scoped. If you have something in mind that isn't listed, open a [GitHub Discussion](https://github.com/awaithumans/awaithumans/discussions) — we'd rather talk shape than code review a surprise.
