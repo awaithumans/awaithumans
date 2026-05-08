@@ -44,6 +44,7 @@ from awaithumans.server.schemas import (
 from awaithumans.server.services.exceptions import TaskNotFoundError
 from awaithumans.server.services.task_service import (
     cancel_task,
+    claim_task,
     complete_task,
     create_task,
     delete_task,
@@ -338,6 +339,53 @@ async def _session_user_email(request: Request, session: AsyncSession) -> str | 
         return None
     user = await get_user(session, claims.user_id)
     return user.email if user else None
+
+
+@router.post("/{task_id}/claim", response_model=TaskResponse)
+async def claim_task_route(
+    task_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> TaskResponse:
+    """Claim an unassigned task for the logged-in operator.
+
+    Mirrors the Slack "Claim" button and the email-handoff auto-claim
+    in shape — first-writer-wins via the `claim_task` service. Used
+    by the dashboard so an operator can become the assignee on a
+    broadcast (`notify=`) task or a task created without `assign_to=`.
+    Once assigned, the task page renders the response form so the
+    operator can submit Approve / Reject.
+
+    Caller MUST have a cookie session (operator-or-admin in our
+    role model). Pure admin-bearer is rejected — that token belongs
+    to the AI agent, not a human operator, so there's no user_id to
+    pin as the assignee. If you find yourself wanting to "admin-claim"
+    a task, log in to the dashboard with your operator account first.
+    """
+    require_operator_or_admin(request)
+
+    user_id = caller_user_id(request)
+    if user_id is None:
+        # Admin bearer with no session → no human identity to claim as.
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Claim requires a logged-in operator session. "
+                "Admin bearer tokens have no user identity to assign."
+            ),
+        )
+
+    claimer_email = await _session_user_email(request, session)
+    task = await claim_task(
+        session,
+        task_id=task_id,
+        user_id=user_id,
+        user_email=claimer_email,
+        claimed_via_channel="dashboard",
+    )
+    return await _task_to_response_with_lookup(session, task)
 
 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)

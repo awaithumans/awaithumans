@@ -79,6 +79,7 @@ import {
 	TaskTimeoutError,
 	VerificationExhaustedError,
 } from "../../errors.js";
+import { extractForm } from "../../forms/index.js";
 import {
 	serializeAssignTo,
 	serializeVerifierConfig,
@@ -209,6 +210,12 @@ export async function awaitHuman<TPayload, TResponse>(
 	const payloadJsonSchema = zodToJsonSchema(options.payloadSchema);
 	const responseJsonSchema = zodToJsonSchema(options.responseSchema);
 	const timeoutSeconds = Math.round(options.timeoutMs / 1000);
+	// Derive form_definition from responseSchema so the dashboard can
+	// render the Approve / Reject form when an operator opens or
+	// claims the task. Direct-mode SDK does the same in
+	// `await-human.ts`. Without this, dashboard-driven approval has
+	// nothing to render.
+	const formDefinition = extractForm(options.responseSchema);
 
 	// Serialize the create-task wire body in the workflow (deterministic),
 	// then ship it through an activity (where HTTP is allowed).
@@ -217,7 +224,7 @@ export async function awaitHuman<TPayload, TResponse>(
 		payload: options.payload,
 		payload_schema: payloadJsonSchema,
 		response_schema: responseJsonSchema,
-		form_definition: null,
+		form_definition: formDefinition,
 		timeout_seconds: timeoutSeconds,
 		idempotency_key: idempotencyKey,
 		assign_to: serializeAssignTo(options.assignTo as AssignTo | undefined),
