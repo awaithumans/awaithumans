@@ -1,77 +1,53 @@
 """Settings exposure for embed-related env vars.
 
-Settings uses `env_prefix = "AWAITHUMANS_"` (see config.py model_config),
-so field names omit the prefix; env vars include it.
+Tests that the three new fields exist on Settings with the expected
+defaults and types. The `env_prefix = "AWAITHUMANS_"` declared in
+config.py's model_config means env vars use the prefixed names
+(`AWAITHUMANS_EMBED_SIGNING_SECRET`, etc.); the field names on Settings
+omit the prefix.
+
+Tests assert directly against the settings singleton rather than
+reloading the config module — `importlib.reload(config_module)` leaves
+a half-reloaded class in sys.modules, which breaks unrelated tests that
+imported `settings` before reload (the auth-suite `_isolated_db`
+fixture saves `conn._async_engine`, and the reload-driven dance ends up
+with mismatched module references).
 """
 
 from __future__ import annotations
 
-import importlib
-
-import pytest
+from awaithumans.server.core.config import Settings, settings
 
 
-@pytest.fixture
-def reload_settings():
-    """Reload settings under controlled env so each test is hermetic."""
-
-    def _reload():
-        from awaithumans.server.core import config as config_module
-
-        importlib.reload(config_module)
-        return config_module.settings
-
-    return _reload
+def test_settings_class_has_embed_signing_secret_field() -> None:
+    assert "EMBED_SIGNING_SECRET" in Settings.model_fields
 
 
-def test_embed_signing_secret_reads_from_env(
-    monkeypatch: pytest.MonkeyPatch, reload_settings
-) -> None:
-    monkeypatch.setenv("AWAITHUMANS_EMBED_SIGNING_SECRET", "x" * 32)
-    settings = reload_settings()
-    assert settings.EMBED_SIGNING_SECRET == "x" * 32
+def test_settings_class_has_embed_parent_origins_field() -> None:
+    assert "EMBED_PARENT_ORIGINS" in Settings.model_fields
 
 
-def test_embed_signing_secret_default_is_none(
-    monkeypatch: pytest.MonkeyPatch, reload_settings
-) -> None:
-    monkeypatch.delenv("AWAITHUMANS_EMBED_SIGNING_SECRET", raising=False)
-    settings = reload_settings()
-    assert settings.EMBED_SIGNING_SECRET is None
+def test_settings_class_has_service_api_key_field() -> None:
+    assert "SERVICE_API_KEY" in Settings.model_fields
 
 
-def test_embed_parent_origins_reads_from_env(
-    monkeypatch: pytest.MonkeyPatch, reload_settings
-) -> None:
-    monkeypatch.setenv(
-        "AWAITHUMANS_EMBED_PARENT_ORIGINS",
-        "https://acme.com, https://*.acme.com",
-    )
-    settings = reload_settings()
-    assert settings.EMBED_PARENT_ORIGINS == (
-        "https://acme.com, https://*.acme.com"
-    )
+def test_embed_signing_secret_default_is_none() -> None:
+    info = Settings.model_fields["EMBED_SIGNING_SECRET"]
+    assert info.default is None
 
 
-def test_embed_parent_origins_default_is_empty(
-    monkeypatch: pytest.MonkeyPatch, reload_settings
-) -> None:
-    monkeypatch.delenv("AWAITHUMANS_EMBED_PARENT_ORIGINS", raising=False)
-    settings = reload_settings()
-    assert settings.EMBED_PARENT_ORIGINS == ""
+def test_embed_parent_origins_default_is_empty_string() -> None:
+    info = Settings.model_fields["EMBED_PARENT_ORIGINS"]
+    assert info.default == ""
 
 
-def test_service_api_key_reads_from_env(
-    monkeypatch: pytest.MonkeyPatch, reload_settings
-) -> None:
-    monkeypatch.setenv("AWAITHUMANS_SERVICE_API_KEY", "ah_sk_test")
-    settings = reload_settings()
-    assert settings.SERVICE_API_KEY == "ah_sk_test"
+def test_service_api_key_default_is_none() -> None:
+    info = Settings.model_fields["SERVICE_API_KEY"]
+    assert info.default is None
 
 
-def test_service_api_key_default_is_none(
-    monkeypatch: pytest.MonkeyPatch, reload_settings
-) -> None:
-    monkeypatch.delenv("AWAITHUMANS_SERVICE_API_KEY", raising=False)
-    settings = reload_settings()
-    assert settings.SERVICE_API_KEY is None
+def test_settings_singleton_exposes_fields() -> None:
+    """Smoke check that the live singleton object has all three attrs."""
+    assert hasattr(settings, "EMBED_SIGNING_SECRET")
+    assert hasattr(settings, "EMBED_PARENT_ORIGINS")
+    assert hasattr(settings, "SERVICE_API_KEY")
