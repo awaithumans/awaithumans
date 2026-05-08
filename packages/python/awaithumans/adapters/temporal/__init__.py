@@ -115,8 +115,45 @@ class _CreateTaskInput:
     redact_payload: bool
 
 
-async def _create_task_activity(req: _CreateTaskInput) -> dict[str, Any]:
+def _activity_defn() -> Any:
+    """Lazy-bind `@activity.defn` so this module imports cleanly even
+    when temporalio isn't installed. The decorator is applied on the
+    `awaithumans_create_task` function below; without it, the worker
+    rejects the activity at registration time with "missing attributes,
+    was it decorated with @activity.defn?". A naked import-time
+    `from temporalio import activity` would force every consumer of
+    this module — including the direct-mode SDK — to install the
+    [temporal] extra, which we explicitly avoid."""
+    try:
+        from temporalio import activity
+
+        return activity.defn
+    except ImportError:
+        # If temporalio isn't installed we never reach this code from
+        # a worker (the import gate in `_require_temporal` fires
+        # first), but the decorator still has to be importable at
+        # module load. A no-op stand-in keeps the module loadable;
+        # the worker registration would fail later with the same
+        # "missing attributes" error if anyone tried to use it
+        # without installing the extra.
+        return lambda fn: fn
+
+
+@_activity_defn()
+async def awaithumans_create_task(req: _CreateTaskInput) -> dict[str, Any]:
     """Activity: POST the task to the awaithumans server.
+
+    Register on your Temporal worker alongside your own activities:
+
+        from awaithumans.adapters.temporal import awaithumans_create_task
+
+        async with Worker(
+            client,
+            task_queue=TASK_QUEUE,
+            workflows=[YourWorkflow],
+            activities=[your_activity, awaithumans_create_task],
+        ):
+            ...
 
     Lives in the user's worker process, NOT inside the workflow
     sandbox — HTTP and most stdlib I/O is forbidden in workflow code.
@@ -296,7 +333,7 @@ async def await_human(
     )
 
     await workflow.execute_activity(
-        _create_task_activity,
+        awaithumans_create_task,
         create_input,
         start_to_close_timeout=timedelta(seconds=create_activity_timeout_seconds),
     )
