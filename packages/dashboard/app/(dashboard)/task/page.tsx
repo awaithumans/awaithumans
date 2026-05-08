@@ -9,6 +9,7 @@ import {
 	fetchMe,
 	completeTask,
 	cancelTask,
+	claimTask,
 	deleteTask,
 	type MeResponse,
 	type Task,
@@ -133,6 +134,19 @@ function TaskDetailPageInner() {
 		}
 	};
 
+	const handleClaim = async () => {
+		if (!task) return;
+		try {
+			await claimTask(task.id);
+			// Reload — the task now has assigned_to_user_id == me.user_id,
+			// so the response form starts rendering and the Claim button
+			// hides itself.
+			await loadTask();
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to claim task");
+		}
+	};
+
 	const handleDelete = async () => {
 		if (!task) return;
 		const confirmed = window.confirm(
@@ -165,6 +179,33 @@ function TaskDetailPageInner() {
 			task.assigned_to_email !== me.email) ||
 			(task.assigned_to_user_id !== null &&
 				task.assigned_to_user_id !== me.user_id));
+
+	// Claim is available when (a) the task is non-terminal, (b) no one
+	// is assigned yet, and (c) the viewer is an operator (the only role
+	// the server's /claim route accepts). The button hides itself once
+	// a claim succeeds since `assigned_to_user_id` flips non-null on the
+	// next loadTask() refresh.
+	const canClaim =
+		!!task &&
+		!!me?.is_operator &&
+		!isTerminal &&
+		task.assigned_to_user_id === null &&
+		task.assigned_to_email === null;
+
+	// Whether to render the response form. Submitting requires the
+	// viewer to be the assignee OR an operator (per `/complete` auth).
+	// Without the `is_operator` branch, every operator who navigated to
+	// an unassigned task — even one they JUST claimed — would see the
+	// form disappear momentarily. With it, claimed-by-me tasks render
+	// the form right away.
+	const canSubmitResponse =
+		!!task &&
+		!isTerminal &&
+		!!task.form_definition &&
+		!!me &&
+		(me.is_operator ||
+			task.assigned_to_user_id === me.user_id ||
+			task.assigned_to_email === me.email);
 
 	if (loading) {
 		return <TerminalSpinner label="awaiting task" size="md" />;
@@ -206,6 +247,15 @@ function TaskDetailPageInner() {
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
+					{canClaim && (
+						<button
+							type="button"
+							onClick={handleClaim}
+							className="px-3 py-1.5 text-sm rounded-md bg-brand text-black font-semibold hover:bg-brand/90 transition-colors"
+						>
+							Claim task
+						</button>
+					)}
 					{!isTerminal && (
 						<button
 							type="button"
@@ -266,8 +316,26 @@ function TaskDetailPageInner() {
 						)}
 					</div>
 
-					{/* Response Form (if not terminal) */}
-					{!isTerminal && task.form_definition && (
+					{/* Unassigned hint — only rendered for operators with claim eligibility,
+					    so the viewer knows they need to claim before they can respond. */}
+					{canClaim && (
+						<div className="border border-amber-400/20 rounded-lg p-5 bg-amber-400/5">
+							<div className="text-sm text-amber-200/90">
+								This task is unassigned.{" "}
+								<button
+									type="button"
+									onClick={handleClaim}
+									className="underline hover:text-amber-100 transition-colors"
+								>
+									Claim it
+								</button>{" "}
+								to submit a response.
+							</div>
+						</div>
+					)}
+
+					{/* Response Form (only when the viewer is allowed to submit) */}
+					{canSubmitResponse && (
 						<div className="border border-brand/20 rounded-lg p-5 bg-brand/5">
 							<Eyebrow as="h2" size="md" tone="brand" weight="semibold" className="block mb-4">
 								Your Response
@@ -287,7 +355,10 @@ function TaskDetailPageInner() {
 								</div>
 							)}
 							<FormRenderer
-								form={task.form_definition}
+								// `canSubmitResponse` already gates on form_definition
+								// being non-null; the type system doesn't carry that
+								// across the boolean, hence the `!`.
+								form={task.form_definition!}
 								value={formData}
 								onChange={setFormData}
 								disabled={submitting}

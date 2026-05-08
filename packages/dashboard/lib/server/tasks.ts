@@ -41,6 +41,15 @@ export async function cancelTask(taskId: string): Promise<Task> {
 	});
 }
 
+export async function claimTask(taskId: string): Promise<Task> {
+	// First-writer-wins on the server (UPDATE…WHERE assignee IS NULL).
+	// 409 surfaces as a thrown error from `apiFetch`; the caller's
+	// loadTask() will then refresh and show the assignee that won.
+	return apiFetch<Task>(`/api/tasks/${taskId}/claim`, {
+		method: "POST",
+	});
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
 	await apiFetch<void>(`/api/tasks/${encodeURIComponent(taskId)}`, {
 		method: "DELETE",

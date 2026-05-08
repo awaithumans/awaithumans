@@ -193,12 +193,20 @@ async def await_human(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    # Derive form_definition from response_schema so the dashboard
+    # can render the Approve / Reject form. Direct-mode SDK does the
+    # same in `client.py:159`. Without this, an operator opening the
+    # task page sees the payload but no form to submit.
+    from awaithumans.forms import extract_form
+
+    form_definition = extract_form(response_schema).model_dump(mode="json")
+
     body = {
         "task": task,
         "payload": payload.model_dump(mode="json"),
         "payload_schema": payload_schema.model_json_schema(),
         "response_schema": response_schema.model_json_schema(),
-        "form_definition": None,
+        "form_definition": form_definition,
         "timeout_seconds": timeout_seconds,
         "idempotency_key": idem,
         "assign_to": _serialize_assign_to(assign_to),

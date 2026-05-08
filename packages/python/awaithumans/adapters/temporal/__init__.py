@@ -316,6 +316,19 @@ async def await_human(
     else:
         assign_to_dict = {"value": str(assign_to)}
 
+    # Derive form_definition from response_schema so the dashboard can
+    # render the Approve / Reject form when an operator claims the
+    # task. Direct-mode SDK does the same in `client.py:159`. Without
+    # this, dashboard-driven approval has nothing to render.
+    #
+    # Imported INSIDE the workflow function (with the lazy
+    # `imports_passed_through` already in effect) so the heavy
+    # `awaithumans.forms` module isn't loaded at every workflow
+    # replay's first activation — only the once-per-await-human path.
+    from awaithumans.forms import extract_form
+
+    form_definition = extract_form(response_schema).model_dump(mode="json")
+
     create_input = _CreateTaskInput(
         server_url=server_url,
         api_key=api_key,
@@ -323,7 +336,7 @@ async def await_human(
         payload=payload_dict,
         payload_schema=payload_schema.model_json_schema(),
         response_schema=response_schema.model_json_schema(),
-        form_definition=None,  # form-rendering is direct-mode only for v1
+        form_definition=form_definition,
         timeout_seconds=timeout_seconds,
         idempotency_key=idem,
         callback_url=callback_url,

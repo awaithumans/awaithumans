@@ -28,7 +28,7 @@ from awaithumans.server.app import create_app
 from awaithumans.server.core.config import settings
 from awaithumans.server.db.models import User
 
-from tests.auth.conftest import OPERATOR_PASSWORD
+from tests.auth.conftest import OPERATOR_EMAIL, OPERATOR_PASSWORD
 
 REVIEWER_EMAIL = "reviewer@example.com"
 REVIEWER_PASSWORD = "reviewer-correct-horse-battery"
@@ -296,3 +296,82 @@ def test_complete_own_task_succeeds_for_assignee(
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "completed"
+
+
+# ─── /claim ─────────────────────────────────────────────────────────────
+
+
+def test_claim_assigns_unassigned_task_to_caller(
+    client: TestClient, operator_user: User
+) -> None:
+    """The dashboard happy path: an operator opens an unassigned task
+    and clicks Claim. The route should pin them as the assignee so the
+    response form renders on the next page load."""
+    task_id = _make_task(client, idempotency_key="claim-1")  # no assign_to
+    _login(client, OPERATOR_EMAIL, OPERATOR_PASSWORD)
+    resp = client.post(f"/api/tasks/{task_id}/claim")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["assigned_to_email"] == OPERATOR_EMAIL
+    assert body["assigned_to_user_id"] == operator_user.id
+
+
+def test_claim_blocked_for_non_operator(
+    client: TestClient, reviewer_user: User
+) -> None:
+    """Claim is operator-or-admin (mirror of cancel/audit). A
+    non-operator reviewer must not be able to claim broadcast tasks
+    out from under operators — claim is an operator action."""
+    task_id = _make_task(client, idempotency_key="claim-2")
+    _login(client, REVIEWER_EMAIL, REVIEWER_PASSWORD)
+    resp = client.post(f"/api/tasks/{task_id}/claim")
+    assert resp.status_code == 403
+
+
+def test_claim_with_admin_bearer_400(client: TestClient) -> None:
+    """Admin bearer is the AI agent's identity — there's no human
+    user_id to pin as assignee. The route fails fast with 400 so the
+    caller gets a clear "log in as an operator first" message instead
+    of a misleading 200 with a null assignee."""
+    task_id = _make_task(client, idempotency_key="claim-3")
+    resp = client.post(f"/api/tasks/{task_id}/claim", headers=_admin_headers())
+    assert resp.status_code == 400
+    assert "operator" in resp.json()["detail"].lower()
+
+
+def test_claim_already_assigned_returns_409(
+    client: TestClient, operator_user: User, other_user: User
+) -> None:
+    """Claim is first-writer-wins via the existing service. Trying to
+    claim a task that already has an assignee surfaces
+    `TaskAlreadyClaimedError` → 409, so the dashboard can render
+    "claimed by Other"."""
+    task_id = _make_task(
+        client, assigned_to_email=OTHER_USER_EMAIL, idempotency_key="claim-4"
+    )
+    _login(client, OPERATOR_EMAIL, OPERATOR_PASSWORD)
+    resp = client.post(f"/api/tasks/{task_id}/claim")
+    assert resp.status_code == 409
+
+
+def test_claim_terminal_task_returns_409(
+    client: TestClient, operator_user: User
+) -> None:
+    """Claim on a completed/cancelled/timed-out task is meaningless.
+    The service raises `TaskAlreadyTerminalError` which the central
+    handler maps to 409."""
+    task_id = _make_task(
+        client,
+        assigned_to_email=OPERATOR_EMAIL,
+        idempotency_key="claim-5",
+    )
+    # Operator completes it via admin (so we don't tangle the test
+    # with an extra login round-trip).
+    client.post(
+        f"/api/tasks/{task_id}/complete",
+        json={"response": {"approved": True}},
+        headers=_admin_headers(),
+    )
+    _login(client, OPERATOR_EMAIL, OPERATOR_PASSWORD)
+    resp = client.post(f"/api/tasks/{task_id}/claim")
+    assert resp.status_code == 409
