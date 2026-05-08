@@ -40,3 +40,5 @@ export type {
 	RenderFormat,
 	TaskTypeHandler,
 } from "./channels.js";
+
+export type { EmbedTokenOptions, EmbedTokenResult } from "./embed.js";

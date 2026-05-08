@@ -1,4 +1,6 @@
 export { awaitHuman } from "./await-human.js";
+export { embedToken } from "./embed.js";
+export type { EmbedTokenOptions, EmbedTokenResult } from "./types/embed.js";
 
 // ─── SDK types (used by developers in their agent code) ─────────────
 export type {
