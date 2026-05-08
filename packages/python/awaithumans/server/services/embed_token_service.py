@@ -1,20 +1,25 @@
-"""Embed token sign and verify primitives.
+"""Embed token sign and verify primitives, plus origin allowlist matching.
 
 Spec references:
   §4.2 — JWT claim shape (EmbedClaims fields: task_id, sub, kind,
           parent_origin, iat, exp, jti).
+  §4.3 — Origin allowlist parsing and matching rules.
   §7.1 — Security threats: algorithm-pinning (alg=none attack), audience
           binding, issuer binding, expiry enforcement, clock-skew leeway.
 
-Public exports: EmbedClaims, sign_embed_token, verify_embed_token.
-No DB access, no FastAPI, no origin allowlist (that is Task 5).
+Public exports: EmbedClaims, sign_embed_token, verify_embed_token,
+                InvalidAllowlistEntryError, parse_origin_allowlist,
+                origin_in_allowlist.
+No DB access, no FastAPI.
 """
 
 from __future__ import annotations
 
+import re
 import secrets
 import time
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import jwt as pyjwt
 
@@ -188,3 +193,196 @@ def verify_embed_token(token: str, *, secret: str) -> EmbedClaims:
         exp=int(decoded["exp"]),  # type: ignore[arg-type]
         jti=str(decoded["jti"]),
     )
+
+
+# ── Origin allowlist ───────────────────────────────────────────────────────
+
+# RFC 1123 DNS label: starts and ends with alnum, may contain hyphens, 1–63 chars.
+# The single-char case (`^[a-z0-9]$`) is covered by the optional group being absent.
+_LABEL_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", re.IGNORECASE)
+
+# Hosts allowed to use http (non-TLS). Everything else must be https.
+_HTTP_ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
+
+
+class InvalidAllowlistEntryError(ValueError):
+    """Raised when an origin allowlist entry fails validation (§4.3)."""
+
+
+def _default_port(scheme: str) -> int:
+    """Return the default TCP port for a given URL scheme."""
+    return 443 if scheme == "https" else 80
+
+
+def _validate_origin_entry(s: str) -> None:
+    """Validate a single origin allowlist entry string.
+
+    Raises InvalidAllowlistEntryError if the entry is malformed per §4.3.
+    """
+    parsed = urlparse(s)
+
+    # Scheme must be http or https.
+    if parsed.scheme not in ("http", "https"):
+        raise InvalidAllowlistEntryError(
+            f"Invalid allowlist entry {s!r}: scheme must be 'http' or 'https', "
+            f"got {parsed.scheme!r}."
+        )
+
+    # No path, query, or fragment — origin is scheme+host+port only.
+    # urlparse puts a trailing slash into path when there is no path component
+    # for entries like "https://acme.com/", so check path, query, and fragment.
+    if parsed.path not in ("", "/"):
+        raise InvalidAllowlistEntryError(
+            f"Invalid allowlist entry {s!r}: must not contain a path component "
+            f"(got path={parsed.path!r}). An origin is scheme+host+port only."
+        )
+    # Reject explicit trailing slash even if path == "/"
+    if parsed.path == "/":
+        raise InvalidAllowlistEntryError(
+            f"Invalid allowlist entry {s!r}: trailing slash is not allowed. "
+            "Use 'https://example.com' not 'https://example.com/'."
+        )
+    if parsed.query:
+        raise InvalidAllowlistEntryError(
+            f"Invalid allowlist entry {s!r}: must not contain a query string."
+        )
+    if parsed.fragment:
+        raise InvalidAllowlistEntryError(
+            f"Invalid allowlist entry {s!r}: must not contain a fragment."
+        )
+
+    host = parsed.hostname or ""
+    if not host:
+        raise InvalidAllowlistEntryError(f"Invalid allowlist entry {s!r}: host is empty.")
+
+    # http is only allowed for localhost / loopback.
+    if parsed.scheme == "http" and host not in _HTTP_ALLOWED_HOSTS:
+        raise InvalidAllowlistEntryError(
+            f"Invalid allowlist entry {s!r}: http is only permitted for "
+            f"localhost/127.0.0.1. Use https for production origins."
+        )
+
+    # Count wildcards — at most one, and it must be the leading label.
+    wildcard_count = host.count("*")
+    if wildcard_count > 1:
+        raise InvalidAllowlistEntryError(
+            f"Invalid allowlist entry {s!r}: multiple wildcards are not allowed. "
+            "Use a single leading wildcard label, e.g. 'https://*.example.com'."
+        )
+
+    if wildcard_count == 1:
+        # The wildcard must be the leading label: host must start with "*.".
+        if not host.startswith("*."):
+            raise InvalidAllowlistEntryError(
+                f"Invalid allowlist entry {s!r}: wildcard must be the leading label "
+                "(e.g. '*.example.com'). Embedded wildcards like 'a.*.com' are not allowed."
+            )
+        # Validate the remaining labels (the apex domain).
+        apex = host[2:]  # strip leading "*."
+        labels = apex.split(".")
+        for label in labels:
+            if not _LABEL_RE.match(label):
+                raise InvalidAllowlistEntryError(
+                    f"Invalid allowlist entry {s!r}: label {label!r} contains invalid "
+                    "characters. DNS labels must match [a-z0-9][a-z0-9-]*[a-z0-9]."
+                )
+    else:
+        # Exact host — skip wildcard label, validate all labels.
+        # For IP literals like 127.0.0.1, skip label validation.
+        if host not in _HTTP_ALLOWED_HOSTS and not host.replace(".", "").isdigit():
+            labels = host.split(".")
+            for label in labels:
+                if not _LABEL_RE.match(label):
+                    raise InvalidAllowlistEntryError(
+                        f"Invalid allowlist entry {s!r}: label {label!r} contains invalid "
+                        "characters. DNS labels must match [a-z0-9][a-z0-9-]*[a-z0-9]."
+                    )
+
+
+def _matches_entry(origin: str, entry: str) -> bool:
+    """Return True if *origin* matches the given allowlist *entry*.
+
+    Matching rules per §4.3:
+    - Schemes must match exactly.
+    - Ports must match (using scheme defaults for omitted ports).
+    - Hosts: exact (case-insensitive) or single-leading-wildcard label match.
+    """
+    o = urlparse(origin)
+    e = urlparse(entry)
+
+    # Scheme must match exactly.
+    if o.scheme != e.scheme:
+        return False
+
+    # Effective ports must match (substitute scheme default for omitted port).
+    o_port = o.port if o.port is not None else _default_port(o.scheme)
+    e_port = e.port if e.port is not None else _default_port(e.scheme)
+    if o_port != e_port:
+        return False
+
+    origin_host = (o.hostname or "").lower()
+    entry_host = (e.hostname or "").lower()
+
+    if "*" not in entry_host:
+        # Exact host comparison.
+        return origin_host == entry_host
+
+    # Wildcard: entry_host is "*.apex" — strip leading "*.".
+    apex = entry_host[2:]  # e.g. "acme.com"
+
+    # Origin host must end with ".<apex>" (not just apex — apex itself doesn't match).
+    suffix = f".{apex}"
+    if not origin_host.endswith(suffix):
+        return False
+
+    # The prefix before ".<apex>" must be a single DNS label (no dots, non-empty).
+    prefix = origin_host[: -len(suffix)]
+    if not prefix or "." in prefix:
+        return False
+
+    # The prefix label must also be a valid DNS label.
+    return bool(_LABEL_RE.match(prefix))
+
+
+def parse_origin_allowlist(raw: str) -> tuple[str, ...]:
+    """Parse and validate a comma-separated origin allowlist string.
+
+    Args:
+        raw: Comma-separated origin entries, e.g.
+             "https://app.acme.com, https://*.staging.acme.com".
+             Typically sourced from ``settings.EMBED_PARENT_ORIGINS``.
+
+    Returns:
+        A frozen tuple of validated entry strings, in input order.
+        Empty input (or all-whitespace) returns ``()``.
+
+    Raises:
+        InvalidAllowlistEntryError: if any non-empty entry fails validation.
+    """
+    entries = []
+    for chunk in raw.split(","):
+        stripped = chunk.strip()
+        if not stripped:
+            continue
+        _validate_origin_entry(stripped)
+        entries.append(stripped)
+    return tuple(entries)
+
+
+def origin_in_allowlist(origin: str, allowlist: tuple[str, ...]) -> bool:
+    """Return True if *origin* matches any entry in *allowlist*.
+
+    Args:
+        origin: The incoming ``Origin`` header value to test, e.g.
+                ``"https://app.acme.com"``.
+        allowlist: A validated allowlist produced by :func:`parse_origin_allowlist`.
+
+    Returns:
+        ``True`` on the first matching entry, ``False`` if none match.
+    """
+    parsed = urlparse(origin)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not parsed.hostname:
+        return False
+    return any(_matches_entry(origin, entry) for entry in allowlist)
