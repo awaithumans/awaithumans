@@ -55,11 +55,18 @@ async def create_task(
 ) -> Task:
     """Create a new task, or return the existing one if idempotency key matches.
 
-    If a non-terminal task with the same idempotency key exists, returns it
-    (dedup behavior). If the existing task is terminal, creates a new one.
+    Stripe-style idempotency: same key always returns the same task,
+    regardless of status. While the task is active this gives in-flight
+    dedup; after the task is terminal it gives recovery — a restarted
+    agent that re-invokes `await_human()` with the same key gets the
+    stored response (or terminal-status error) instead of creating a
+    duplicate. To re-trigger work for the same logical event, pass a
+    distinct key (e.g. `f"refund:{order_id}:retry-1"`).
     """
-    # Check for existing task with same idempotency key
-    existing = await _find_active_task_by_idempotency_key(session, idempotency_key)
+    # Check for existing task with same idempotency key. Looking up
+    # ANY status (including terminal) is what makes direct mode
+    # resumable across agent restarts.
+    existing = await _find_task_by_idempotency_key(session, idempotency_key)
     if existing is not None:
         return existing
 
@@ -120,10 +127,12 @@ async def create_task(
         # Race condition: another request inserted with the same idempotency key
         # between our SELECT and INSERT. Roll back and return the existing task.
         await session.rollback()
-        existing = await _find_active_task_by_idempotency_key(session, idempotency_key)
+        existing = await _find_task_by_idempotency_key(session, idempotency_key)
         if existing is not None:
             return existing
-        # The existing task went terminal between our attempts — re-raise
+        # No task found despite IntegrityError — should be unreachable
+        # now that the lookup covers all statuses. Re-raise to surface
+        # the genuine constraint violation if it ever happens.
         raise
 
     await session.refresh(new_task)
@@ -523,15 +532,16 @@ def _snapshot_task_for_verifier(task: Task) -> Task:
     )
 
 
-async def _find_active_task_by_idempotency_key(
-    session: AsyncSession, idempotency_key: str
-) -> Task | None:
-    """Find a non-terminal task with the given idempotency key."""
-    result = await session.execute(
-        select(Task)
-        .where(Task.idempotency_key == idempotency_key)
-        .where(Task.status.notin_(list(TERMINAL_STATUSES_SET)))
-    )
+async def _find_task_by_idempotency_key(session: AsyncSession, idempotency_key: str) -> Task | None:
+    """Find any task with the given idempotency key, regardless of status.
+
+    Returning terminal tasks here is what makes `await_human()` resumable
+    across agent restarts: an agent that crashes mid-call and re-invokes
+    with the same key gets the stored response (for COMPLETED) or the
+    typed terminal error (for TIMED_OUT / CANCELLED /
+    VERIFICATION_EXHAUSTED), instead of creating a duplicate.
+    """
+    result = await session.execute(select(Task).where(Task.idempotency_key == idempotency_key))
     return result.scalar_one_or_none()
 
 

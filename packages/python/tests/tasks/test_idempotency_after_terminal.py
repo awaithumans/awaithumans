@@ -1,16 +1,15 @@
-"""Regression test: after a task reaches a terminal state, a new task
-can be created with the same idempotency key.
+"""Stripe-style idempotency: same key always returns the same task.
 
-The partial unique index on `tasks.idempotency_key` is conditional on
-`status NOT IN (...terminal...)`, so terminal rows shouldn't block a
-re-insert. Early on the WHERE clause used lowercase values
-(`'completed'`) while SQLAlchemy serialized the enum as uppercase
-names (`'COMPLETED'`), so the index never excluded anything and the
-retry-after-terminal story silently failed with a raw UNIQUE violation.
+While the task is active this gives in-flight dedup; after the task
+is terminal it gives recovery — a restarted agent that re-invokes
+`await_human()` with the same key gets the stored response (for
+COMPLETED) or the typed terminal error (for TIMED_OUT / CANCELLED /
+VERIFICATION_EXHAUSTED), instead of creating a duplicate.
 
-This test pins that behaviour: create a task, complete it, create
-another one with the same key — should succeed and return a distinct
-row."""
+Pre-Option-A this file pinned the opposite behavior — terminal keys
+allowed a fresh task. That deviation from the documented Stripe model
+is what made direct-mode `await_human()` lose the human's response on
+agent restart. The new tests pin the corrected contract."""
 
 from __future__ import annotations
 
@@ -27,10 +26,13 @@ from awaithumans.server.db.models import (  # noqa: F401 — register models
     EmailSenderIdentity,
     SlackInstallation,
     Task,
+    TaskStatus,
 )
 from awaithumans.server.services.task_service import (
+    cancel_task,
     complete_task,
     create_task,
+    timeout_task,
 )
 
 
@@ -45,22 +47,96 @@ async def session() -> AsyncGenerator[AsyncSession, None]:
     await engine.dispose()
 
 
-@pytest.mark.asyncio
-async def test_retry_after_terminal_with_same_idempotency_key(
-    session: AsyncSession,
-) -> None:
-    # Create #1.
-    first = await create_task(
+async def _make(session: AsyncSession, key: str) -> Task:
+    return await create_task(
         session,
         task="Approve refund",
         payload={"amount": 100},
         payload_schema={},
         response_schema={},
         timeout_seconds=900,
-        idempotency_key="shared-key-xyz",
+        idempotency_key=key,
     )
 
-    # Complete it — status moves to COMPLETED (terminal).
+
+@pytest.mark.asyncio
+async def test_duplicate_idempotency_key_while_active_returns_existing(
+    session: AsyncSession,
+) -> None:
+    """In-flight dedup: while the task is non-terminal, the same key
+    returns the same row. Pins the unchanged half of the contract."""
+    first = await _make(session, "shared-key-active")
+    second = await _make(session, "shared-key-active")
+    assert second.id == first.id
+    assert second.status == TaskStatus.CREATED
+
+
+@pytest.mark.asyncio
+async def test_recover_after_completed_returns_existing_with_response(
+    session: AsyncSession,
+) -> None:
+    """The recovery path. An agent that crashed mid-`await_human()`
+    while a human was reviewing comes back up, the human has already
+    submitted, and the agent re-calls with the same key. It MUST get
+    the stored response back, not a fresh blank task."""
+    first = await _make(session, "shared-key-completed")
+    completed = await complete_task(
+        session,
+        task_id=first.id,
+        response={"approved": True, "reason": "policy match"},
+        completed_via_channel="test",
+    )
+    assert completed.status == TaskStatus.COMPLETED
+
+    recovered = await _make(session, "shared-key-completed")
+    assert recovered.id == first.id
+    assert recovered.status == TaskStatus.COMPLETED
+    assert recovered.response == {"approved": True, "reason": "policy match"}
+
+
+@pytest.mark.asyncio
+async def test_recover_after_timed_out_returns_existing_terminal_task(
+    session: AsyncSession,
+) -> None:
+    """Recovery for TIMED_OUT: re-call returns the same terminal task,
+    SDK's poll-branch translates it into TaskTimeoutError. Critically,
+    we do NOT silently create a fresh task — that would mean the agent
+    starts a SECOND human ticket for an event the first cycle already
+    timed out on."""
+    first = await _make(session, "shared-key-timed-out")
+    await timeout_task(session, first.id)
+    await session.refresh(first)
+    assert first.status == TaskStatus.TIMED_OUT
+
+    recovered = await _make(session, "shared-key-timed-out")
+    assert recovered.id == first.id
+    assert recovered.status == TaskStatus.TIMED_OUT
+
+
+@pytest.mark.asyncio
+async def test_recover_after_cancelled_returns_existing_terminal_task(
+    session: AsyncSession,
+) -> None:
+    """Recovery for CANCELLED. SDK's poll-branch raises TaskCancelledError."""
+    first = await _make(session, "shared-key-cancelled")
+    await cancel_task(session, first.id)
+    await session.refresh(first)
+    assert first.status == TaskStatus.CANCELLED
+
+    recovered = await _make(session, "shared-key-cancelled")
+    assert recovered.id == first.id
+    assert recovered.status == TaskStatus.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_distinct_keys_create_distinct_tasks(
+    session: AsyncSession,
+) -> None:
+    """The escape hatch: callers who genuinely want a fresh task for
+    the same logical event use a distinct key (e.g. an explicit
+    retry-counter suffix). Pin that path so re-review workflows
+    documented in `docs/concepts/idempotency.mdx` keep working."""
+    first = await _make(session, "shared-key:original")
     await complete_task(
         session,
         task_id=first.id,
@@ -68,46 +144,6 @@ async def test_retry_after_terminal_with_same_idempotency_key(
         completed_via_channel="test",
     )
 
-    # Create #2 with the same idempotency key. Should succeed and
-    # return a DIFFERENT row from the terminal one.
-    second = await create_task(
-        session,
-        task="Approve refund",
-        payload={"amount": 100},
-        payload_schema={},
-        response_schema={},
-        timeout_seconds=900,
-        idempotency_key="shared-key-xyz",
-    )
-
+    second = await _make(session, "shared-key:retry-1")
     assert second.id != first.id
-    assert second.status.value == "created"
-
-
-@pytest.mark.asyncio
-async def test_duplicate_idempotency_key_while_active_returns_existing(
-    session: AsyncSession,
-) -> None:
-    """Dedup semantics: while the original task is still non-terminal,
-    creating with the same idempotency key returns the same row."""
-    first = await create_task(
-        session,
-        task="Approve refund",
-        payload={"amount": 100},
-        payload_schema={},
-        response_schema={},
-        timeout_seconds=900,
-        idempotency_key="shared-key-active",
-    )
-
-    second = await create_task(
-        session,
-        task="Approve refund",
-        payload={"amount": 100},
-        payload_schema={},
-        response_schema={},
-        timeout_seconds=900,
-        idempotency_key="shared-key-active",
-    )
-
-    assert second.id == first.id
+    assert second.status == TaskStatus.CREATED
