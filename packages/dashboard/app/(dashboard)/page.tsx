@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { fetchTasks, type Task, type TaskStatus } from "@/lib/server";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+	fetchMe,
+	fetchTasks,
+	type MeResponse,
+	type Task,
+	type TaskStatus,
+} from "@/lib/server";
 import { assigneeLabel, cn, formatRelativeTime } from "@/lib/utils";
 import {
 	SECONDS_PER_MINUTE,
 	TASK_ID_TRUNCATE_LENGTH,
+	TASK_LIST_DEFAULT_PAGE_SIZE,
+	TASK_LIST_PAGE_SIZES,
 	TASK_LIST_POLL_INTERVAL_MS,
 } from "@/lib/constants";
 import { ErrorBanner } from "@/components/error-banner";
@@ -14,26 +22,136 @@ import { ShellEmptyState } from "@/components/shell-empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 
-const STATUS_FILTERS: { label: string; value: TaskStatus | "all" }[] = [
+const STATUS_OPTIONS: { label: string; value: TaskStatus | "all" }[] = [
 	{ label: "All", value: "all" },
-	{ label: "Pending", value: "created" },
+	{ label: "Created", value: "created" },
+	{ label: "Notified", value: "notified" },
 	{ label: "Assigned", value: "assigned" },
+	{ label: "In progress", value: "in_progress" },
+	{ label: "Submitted", value: "submitted" },
+	{ label: "Verified", value: "verified" },
 	{ label: "Completed", value: "completed" },
-	{ label: "Timed Out", value: "timed_out" },
+	{ label: "Rejected", value: "rejected" },
+	{ label: "Timed out", value: "timed_out" },
 	{ label: "Cancelled", value: "cancelled" },
+	{ label: "Verification exhausted", value: "verification_exhausted" },
 ];
 
+interface FilterState {
+	status: TaskStatus | "all";
+	assignedTo: string;
+	unassigned: boolean;
+	mine: boolean;
+	pageSize: number;
+	offset: number;
+}
+
+const DEFAULT_FILTERS: FilterState = {
+	status: "all",
+	assignedTo: "",
+	unassigned: false,
+	mine: false,
+	pageSize: TASK_LIST_DEFAULT_PAGE_SIZE,
+	offset: 0,
+};
+
+/**
+ * URL-synced state. Each filter knob writes through to the query
+ * string so refresh-and-share-a-link works. Reading the URL on every
+ * render keeps the component a single source of truth — the URL.
+ */
+function readFiltersFromSearchParams(
+	params: URLSearchParams,
+): FilterState {
+	const rawStatus = params.get("status") ?? "all";
+	const status = STATUS_OPTIONS.some((o) => o.value === rawStatus)
+		? (rawStatus as TaskStatus | "all")
+		: "all";
+	const rawSize = Number(params.get("pageSize") ?? TASK_LIST_DEFAULT_PAGE_SIZE);
+	const pageSize = TASK_LIST_PAGE_SIZES.includes(rawSize)
+		? rawSize
+		: TASK_LIST_DEFAULT_PAGE_SIZE;
+	const offset = Math.max(0, Number(params.get("offset") ?? "0") || 0);
+	return {
+		status,
+		assignedTo: params.get("assignedTo") ?? "",
+		unassigned: params.get("unassigned") === "true",
+		mine: params.get("mine") === "true",
+		pageSize,
+		offset,
+	};
+}
+
+function filtersToSearchParams(state: FilterState): URLSearchParams {
+	const sp = new URLSearchParams();
+	if (state.status !== "all") sp.set("status", state.status);
+	if (state.assignedTo) sp.set("assignedTo", state.assignedTo);
+	if (state.unassigned) sp.set("unassigned", "true");
+	if (state.mine) sp.set("mine", "true");
+	if (state.pageSize !== TASK_LIST_DEFAULT_PAGE_SIZE)
+		sp.set("pageSize", String(state.pageSize));
+	if (state.offset > 0) sp.set("offset", String(state.offset));
+	return sp;
+}
+
 export default function TaskQueuePage() {
+	// Suspense boundary required for `useSearchParams` under the
+	// dashboard's static export build (matches the task detail page).
+	return (
+		<Suspense fallback={<TerminalSpinner label="awaiting tasks" size="md" />}>
+			<TaskQueuePageInner />
+		</Suspense>
+	);
+}
+
+function TaskQueuePageInner() {
 	const router = useRouter();
+	const searchParams = useSearchParams();
+	const filters = useMemo(
+		() => readFiltersFromSearchParams(searchParams),
+		[searchParams],
+	);
+
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
+	const [me, setMe] = useState<MeResponse | null>(null);
 
-	const loadTasks = async () => {
+	const updateFilters = useCallback(
+		(patch: Partial<FilterState>) => {
+			// Mutating filters (status / mine / etc.) snaps offset back
+			// to 0 — staying on page 5 of a different filter is rarely
+			// what the user wants and breaks "Next is empty" detection.
+			const offsetBumped = "offset" in patch && patch.offset !== undefined;
+			const next: FilterState = {
+				...filters,
+				...patch,
+				offset: offsetBumped ? (patch.offset as number) : 0,
+			};
+			const sp = filtersToSearchParams(next);
+			const query = sp.toString();
+			// `replace` so the browser's back button doesn't accumulate
+			// a per-filter-tweak history entry.
+			router.replace(query ? `/?${query}` : "/", { scroll: false });
+		},
+		[filters, router],
+	);
+
+	const loadTasks = useCallback(async () => {
 		try {
 			setError(null);
-			const params = statusFilter === "all" ? {} : { status: statusFilter };
+			const params: Parameters<typeof fetchTasks>[0] = {
+				limit: filters.pageSize,
+				offset: filters.offset,
+			};
+			if (filters.status !== "all") params.status = filters.status;
+			if (filters.unassigned) {
+				params.unassigned = true;
+			} else if (filters.mine && me?.email) {
+				params.assigned_to = me.email;
+			} else if (filters.assignedTo) {
+				params.assigned_to = filters.assignedTo;
+			}
 			const data = await fetchTasks(params);
 			setTasks(data);
 		} catch (err) {
@@ -41,41 +159,133 @@ export default function TaskQueuePage() {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [filters, me?.email]);
+
+	// Fetch /me once; needed for "Mine only" → assigned_to=me.email.
+	useEffect(() => {
+		fetchMe()
+			.then(setMe)
+			.catch(() => setMe(null));
+	}, []);
 
 	useEffect(() => {
 		loadTasks();
-		// Poll every 5 seconds for updates
 		const interval = setInterval(loadTasks, TASK_LIST_POLL_INTERVAL_MS);
 		return () => clearInterval(interval);
-	}, [statusFilter]);
+	}, [loadTasks]);
+
+	const currentPage = Math.floor(filters.offset / filters.pageSize) + 1;
+	// We don't know the total — Next is disabled when fewer than a
+	// full page came back (the server can't possibly have more rows
+	// after this offset under the same filters).
+	const hasNextPage = tasks.length === filters.pageSize;
+
+	const filtersActive =
+		filters.status !== "all" ||
+		filters.assignedTo !== "" ||
+		filters.unassigned ||
+		filters.mine;
 
 	return (
 		<div>
-			<div className="flex items-center justify-between mb-6">
+			<div className="flex items-center justify-between mb-4">
 				<div>
 					<h1 className="text-2xl font-bold">Tasks</h1>
 					<p className="text-white/40 text-sm mt-1">
-						{tasks.length} task{tasks.length !== 1 ? "s" : ""}
+						{loading
+							? "loading…"
+							: `${tasks.length} on this page` +
+								(filtersActive ? " (filtered)" : "")}
 					</p>
 				</div>
-				<div className="flex gap-2">
-					{STATUS_FILTERS.map((f) => (
-						<button
-							key={f.value}
-							type="button"
-							onClick={() => setStatusFilter(f.value)}
-							className={cn(
-								"px-3 py-1.5 text-sm rounded-md border transition-colors",
-								statusFilter === f.value
-									? "bg-brand/10 text-brand border-brand/30"
-									: "bg-white/5 text-white/50 border-white/10 hover:text-white/80",
-							)}
-						>
-							{f.label}
-						</button>
-					))}
-				</div>
+			</div>
+
+			{/* Filter bar */}
+			<div className="border border-white/10 rounded-lg p-4 mb-6 flex flex-wrap items-center gap-3">
+				{/* Status dropdown */}
+				<label className="flex items-center gap-2 text-sm text-white/60">
+					<span>Status</span>
+					<select
+						value={filters.status}
+						onChange={(e) =>
+							updateFilters({
+								status: e.target.value as TaskStatus | "all",
+							})
+						}
+						className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-brand/40"
+					>
+						{STATUS_OPTIONS.map((o) => (
+							<option key={o.value} value={o.value}>
+								{o.label}
+							</option>
+						))}
+					</select>
+				</label>
+
+				{/* Assignee email */}
+				<label className="flex items-center gap-2 text-sm text-white/60">
+					<span>Assignee</span>
+					<input
+						type="text"
+						placeholder="email"
+						value={filters.assignedTo}
+						disabled={filters.unassigned || filters.mine}
+						onChange={(e) =>
+							updateFilters({ assignedTo: e.target.value })
+						}
+						className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-brand/40 disabled:opacity-40 disabled:cursor-not-allowed"
+					/>
+				</label>
+
+				{/* Toggles */}
+				<label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">
+					<input
+						type="checkbox"
+						checked={filters.unassigned}
+						onChange={(e) =>
+							updateFilters({
+								unassigned: e.target.checked,
+								// Mutually-exclusive with Mine.
+								mine: e.target.checked ? false : filters.mine,
+							})
+						}
+						className="accent-brand"
+					/>
+					<span>Unassigned only</span>
+				</label>
+				{me?.is_operator && (
+					<label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">
+						<input
+							type="checkbox"
+							checked={filters.mine}
+							onChange={(e) =>
+								updateFilters({
+									mine: e.target.checked,
+									unassigned: e.target.checked ? false : filters.unassigned,
+								})
+							}
+							className="accent-brand"
+						/>
+						<span>Mine only</span>
+					</label>
+				)}
+
+				{filtersActive && (
+					<button
+						type="button"
+						onClick={() =>
+							updateFilters({
+								status: "all",
+								assignedTo: "",
+								unassigned: false,
+								mine: false,
+							})
+						}
+						className="ml-auto text-xs text-white/40 hover:text-white/70 transition-colors underline"
+					>
+						Clear filters
+					</button>
+				)}
 			</div>
 
 			{error && <ErrorBanner message={error} />}
@@ -197,6 +407,58 @@ main();`,
 							))}
 						</tbody>
 					</table>
+				</div>
+			)}
+
+			{/* Pagination footer — rendered whenever we have rows OR we
+			    are on a non-first page (so an over-shot offset can page
+			    back). Hidden on the empty-state, which has its own
+			    onboarding snippet. */}
+			{(tasks.length > 0 || filters.offset > 0) && !loading && (
+				<div className="mt-6 flex flex-wrap items-center gap-4">
+					<label className="flex items-center gap-2 text-sm text-white/60">
+						<span>Page size</span>
+						<select
+							value={filters.pageSize}
+							onChange={(e) =>
+								updateFilters({ pageSize: Number(e.target.value) })
+							}
+							className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-brand/40"
+						>
+							{TASK_LIST_PAGE_SIZES.map((s) => (
+								<option key={s} value={s}>
+									{s}
+								</option>
+							))}
+						</select>
+					</label>
+					<div className="ml-auto flex items-center gap-2 text-sm text-white/60">
+						<span>Page {currentPage}</span>
+						<button
+							type="button"
+							onClick={() =>
+								updateFilters({
+									offset: Math.max(0, filters.offset - filters.pageSize),
+								})
+							}
+							disabled={filters.offset === 0}
+							className="px-3 py-1.5 text-sm rounded-md border border-white/10 text-white/70 hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+						>
+							← Prev
+						</button>
+						<button
+							type="button"
+							onClick={() =>
+								updateFilters({
+									offset: filters.offset + filters.pageSize,
+								})
+							}
+							disabled={!hasNextPage}
+							className="px-3 py-1.5 text-sm rounded-md border border-white/10 text-white/70 hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+						>
+							Next →
+						</button>
+					</div>
 				</div>
 			)}
 		</div>

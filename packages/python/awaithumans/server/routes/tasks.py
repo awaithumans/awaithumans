@@ -204,6 +204,14 @@ async def list_tasks_route(
     request: Request,
     status: TaskStatus | None = Query(None, description="Filter by status"),
     assigned_to: str | None = Query(None, description="Filter by assigned email"),
+    unassigned: bool = Query(
+        False,
+        description=(
+            "If true, return only tasks where no assignee has been pinned "
+            "(both user_id and email are null). Used by the dashboard to "
+            "surface broadcast tasks needing Claim. Overrides assigned_to."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -225,19 +233,23 @@ async def list_tasks_route(
         # Non-operator session — force scope to the caller's own tasks
         # regardless of the `assigned_to` query param. Honouring the
         # client-supplied filter would let a non-operator pass any
-        # email and read those tasks.
+        # email and read those tasks. Same goes for `unassigned=true`:
+        # a reviewer asking to see "all unassigned" would expand their
+        # visibility past their own queue.
         user_id = caller_user_id(request)
         if user_id is None:
             # Should be unreachable — middleware would have 401'd.
             return []
         scoped_assigned_user_id = user_id
         assigned_to = None
+        unassigned = False
 
     tasks = await list_tasks(
         session,
         status=status,
         assigned_to_email=assigned_to,
         assigned_to_user_id=scoped_assigned_user_id,
+        unassigned=unassigned,
         limit=limit,
         offset=offset,
     )
