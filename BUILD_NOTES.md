@@ -503,11 +503,21 @@ belong here, not there:
   (`completed`, `timed_out`, `cancelled`, `verification_exhausted`).
   Stored in `utils/constants.TERMINAL_STATUSES_SET`. Any code that
   branches on terminality should use that set, not a hand-rolled list.
-- **Partial unique index on idempotency_key.** Active tasks (non-terminal)
-  must have unique keys. Terminal ones can repeat. Implemented in
+- **Idempotency: same key = same task, always (Stripe-strict).**
+  Direct-mode `await_human()` is resumable across agent restarts —
+  re-invoking with the same key returns the stored response (for
+  COMPLETED tasks) or the typed terminal error (for TIMED_OUT /
+  CANCELLED / VERIFICATION_EXHAUSTED), never a duplicate. The
+  application-layer lookup (`_find_task_by_idempotency_key`) returns
+  any task regardless of status. To start a fresh task for the same
+  event, callers pass a distinct key (suffix convention: `:retry-N`).
+  The partial unique index on `idempotency_key` (gated on
+  non-terminal status) is kept for race safety on concurrent INSERTs
+  of new keys; with the application-layer lookup covering terminal
+  rows, it's never exercised on the recovery path. Implemented in
   `db/models/task.py` via `sqlite_where` / `postgresql_where` on
-  `Index`. Lets a developer retry a failed task with the same content
-  without hitting a constraint error.
+  `Index`. See `docs/concepts/idempotency.mdx` for the user-facing
+  contract.
 - **First-writer-wins completion.** `complete_task` does an atomic
   `UPDATE ... WHERE status NOT IN (terminal)` and checks `rowcount`.
   Raises `TaskAlreadyTerminalError` on loss — which can happen if the

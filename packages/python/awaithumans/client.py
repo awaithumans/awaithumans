@@ -109,6 +109,14 @@ async def await_human(
     Direct mode: creates a task on the server, then long-polls until the
     human completes it or the timeout expires.
 
+    Resumable: same `idempotency_key` returns the same task forever. If
+    the agent crashes mid-await and the human completes during the
+    outage, re-invoking with the same key returns the stored response
+    (your `if decision.approved:` block runs as if nothing happened).
+    To start a fresh task for the same event after a previous one
+    timed out / was cancelled / was completed, use a distinct key
+    (e.g. f"{base}:retry-1"). See docs/concepts/idempotency.
+
     For durable mode, use awaithumans.temporal or awaithumans.langgraph instead.
     """
     # ── Validate timeout range ───────────────────────────────────────

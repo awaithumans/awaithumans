@@ -42,7 +42,15 @@ export interface AwaitHumanOptions<TPayload, TResponse> {
 	/** AI verifier config — sent to the server for execution. Optional — no verifier = human answer trusted. */
 	verifier?: VerifierConfig;
 
-	/** Explicit idempotency key. Defaults to content hash (direct mode) or engine identity (durable adapters). */
+	/**
+	 * Explicit idempotency key. Defaults to content hash (direct mode)
+	 * or engine identity (durable adapters).
+	 *
+	 * Same key = same task, even after restart or terminal status —
+	 * re-invocation returns the stored response (or terminal-status
+	 * error) instead of creating a duplicate. To start a fresh task
+	 * for the same event, use a distinct key (e.g. `:retry-1` suffix).
+	 */
 	idempotencyKey?: string;
 
 	/** If true, audit log hides the payload body. */
