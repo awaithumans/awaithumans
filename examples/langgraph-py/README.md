@@ -60,6 +60,10 @@ cd examples/langgraph-py
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export AWAITHUMANS_PAYLOAD_KEY=$(cat /tmp/<your-dev-cwd>/.awaithumans/payload.key)
+# Demo-only: pre-assign every human-review task to your dashboard
+# login so the Approve / Reject form renders immediately. Leave
+# unset in production — operators claim tasks from the dashboard.
+export AWAITHUMANS_DEMO_ASSIGN_TO="you@example.com"
 uvicorn app:app --host 0.0.0.0 --port 8765
 
 # Terminal 3 — kick off a run

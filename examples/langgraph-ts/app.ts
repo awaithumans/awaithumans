@@ -72,17 +72,29 @@ async function main(): Promise<void> {
 	// call so the node knows which thread its callback URL should
 	// encode. A more idiomatic approach would thread `RunnableConfig`
 	// through node signatures — keeping this simple for the example.
+	// Demo convenience: pre-assign tasks to the operator who'll
+	// approve them in the dashboard, so the response form renders
+	// without needing a Claim flow. Leave unset in production;
+	// operators claim from the dashboard once that button ships.
+	const assignToEmail = process.env.AWAITHUMANS_DEMO_ASSIGN_TO || undefined;
+
 	const threadIdRef = { value: "<unset>" };
 	const graph = buildRefundGraph(
 		{
 			awaithumans: { serverUrl, apiKey, callbackBase: CALLBACK_BASE },
 			autoApproveThresholdUsd: 100,
+			assignToEmail,
 		},
 		threadIdRef,
 	) as unknown as CompiledStateGraph<
 		RefundStateType,
 		Partial<RefundStateType>
 	>;
+	if (assignToEmail) {
+		console.log(
+			`[app] tasks will be assigned to ${assignToEmail} (AWAITHUMANS_DEMO_ASSIGN_TO)`,
+		);
+	}
 
 	const handleCallback = createLangGraphCallbackHandler({
 		graph,
