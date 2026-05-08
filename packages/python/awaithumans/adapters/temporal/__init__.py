@@ -200,25 +200,6 @@ def _signal_name(idempotency_key: str) -> str:
     return f"{_SIGNAL_PREFIX}:{idempotency_key}"
 
 
-def _default_idempotency_key(task: str, payload: BaseModel) -> str:
-    """Deterministic key for a (task, payload) pair.
-
-    Mirrors the direct-mode SDK's hashing so a workflow that does
-    `await_human(task=..., payload=...)` ends up with the same key
-    on every replay AND the same key as a non-Temporal call to the
-    same content. Stripe-style idempotency on the server means
-    replays of a completed activity recover the stored response
-    instead of creating a duplicate task."""
-    import hashlib
-
-    canonical = json.dumps(
-        {"task": task, "payload": payload.model_dump(mode="json")},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return f"temporal:{hashlib.sha256(canonical.encode()).hexdigest()[:32]}"
-
-
 async def await_human(
     *,
     task: str,
@@ -268,7 +249,15 @@ async def await_human(
     from temporalio import workflow
 
     info = workflow.info()
-    idem = idempotency_key or _default_idempotency_key(task, payload)
+    # Default key = workflow_id (matches the TS adapter, PR #60).
+    # Stable across replays of the same run AND unique per kickoff
+    # because the kickoff generates `refund-{uuid.uuid4()}`. Content-
+    # hash dedup is still available — pass `idempotency_key=` if you
+    # want it (e.g. `f"refund:{order_id}"`). The pre-#72 default was
+    # `temporal:{hash(task,payload)}` which collided across runs with
+    # identical content and made the example unrunnable on retry —
+    # see #72 for the failure mode.
+    idem = idempotency_key or f"temporal:{info.workflow_id}"
     signal = _signal_name(idem)
 
     # Captured by the signal handler closure. We can't use a plain
@@ -346,11 +335,37 @@ async def await_human(
         redact_payload=redact_payload,
     )
 
-    await workflow.execute_activity(
+    task_record = await workflow.execute_activity(
         awaithumans_create_task,
         create_input,
         start_to_close_timeout=timedelta(seconds=create_activity_timeout_seconds),
     )
+
+    # Idempotency-collision short-circuit. If the server returned an
+    # already-terminal task — e.g. the dev re-ran the example with the
+    # same idempotency_key after a previous completion — there's no
+    # signal coming. Pre-#72 the workflow parked on wait_condition for
+    # the full `timeout_seconds` and then raised TaskTimeoutError, a
+    # 15-minute wait for what should be an immediate cached return.
+    # Treat this as the Stripe-style retry-returns-cached-response
+    # contract: log loudly, then resolve from `task_record["response"]`.
+    existing_status = task_record.get("status") if isinstance(task_record, dict) else None
+    if existing_status in _TERMINAL_STATUS_VALUES:
+        logger.warning(
+            "Temporal adapter: idempotency_key=%s already exists, status=%s, "
+            "completed_at=%s. Returning cached response without waiting for "
+            "a new signal. Pass a fresh idempotency_key= for a new attempt.",
+            idem,
+            existing_status,
+            task_record.get("completed_at") or task_record.get("timed_out_at"),
+        )
+        return _resolve_terminal(
+            existing_status,
+            task_record,
+            response_schema,
+            task=task,
+            timeout_seconds=timeout_seconds,
+        )
 
     # Wait for the signal OR the timeout — Temporal parks the
     # workflow under both, no compute consumed while idle. asyncio's
@@ -382,6 +397,46 @@ async def await_human(
         raise VerificationExhaustedError(task, attempt)
     # Unknown status — shouldn't happen, but fail loud rather than silent.
     raise RuntimeError(f"Temporal adapter saw unknown terminal status '{status}' for task '{task}'")
+
+
+# Terminal status values as wire strings (the server sends `task["status"]`
+# as a string; we don't need to import the TaskStatus enum for this set).
+_TERMINAL_STATUS_VALUES = frozenset(
+    {"completed", "timed_out", "cancelled", "verification_exhausted"}
+)
+
+
+def _resolve_terminal(
+    status: str,
+    task_record: dict[str, Any],
+    response_schema: type[T],
+    *,
+    task: str,
+    timeout_seconds: int,
+) -> T:
+    """Map a server-returned terminal task to the right return value.
+
+    Used by the idempotency-collision short-circuit AND by the
+    LangGraph adapter (PR #72). Mirrors the post-signal branches at
+    the bottom of `await_human` but takes the full task dict from
+    the server instead of the webhook payload — only difference is
+    where the `response` field lives."""
+    if status == "completed":
+        try:
+            return response_schema.model_validate(task_record.get("response"))
+        except Exception as exc:  # noqa: BLE001
+            raise SchemaValidationError("response", str(exc)) from exc
+    if status == "timed_out":
+        raise TaskTimeoutError(task=task, timeout_seconds=timeout_seconds)
+    if status == "cancelled":
+        raise TaskCancelledError(task)
+    if status == "verification_exhausted":
+        raise VerificationExhaustedError(
+            task, task_record.get("verification_attempt", 0)
+        )
+    raise RuntimeError(
+        f"Temporal adapter saw unknown terminal status '{status}' for task '{task}'"
+    )
 
 
 # ─── User-web-server-side: dispatch_signal ──────────────────────────

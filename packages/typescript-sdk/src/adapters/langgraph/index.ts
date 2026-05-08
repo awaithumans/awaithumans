@@ -215,6 +215,28 @@ export async function awaitHuman<TPayload, TResponse>(
 		body,
 	});
 
+	// Idempotency-collision short-circuit. If the server returned an
+	// already-terminal task — e.g. a dev re-ran with the same key
+	// after a previous completion — there's no webhook coming and
+	// `Command({resume})` would never fire. Pre-#72 the graph hung on
+	// `interrupt()` until the checkpointer's timeout. Treat this as
+	// the Stripe-style retry-returns-cached-response contract.
+	if (task.status && TERMINAL_STATUS_VALUES.has(task.status)) {
+		console.warn(
+			`[awaithumans/langgraph] idempotency_key=${idempotencyKey} already exists, ` +
+				`status=${task.status}, completed_at=${task.completedAt ?? task.timedOutAt}. ` +
+				`Returning cached response without calling interrupt(). ` +
+				`Pass a fresh idempotencyKey for a new attempt.`,
+		);
+		return resolveTerminal(
+			task.status,
+			{ response: task.response, verification_attempt: task.verificationAttempt },
+			options.responseSchema,
+			options.task,
+			options.timeoutMs,
+		);
+	}
+
 	// `interrupt()` does double duty: on first run it throws a
 	// GraphInterrupt (caller catches at the .invoke boundary, graph
 	// pauses, checkpointer persists state); on resume the same line
@@ -229,28 +251,55 @@ export async function awaitHuman<TPayload, TResponse>(
 		callbackUrl: options.callbackUrl,
 	});
 
-	const status = resumeValue.status;
+	return resolveTerminal(
+		resumeValue.status ?? "<missing>",
+		resumeValue,
+		options.responseSchema,
+		options.task,
+		options.timeoutMs,
+	);
+}
+
+const TERMINAL_STATUS_VALUES = new Set<string>([
+	"completed",
+	"timed_out",
+	"cancelled",
+	"verification_exhausted",
+]);
+
+/**
+ * Map a server-returned terminal status to the right return value.
+ * Used both by the post-resume branches (when the webhook delivers a
+ * terminal payload) and the idempotency-collision short-circuit.
+ */
+function resolveTerminal<TResponse>(
+	status: string,
+	source: { response?: unknown; verification_attempt?: number },
+	responseSchema: import("zod").ZodType<TResponse>,
+	taskName: string,
+	timeoutMs: number,
+): TResponse {
 	if (status === "completed") {
-		const validated = options.responseSchema.safeParse(resumeValue.response);
+		const validated = responseSchema.safeParse(source.response);
 		if (!validated.success) {
 			throw new SchemaValidationError("response", validated.error.message);
 		}
 		return validated.data;
 	}
 	if (status === "timed_out") {
-		throw new TaskTimeoutError(options.task, options.timeoutMs);
+		throw new TaskTimeoutError(taskName, timeoutMs);
 	}
 	if (status === "cancelled") {
-		throw new TaskCancelledError(options.task);
+		throw new TaskCancelledError(taskName);
 	}
 	if (status === "verification_exhausted") {
 		throw new VerificationExhaustedError(
-			options.task,
-			resumeValue.verification_attempt ?? 0,
+			taskName,
+			source.verification_attempt ?? 0,
 		);
 	}
 	throw new Error(
-		`LangGraph adapter saw unknown terminal status '${status ?? "<missing>"}' for task '${options.task}'`,
+		`LangGraph adapter saw unknown terminal status '${status}' for task '${taskName}'`,
 	);
 }
 
@@ -263,6 +312,14 @@ interface CreateTaskInput {
 interface CreateTaskResult {
 	id: string;
 	idempotencyKey: string;
+	// Terminal-state echo so `awaitHuman` can short-circuit on
+	// idempotency collisions (PR #72). Null/empty when the task is
+	// freshly created and no human has acted yet.
+	status: string;
+	response: unknown | null;
+	completedAt: string | null;
+	timedOutAt: string | null;
+	verificationAttempt: number;
 }
 
 async function createTaskOnServer(input: CreateTaskInput): Promise<CreateTaskResult> {
@@ -284,8 +341,24 @@ async function createTaskOnServer(input: CreateTaskInput): Promise<CreateTaskRes
 		const text = await resp.text();
 		throw new TaskCreateError(resp.status, text);
 	}
-	const data = (await resp.json()) as { id: string; idempotency_key: string };
-	return { id: data.id, idempotencyKey: data.idempotency_key };
+	const data = (await resp.json()) as {
+		id: string;
+		idempotency_key: string;
+		status: string;
+		response: unknown | null;
+		completed_at: string | null;
+		timed_out_at: string | null;
+		verification_attempt: number;
+	};
+	return {
+		id: data.id,
+		idempotencyKey: data.idempotency_key,
+		status: data.status,
+		response: data.response,
+		completedAt: data.completed_at,
+		timedOutAt: data.timed_out_at,
+		verificationAttempt: data.verification_attempt,
+	};
 }
 
 // ─── User-web-server-side: createLangGraphCallbackHandler ────────────
