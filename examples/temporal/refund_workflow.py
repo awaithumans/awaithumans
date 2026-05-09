@@ -48,7 +48,7 @@ from temporalio.worker import Worker
 # Sandbox-safe import: anything that triggers the Temporal sandbox
 # guard (e.g. heavy modules) goes inside `unsafe.imports_passed_through`.
 with workflow.unsafe.imports_passed_through():
-    from awaithumans.adapters.temporal import await_human
+    from awaithumans.adapters.temporal import await_human, awaithumans_create_task
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("examples.temporal.refund_workflow")
@@ -72,6 +72,25 @@ class RefundDecision(BaseModel):
 
     approved: bool
     notes: str | None = None
+
+
+# ─── Workflow input ──────────────────────────────────────────────────
+
+
+@dataclass
+class RefundWorkflowInput:
+    """Everything the workflow needs that we read from the environment.
+
+    Temporal's workflow sandbox forbids `os.environ` access (and most
+    stdlib I/O) — env vars have to be read OUTSIDE the workflow and
+    passed in as input args. Same pattern as the temporal-ts example.
+    """
+
+    amount: int
+    customer_id: str
+    server_url: str
+    api_key: str | None
+    callback_base: str
 
 
 # ─── Downstream activity (fires after the human decides) ─────────────
@@ -106,21 +125,28 @@ async def process_refund(req: ProcessRefundInput) -> str:
 @workflow.defn
 class RefundWorkflow:
     @workflow.run
-    async def run(self, amount: int, customer_id: str = "cus_demo") -> dict:
+    async def run(self, args: RefundWorkflowInput) -> dict:
+        # `_callback_url_for_workflow` is sandbox-safe — no env reads,
+        # just string-formatting the workflow ID into the base URL the
+        # caller passed in.
+        callback_url = _callback_url_for_workflow(
+            args.callback_base, workflow.info().workflow_id
+        )
+
         # Block for up to 15 minutes waiting for the human.
         decision = await await_human(
-            task=f"Approve ${amount} refund for {customer_id}?",
+            task=f"Approve ${args.amount} refund for {args.customer_id}?",
             payload_schema=RefundPayload,
             payload=RefundPayload(
-                amount_usd=amount,
-                customer_id=customer_id,
+                amount_usd=args.amount,
+                customer_id=args.customer_id,
                 reason="Customer reports duplicate charge.",
             ),
             response_schema=RefundDecision,
             timeout_seconds=15 * 60,
-            callback_url=_callback_url_for_workflow(workflow.info().workflow_id),
-            server_url=os.environ.get("AWAITHUMANS_URL", "http://localhost:3001"),
-            api_key=os.environ.get("AWAITHUMANS_ADMIN_API_TOKEN"),
+            callback_url=callback_url,
+            server_url=args.server_url,
+            api_key=args.api_key,
         )
 
         if not decision.approved:
@@ -129,8 +155,8 @@ class RefundWorkflow:
         refund_id = await workflow.execute_activity(
             process_refund,
             ProcessRefundInput(
-                customer_id=customer_id,
-                amount_usd=amount,
+                customer_id=args.customer_id,
+                amount_usd=args.amount,
                 decision_notes=decision.notes,
             ),
             start_to_close_timeout=timedelta(seconds=30),
@@ -138,14 +164,13 @@ class RefundWorkflow:
         return {"refund_id": refund_id, "outcome": "approved", "notes": decision.notes}
 
 
-def _callback_url_for_workflow(workflow_id: str) -> str:
+def _callback_url_for_workflow(base: str, workflow_id: str) -> str:
     """Build the webhook URL for THIS workflow.
 
     `callback_server.py` reads the `wf` query param to know which
     workflow to signal. The full URL must be reachable from wherever
     the awaithumans server is running — for local dev with ngrok
-    tunnel, override AWAITHUMANS_CALLBACK_BASE."""
-    base = os.environ.get("AWAITHUMANS_CALLBACK_BASE", "http://localhost:8765")
+    tunnel, override AWAITHUMANS_CALLBACK_BASE in the kickoff env."""
     return f"{base.rstrip('/')}/awaithumans/callback?wf={workflow_id}"
 
 
@@ -158,7 +183,7 @@ async def run_worker() -> None:
         client,
         task_queue=TASK_QUEUE,
         workflows=[RefundWorkflow],
-        activities=[process_refund],
+        activities=[process_refund, awaithumans_create_task],
     ):
         logger.info("Worker started — task queue=%s", TASK_QUEUE)
         # Block forever; ctrl-C exits.
@@ -166,11 +191,28 @@ async def run_worker() -> None:
 
 
 async def kickoff(amount: int) -> None:
+    # Read all env-derived config OUT HERE (sandbox-free), then pass it
+    # as a single workflow arg. The discovery file written by
+    # `awaithumans dev` is the dev-mode default for the admin token.
+    from awaithumans.utils.discovery import resolve_admin_token, resolve_server_url
+
+    server_url = resolve_server_url()
+    api_key = resolve_admin_token()
+    callback_base = os.environ.get(
+        "AWAITHUMANS_CALLBACK_BASE", "http://localhost:8765"
+    )
+
     client = await Client.connect("localhost:7233")
     workflow_id = f"refund-{uuid.uuid4()}"
     handle = await client.start_workflow(
         RefundWorkflow.run,
-        amount,
+        RefundWorkflowInput(
+            amount=amount,
+            customer_id="cus_demo",
+            server_url=server_url,
+            api_key=api_key,
+            callback_base=callback_base,
+        ),
         id=workflow_id,
         task_queue=TASK_QUEUE,
     )

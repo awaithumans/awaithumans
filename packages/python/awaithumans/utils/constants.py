@@ -210,6 +210,43 @@ WEBHOOK_SIGNATURE_HEADER = "X-Awaithumans-Signature"
 # during an outage.
 WEBHOOK_DELIVERY_TIMEOUT_SECONDS = 10
 
+# Backoff schedule for retried deliveries — index = attempt_count
+# AFTER the failed attempt. Cumulative wall-clock at the LAST entry
+# stays under 3 days so we always exhaust the schedule before the
+# hard cap kicks in. Tuning intent: aggressive in the first hour
+# (most failures are transient receiver flaps), then hourly for the
+# next workday, then daily so a multi-day outage still gets one
+# attempt per day without burning through retries.
+WEBHOOK_RETRY_BACKOFF_SECONDS: tuple[int, ...] = (
+    30,        # 30s
+    60,        # 1m
+    120,       # 2m
+    300,       # 5m
+    900,       # 15m
+    1800,      # 30m
+    3600,      # 1h
+    7200,      # 2h
+    14400,     # 4h
+    28800,     # 8h
+    86400,     # 24h
+    86400,     # 24h
+    86400,     # 24h
+)
+
+# Hard cap on how long a delivery row stays in the queue. Past this
+# (measured from the row's `created_at`), the dispatcher marks the
+# row ABANDONED and stops attempting. 3 days = "if your receiver
+# has been down this long, the workflow has almost certainly already
+# timed out anyway, and a human should redrive manually rather than
+# us silently flapping forever."
+WEBHOOK_RETRY_MAX_AGE_SECONDS = 3 * 24 * 3600
+
+# How often the webhook scheduler wakes to claim due rows. Smaller =
+# lower delivery latency; larger = less DB load. 5s mirrors the
+# timeout scheduler — cheap because the "are any rows due?" query
+# uses the indexed (status, next_attempt_at) tuple.
+WEBHOOK_SCHEDULER_INTERVAL_SECONDS = 5
+
 # ─── Dashboard Auth ──────────────────────────────────────────────────────
 
 # Name of the dashboard session cookie. Set by POST /api/auth/login,

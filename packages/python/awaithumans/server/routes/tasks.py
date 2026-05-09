@@ -45,6 +45,7 @@ from awaithumans.server.schemas import (
 from awaithumans.server.services.exceptions import TaskNotFoundError
 from awaithumans.server.services.task_service import (
     cancel_task,
+    claim_task,
     complete_task,
     create_task,
     delete_task,
@@ -53,7 +54,7 @@ from awaithumans.server.services.task_service import (
     list_tasks,
 )
 from awaithumans.server.services.user_service import get_user
-from awaithumans.server.services.webhook_dispatch import fire_completion_webhook
+from awaithumans.server.services.webhook_dispatch import enqueue_completion_webhook
 from awaithumans.utils.constants import TERMINAL_STATUSES_SET
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -203,7 +204,33 @@ async def create_task_route(
 async def list_tasks_route(
     request: Request,
     status: TaskStatus | None = Query(None, description="Filter by status"),
-    assigned_to: str | None = Query(None, description="Filter by assigned email"),
+    assigned_to: str | None = Query(
+        None,
+        description=(
+            "Filter by assignee. Matches against the directory user's "
+            "email (exact), Slack user ID (exact), or display name "
+            "(case-insensitive substring), as well as the legacy "
+            "assigned_to_email column for tasks routed by email "
+            "before the user was provisioned."
+        ),
+    ),
+    unassigned: bool = Query(
+        False,
+        description=(
+            "If true, return only tasks where no assignee has been pinned "
+            "(both user_id and email are null). Used by the dashboard to "
+            "surface broadcast tasks needing Claim. Overrides assigned_to."
+        ),
+    ),
+    terminal: bool = Query(
+        False,
+        description=(
+            "If true, return only tasks in a terminal status (completed, "
+            "timed_out, cancelled, verification_exhausted). Used by the "
+            "Audit Log dashboard view. Combine with `status=` to filter "
+            "within terminal (`status=` wins when both are set)."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -230,19 +257,24 @@ async def list_tasks_route(
         # Non-operator session — force scope to the caller's own tasks
         # regardless of the `assigned_to` query param. Honouring the
         # client-supplied filter would let a non-operator pass any
-        # email and read those tasks.
+        # email and read those tasks. Same goes for `unassigned=true`:
+        # a reviewer asking to see "all unassigned" would expand their
+        # visibility past their own queue.
         user_id = caller_user_id(request)
         if user_id is None:
             # Should be unreachable — middleware would have 401'd.
             return []
         scoped_assigned_user_id = user_id
         assigned_to = None
+        unassigned = False
 
     tasks = await list_tasks(
         session,
         status=status,
-        assigned_to_email=assigned_to,
+        assigned_to_query=assigned_to,
         assigned_to_user_id=scoped_assigned_user_id,
+        unassigned=unassigned,
+        terminal=terminal,
         limit=limit,
         offset=offset,
     )
@@ -312,9 +344,8 @@ async def complete_task_route(
             embed_sub=embed_ctx.sub,
             embed_jti=embed_ctx.jti,
         )
-        if task.callback_url and task.status in TERMINAL_STATUSES_SET:
-            background_tasks.add_task(fire_completion_webhook, task)
         if task.status in TERMINAL_STATUSES_SET:
+            await enqueue_completion_webhook(session, task)
             background_tasks.add_task(update_slack_messages_for_task, task.id)
         return await _task_to_response_with_lookup(session, task)
 
@@ -342,13 +373,15 @@ async def complete_task_route(
         completed_via_channel=body.completed_via_channel,
     )
 
-    # Fire the outbound webhook AFTER the response so a slow callback
-    # endpoint never blocks the human's submit. Only fires when the
-    # task actually transitioned to a terminal state — REJECTED is
+    # Enqueue the outbound webhook (the actual POST happens via the
+    # background dispatcher with retry-and-backoff). REJECTED is
     # non-terminal, the agent shouldn't get a "complete" callback for
-    # a verifier-rejected attempt.
-    if task.callback_url and task.status in TERMINAL_STATUSES_SET:
-        background_tasks.add_task(fire_completion_webhook, task)
+    # a verifier-rejected attempt — only enqueue on a real terminal.
+    # Enqueue inline so the row is committed in the same unit of work
+    # as the task transition; if the request fails after this we don't
+    # want a delivery for state that never landed.
+    if task.status in TERMINAL_STATUSES_SET:
+        await enqueue_completion_webhook(session, task)
 
     # Replace the original Slack message so the recipient stops
     # seeing "open" action buttons after they (or someone else) has
@@ -373,6 +406,53 @@ async def _session_user_email(request: Request, session: AsyncSession) -> str | 
     return user.email if user else None
 
 
+@router.post("/{task_id}/claim", response_model=TaskResponse)
+async def claim_task_route(
+    task_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> TaskResponse:
+    """Claim an unassigned task for the logged-in operator.
+
+    Mirrors the Slack "Claim" button and the email-handoff auto-claim
+    in shape — first-writer-wins via the `claim_task` service. Used
+    by the dashboard so an operator can become the assignee on a
+    broadcast (`notify=`) task or a task created without `assign_to=`.
+    Once assigned, the task page renders the response form so the
+    operator can submit Approve / Reject.
+
+    Caller MUST have a cookie session (operator-or-admin in our
+    role model). Pure admin-bearer is rejected — that token belongs
+    to the AI agent, not a human operator, so there's no user_id to
+    pin as the assignee. If you find yourself wanting to "admin-claim"
+    a task, log in to the dashboard with your operator account first.
+    """
+    require_operator_or_admin(request)
+
+    user_id = caller_user_id(request)
+    if user_id is None:
+        # Admin bearer with no session → no human identity to claim as.
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Claim requires a logged-in operator session. "
+                "Admin bearer tokens have no user identity to assign."
+            ),
+        )
+
+    claimer_email = await _session_user_email(request, session)
+    task = await claim_task(
+        session,
+        task_id=task_id,
+        user_id=user_id,
+        user_email=claimer_email,
+        claimed_via_channel="dashboard",
+    )
+    return await _task_to_response_with_lookup(session, task)
+
+
 @router.post("/{task_id}/cancel", response_model=TaskResponse)
 async def cancel_task_route(
     task_id: str,
@@ -391,9 +471,10 @@ async def cancel_task_route(
 
     # Cancellation is also a terminal transition the durable adapter
     # cares about — without the webhook, a Temporal workflow would
-    # sit waiting for a signal that never comes.
-    if task.callback_url:
-        background_tasks.add_task(fire_completion_webhook, task)
+    # sit waiting for a signal that never comes. Enqueueing rides the
+    # same DB transaction as the cancel so we can't end up with one
+    # without the other.
+    await enqueue_completion_webhook(session, task)
 
     # Mirror the completion path: replace the now-stale "open" Slack
     # messages with a "Cancelled" surface so the operator who got

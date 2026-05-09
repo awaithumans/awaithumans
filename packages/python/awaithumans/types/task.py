@@ -44,7 +44,15 @@ class AwaitHumanOptions(BaseModel):
         description='E.g., ["slack:#ops", "email:a@b.com"]',
     )
     verifier: VerifierConfig | None = Field(default=None, description="AI verification config.")
-    idempotency_key: str | None = Field(default=None, description="Explicit idempotency key.")
+    idempotency_key: str | None = Field(
+        default=None,
+        description=(
+            "Explicit idempotency key. Same key = same task, even after restart "
+            "or terminal status — re-invocation returns the stored response "
+            "(or terminal-status error) instead of creating a duplicate. To "
+            'start a fresh task for the same event, use a distinct key (e.g. ":retry-1").'
+        ),
+    )
     redact_payload: bool = Field(default=False, description="If true, audit log hides payload.")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

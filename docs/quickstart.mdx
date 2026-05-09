@@ -79,7 +79,7 @@ def main():
         ),
         response_schema=RefundDecision,
         timeout_seconds=900,
-        idempotency_key=f"refund:{order_id}",  # safe to retry
+        idempotency_key=f"refund:{order_id}",  # same key = same task, even after restart
     )
 
     if decision.approved:
@@ -228,7 +228,7 @@ See [Verifier](/adapters/verifier) for the full provider list and NL-parsing tri
     The state machine your task moves through.
   </Card>
   <Card title="Idempotency" icon="rotate" href="/concepts/idempotency">
-    Why retries are safe and what `idempotency_key` actually does.
+    How the same key recovers the same task across crashes.
   </Card>
   <Card title="Temporal" icon="repeat" href="/adapters/temporal">
     Park a workflow for hours/days while waiting. Zero compute idle.

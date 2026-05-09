@@ -49,8 +49,10 @@ import {
 	SectionRenderer,
 } from "./layout";
 import { SubformRenderer, TableRenderer } from "./complex";
+import type { FormValue } from "./types";
 
-export type FormValue = Record<string, unknown>;
+export { buildResponseValue } from "./build-response-value";
+export type { FormValue } from "./types";
 
 type Props = {
 	form: FormDefinition;
@@ -398,3 +400,4 @@ function walk(fields: FormField[], out: FormValue): void {
 		}
 	}
 }
+

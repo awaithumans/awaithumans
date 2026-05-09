@@ -1,0 +1,19 @@
+# Run from the repo root with:
+#   pip install -r examples/langgraph-py/requirements.txt
+
+# Local dev: install the in-tree adapter (with [langgraph] extra) from
+# this checkout. Pre-PyPI this gets you the LangGraph adapter import.
+# Post-launch users can replace with `awaithumans[langgraph]>=0.1.0`.
+#
+# Post-PR-#71 the [langgraph] extra includes `cryptography`, so the
+# callback receiver verifies webhook HMACs without needing [server].
+-e ../../packages/python[langgraph]
+
+# FastAPI + uvicorn for the app process. The awaithumans package
+# already depends on these via [server], but listing them explicitly
+# documents what this process actually runs on.
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Pin pydantic >= 2 for BaseModel.model_dump etc.
+pydantic>=2.0.0

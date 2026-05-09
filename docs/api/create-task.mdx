@@ -94,15 +94,17 @@ Content-Type: application/json
 
 ## Idempotency behavior
 
-If a non-terminal task with `idempotency_key` already exists:
+Strict Stripe-style: same key, same task, always.
 
-```http
-HTTP/1.1 200 OK
+If any task with `idempotency_key` already exists — terminal or not — the response is `200 OK` with the existing task. The client should treat this as success and proceed to poll. If the existing task is already terminal, the next poll returns immediately with the stored response (for `completed`) or the appropriate terminal status (for `timed_out`, `cancelled`, `verification_exhausted`), and the SDK translates those into typed errors.
+
+This is what makes direct-mode `await_human()` resumable across agent restarts: a re-invocation with the same key after the human completed during your downtime returns the stored decision instead of creating a duplicate ticket.
+
+To create a fresh task for the same logical event (e.g. a yesterday's task timed out and you want a new review today), pass a distinct key — convention is to suffix with a retry counter:
+
+```python
+idempotency_key=f"refund:{order_id}:retry-{attempt}"
 ```
-
-The response body is the existing task. Status is whatever it currently is (`notified`, `in_progress`, `submitted`, etc.). Your client should treat this as success and proceed to poll/wait.
-
-If a TERMINAL task with that key exists, a new task is created with the same key (the partial-unique index releases the key on terminal). The response is `201` again with a fresh task ID.
 
 ## Errors
 

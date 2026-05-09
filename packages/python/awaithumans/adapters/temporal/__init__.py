@@ -115,8 +115,45 @@ class _CreateTaskInput:
     redact_payload: bool
 
 
-async def _create_task_activity(req: _CreateTaskInput) -> dict[str, Any]:
+def _activity_defn() -> Any:
+    """Lazy-bind `@activity.defn` so this module imports cleanly even
+    when temporalio isn't installed. The decorator is applied on the
+    `awaithumans_create_task` function below; without it, the worker
+    rejects the activity at registration time with "missing attributes,
+    was it decorated with @activity.defn?". A naked import-time
+    `from temporalio import activity` would force every consumer of
+    this module — including the direct-mode SDK — to install the
+    [temporal] extra, which we explicitly avoid."""
+    try:
+        from temporalio import activity
+
+        return activity.defn
+    except ImportError:
+        # If temporalio isn't installed we never reach this code from
+        # a worker (the import gate in `_require_temporal` fires
+        # first), but the decorator still has to be importable at
+        # module load. A no-op stand-in keeps the module loadable;
+        # the worker registration would fail later with the same
+        # "missing attributes" error if anyone tried to use it
+        # without installing the extra.
+        return lambda fn: fn
+
+
+@_activity_defn()
+async def awaithumans_create_task(req: _CreateTaskInput) -> dict[str, Any]:
     """Activity: POST the task to the awaithumans server.
+
+    Register on your Temporal worker alongside your own activities:
+
+        from awaithumans.adapters.temporal import awaithumans_create_task
+
+        async with Worker(
+            client,
+            task_queue=TASK_QUEUE,
+            workflows=[YourWorkflow],
+            activities=[your_activity, awaithumans_create_task],
+        ):
+            ...
 
     Lives in the user's worker process, NOT inside the workflow
     sandbox — HTTP and most stdlib I/O is forbidden in workflow code.
@@ -161,24 +198,6 @@ async def _create_task_activity(req: _CreateTaskInput) -> dict[str, Any]:
 
 def _signal_name(idempotency_key: str) -> str:
     return f"{_SIGNAL_PREFIX}:{idempotency_key}"
-
-
-def _default_idempotency_key(task: str, payload: BaseModel) -> str:
-    """Deterministic key for a (task, payload) pair.
-
-    Mirrors the direct-mode SDK's hashing so a workflow that does
-    `await_human(task=..., payload=...)` ends up with the same key
-    on every replay AND the same key as a non-Temporal call to the
-    same content. The server's idempotency-after-terminal semantics
-    handle re-runs cleanly."""
-    import hashlib
-
-    canonical = json.dumps(
-        {"task": task, "payload": payload.model_dump(mode="json")},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return f"temporal:{hashlib.sha256(canonical.encode()).hexdigest()[:32]}"
 
 
 async def await_human(
@@ -230,7 +249,15 @@ async def await_human(
     from temporalio import workflow
 
     info = workflow.info()
-    idem = idempotency_key or _default_idempotency_key(task, payload)
+    # Default key = workflow_id (matches the TS adapter, PR #60).
+    # Stable across replays of the same run AND unique per kickoff
+    # because the kickoff generates `refund-{uuid.uuid4()}`. Content-
+    # hash dedup is still available — pass `idempotency_key=` if you
+    # want it (e.g. `f"refund:{order_id}"`). The pre-#72 default was
+    # `temporal:{hash(task,payload)}` which collided across runs with
+    # identical content and made the example unrunnable on retry —
+    # see #72 for the failure mode.
+    idem = idempotency_key or f"temporal:{info.workflow_id}"
     signal = _signal_name(idem)
 
     # Captured by the signal handler closure. We can't use a plain
@@ -278,6 +305,19 @@ async def await_human(
     else:
         assign_to_dict = {"value": str(assign_to)}
 
+    # Derive form_definition from response_schema so the dashboard can
+    # render the Approve / Reject form when an operator claims the
+    # task. Direct-mode SDK does the same in `client.py:159`. Without
+    # this, dashboard-driven approval has nothing to render.
+    #
+    # Imported INSIDE the workflow function (with the lazy
+    # `imports_passed_through` already in effect) so the heavy
+    # `awaithumans.forms` module isn't loaded at every workflow
+    # replay's first activation — only the once-per-await-human path.
+    from awaithumans.forms import extract_form
+
+    form_definition = extract_form(response_schema).model_dump(mode="json")
+
     create_input = _CreateTaskInput(
         server_url=server_url,
         api_key=api_key,
@@ -285,7 +325,7 @@ async def await_human(
         payload=payload_dict,
         payload_schema=payload_schema.model_json_schema(),
         response_schema=response_schema.model_json_schema(),
-        form_definition=None,  # form-rendering is direct-mode only for v1
+        form_definition=form_definition,
         timeout_seconds=timeout_seconds,
         idempotency_key=idem,
         callback_url=callback_url,
@@ -295,11 +335,37 @@ async def await_human(
         redact_payload=redact_payload,
     )
 
-    await workflow.execute_activity(
-        _create_task_activity,
+    task_record = await workflow.execute_activity(
+        awaithumans_create_task,
         create_input,
         start_to_close_timeout=timedelta(seconds=create_activity_timeout_seconds),
     )
+
+    # Idempotency-collision short-circuit. If the server returned an
+    # already-terminal task — e.g. the dev re-ran the example with the
+    # same idempotency_key after a previous completion — there's no
+    # signal coming. Pre-#72 the workflow parked on wait_condition for
+    # the full `timeout_seconds` and then raised TaskTimeoutError, a
+    # 15-minute wait for what should be an immediate cached return.
+    # Treat this as the Stripe-style retry-returns-cached-response
+    # contract: log loudly, then resolve from `task_record["response"]`.
+    existing_status = task_record.get("status") if isinstance(task_record, dict) else None
+    if existing_status in _TERMINAL_STATUS_VALUES:
+        logger.warning(
+            "Temporal adapter: idempotency_key=%s already exists, status=%s, "
+            "completed_at=%s. Returning cached response without waiting for "
+            "a new signal. Pass a fresh idempotency_key= for a new attempt.",
+            idem,
+            existing_status,
+            task_record.get("completed_at") or task_record.get("timed_out_at"),
+        )
+        return _resolve_terminal(
+            existing_status,
+            task_record,
+            response_schema,
+            task=task,
+            timeout_seconds=timeout_seconds,
+        )
 
     # Wait for the signal OR the timeout — Temporal parks the
     # workflow under both, no compute consumed while idle. asyncio's
@@ -327,13 +393,47 @@ async def await_human(
         # The webhook payload doesn't carry max_attempts; the
         # server's verification_attempt counter at terminal state is
         # the closest signal of how many tries the human got.
-        attempt = (
-            received[0].get("verification_attempt", 0)
-            if isinstance(received[0], dict)
-            else 0
-        )
+        attempt = received[0].get("verification_attempt", 0) if isinstance(received[0], dict) else 0
         raise VerificationExhaustedError(task, attempt)
     # Unknown status — shouldn't happen, but fail loud rather than silent.
+    raise RuntimeError(f"Temporal adapter saw unknown terminal status '{status}' for task '{task}'")
+
+
+# Terminal status values as wire strings (the server sends `task["status"]`
+# as a string; we don't need to import the TaskStatus enum for this set).
+_TERMINAL_STATUS_VALUES = frozenset(
+    {"completed", "timed_out", "cancelled", "verification_exhausted"}
+)
+
+
+def _resolve_terminal(
+    status: str,
+    task_record: dict[str, Any],
+    response_schema: type[T],
+    *,
+    task: str,
+    timeout_seconds: int,
+) -> T:
+    """Map a server-returned terminal task to the right return value.
+
+    Used by the idempotency-collision short-circuit AND by the
+    LangGraph adapter (PR #72). Mirrors the post-signal branches at
+    the bottom of `await_human` but takes the full task dict from
+    the server instead of the webhook payload — only difference is
+    where the `response` field lives."""
+    if status == "completed":
+        try:
+            return response_schema.model_validate(task_record.get("response"))
+        except Exception as exc:  # noqa: BLE001
+            raise SchemaValidationError("response", str(exc)) from exc
+    if status == "timed_out":
+        raise TaskTimeoutError(task=task, timeout_seconds=timeout_seconds)
+    if status == "cancelled":
+        raise TaskCancelledError(task)
+    if status == "verification_exhausted":
+        raise VerificationExhaustedError(
+            task, task_record.get("verification_attempt", 0)
+        )
     raise RuntimeError(
         f"Temporal adapter saw unknown terminal status '{status}' for task '{task}'"
     )
@@ -369,7 +469,13 @@ async def dispatch_signal(
     `temporal_client` is whatever you got back from
     `await temporalio.client.Client.connect(...)` at startup —
     typically a long-lived module-level singleton."""
-    from awaithumans.server.services.webhook_dispatch import verify_signature
+    # HMAC verification lives in `utils.webhook_signing` so importing
+    # it doesn't transitively pull in the [server] extra (FastAPI,
+    # SQLModel, etc.). Pre-PR-#71 this import resolved through the
+    # server package and the callback receiver crashed with
+    # `ModuleNotFoundError: cryptography` when only [temporal] was
+    # installed.
+    from awaithumans.utils.webhook_signing import verify_signature
 
     if not verify_signature(body=body, signature=signature_header):
         # PermissionError is the right shape — the wrapper renders

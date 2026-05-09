@@ -28,11 +28,19 @@
  *   - `npm run kickoff -- 250`                 — start a workflow run
  */
 
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { NativeConnection, Worker } from "@temporalio/worker";
+import { awaithumansCreateTask } from "awaithumans/temporal";
 
 import { processRefund } from "./activities/process-refund.js";
+
+const require = createRequire(import.meta.url);
+const TEMPORAL_WORKFLOW_DIR = dirname(
+	require.resolve("@temporalio/workflow/package.json"),
+);
 
 const TASK_QUEUE = "awaithumans-refunds";
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
@@ -49,7 +57,26 @@ async function main(): Promise<void> {
 		// pass the directory absolute so it works regardless of the
 		// caller's cwd.
 		workflowsPath: fileURLToPath(new URL("./workflows", import.meta.url)),
-		activities: { processRefund },
+		// `awaithumansCreateTask` is the activity the temporal adapter's
+		// `awaitHuman` schedules — it POSTs to the awaithumans server.
+		// Has to be registered worker-side; the workflow proxy that
+		// calls it lives in `awaithumans/temporal`.
+		activities: { processRefund, awaithumansCreateTask },
+		// When `awaithumans` is installed via `file:` (or `npm link`),
+		// the package's own `node_modules` can shadow this app's copy
+		// of `@temporalio/workflow`. Two copies = two `CancellationScope`
+		// classes = "Cannot read private member #cancelRequested" at
+		// runtime. Aliasing pins every import to one resolved path.
+		bundlerOptions: {
+			webpackConfigHook: (config) => {
+				config.resolve = config.resolve ?? {};
+				config.resolve.alias = {
+					...(config.resolve.alias as Record<string, string> | undefined),
+					"@temporalio/workflow$": TEMPORAL_WORKFLOW_DIR,
+				};
+				return config;
+			},
+		},
 	});
 
 	console.log(`[worker] task_queue=${TASK_QUEUE}`);

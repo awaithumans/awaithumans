@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { FormRenderer, initialValueFor, type FormValue } from "@/components/form-renderer";
+import {
+	FormRenderer,
+	buildResponseValue,
+	initialValueFor,
+	type FormValue,
+} from "@/components/form-renderer";
 import { EmbedFetchError, embedFetch } from "@/lib/embed/api";
 import { postEmbed } from "@/lib/embed/post-message";
 import { extractEmbedToken } from "@/lib/embed/token";
@@ -93,8 +98,11 @@ export default function EmbedTaskPage({
 		setSubmitting(true);
 		setError(null);
 		try {
+			const cleaned = task.form_definition
+				? buildResponseValue(task.form_definition, value)
+				: value;
 			const body: CompleteTaskRequest = {
-				response: value,
+				response: cleaned,
 				completed_via_channel: "embed",
 			};
 			const result = await embedFetch<Task>(`/api/tasks/${taskId}/complete`, {

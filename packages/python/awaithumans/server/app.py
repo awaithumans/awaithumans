@@ -27,11 +27,23 @@ from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
 from awaithumans.server.db.connection import close_db, init_db
-from awaithumans.server.routes import auth, email, health, setup, slack, stats, status, tasks, users
+from awaithumans.server.routes import (
+    auth,
+    email,
+    health,
+    setup,
+    slack,
+    stats,
+    status,
+    tasks,
+    users,
+    webhook_deliveries,
+)
 from awaithumans.server.routes import embed as embed_routes
 from awaithumans.server.services.embed_token_service import parse_origin_allowlist
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
 from awaithumans.server.services.user_service import count_users
+from awaithumans.server.services.webhook_scheduler import run_webhook_scheduler
 
 logger = logging.getLogger("awaithumans.server")
 
@@ -95,6 +107,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_url = await _first_run_setup_url()
 
     scheduler_task = asyncio.create_task(run_timeout_scheduler())
+    webhook_task = asyncio.create_task(run_webhook_scheduler())
     banner_task: asyncio.Task[None] | None = None
     if setup_url:
         banner_task = asyncio.create_task(_print_banner_after_startup(setup_url))
@@ -106,8 +119,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await banner_task
     scheduler_task.cancel()
+    webhook_task.cancel()
     with suppress(asyncio.CancelledError):
         await scheduler_task
+    with suppress(asyncio.CancelledError):
+        await webhook_task
     await close_db()
     logger.info("Server shut down")
 
@@ -252,6 +268,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(email.router, prefix="/api")
     app.include_router(users.router, prefix="/api")
     app.include_router(setup.router, prefix="/api")
+    app.include_router(webhook_deliveries.router, prefix="/api")
     app.include_router(embed_routes.router)
 
     # ── Dashboard static files ───────────────────────────────────────
