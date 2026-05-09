@@ -1,0 +1,188 @@
+---
+title: "Testing your agent"
+description: "Patterns for testing agent code that calls await_human() — without spinning up a real reviewer in CI."
+---
+
+`await_human()` blocks until a human acts. That's the whole point in production, and the exact thing that makes naive tests hang for the full `timeout_seconds`. This page covers the four shippable patterns to test agent code that uses awaithumans, ranked from "least magic" to "most automated."
+
+<Note>
+An in-memory `createTestClient()` (no server, instant resolution) is on the roadmap — see [the test-client tracking issue](https://github.com/awaithumans/awaithumans/issues). Until it lands, the patterns below are the supported ways to write tests today.
+</Note>
+
+## 1. Live dev server + real human (dev loop)
+
+For local iteration on a single task — when you're shaping the prompt and form, not running CI — the simplest thing is to keep `awaithumans dev` running in one terminal and click through the dashboard yourself.
+
+```bash
+# Terminal 1 — server
+awaithumans dev
+
+# Terminal 2 — your agent
+python my_agent.py
+# (Agent blocks; open http://localhost:3001, approve, agent unblocks.)
+```
+
+Use this when you're iterating on schemas, instructions, or routing — the feedback loop is faster than wiring a test fixture.
+
+## 2. File-transport email smoke (full automation, no GUI)
+
+The email channel has a `file` transport that writes each email as a JSON file to a directory instead of sending. Combined with the magic-link action URL, you can drive a full agent ↔ server ↔ "human" loop without ever opening a browser.
+
+```python
+# smoke.py — the shape of an automated end-to-end test
+import json
+import re
+import os
+import tempfile
+import time
+from pathlib import Path
+
+import requests
+from awaithumans import await_human_sync
+from pydantic import BaseModel
+
+EMAIL_DIR = Path(tempfile.mkdtemp(prefix="awaithumans-smoke-"))
+SERVER = "http://localhost:3001"
+TOKEN = os.environ["AWAITHUMANS_ADMIN_API_TOKEN"]
+
+# 1. Create a file-transport email identity
+requests.post(
+    f"{SERVER}/api/channels/email/identities",
+    headers={"Authorization": f"Bearer {TOKEN}"},
+    json={
+        "id": "smoke",
+        "display_name": "Smoke",
+        "from_email": "smoke@example.test",
+        "transport": "file",
+        "transport_config": {"dir": str(EMAIL_DIR)},
+    },
+)
+
+# 2. Kick off await_human (in a thread so we can drive the response)
+class Decision(BaseModel):
+    approved: bool
+
+import threading
+result_box = {}
+def run_agent():
+    result_box["v"] = await_human_sync(
+        task="Approve wire?",
+        payload_schema=...,
+        payload=...,
+        response_schema=Decision,
+        timeout_seconds=120,
+        notify=["email+smoke:reviewer@example.test"],
+    )
+threading.Thread(target=run_agent, daemon=True).start()
+
+# 3. Poll the file dir for the rendered email
+deadline = time.time() + 30
+while time.time() < deadline:
+    files = list(EMAIL_DIR.glob("*.json"))
+    if files:
+        break
+    time.sleep(0.5)
+
+email = json.loads(files[0].read_text())
+approve_url = re.search(r'href="([^"]+/email/action/[^"]+)"', email["html"]).group(1)
+
+# 4. POST to the magic-link URL — same as a human clicking "Approve"
+requests.post(approve_url)
+
+# 5. Agent unblocks; assert
+time.sleep(1)
+assert result_box["v"].approved is True
+```
+
+The full version of this is the runnable `examples/email-smoke-py/` (Python) and `examples/email-smoke/` (TypeScript). Both are in CI and prove the SDK ↔ server contract on every push.
+
+| Example | Language | What it tests |
+|---|---|---|
+| [`examples/email-smoke-py/`](https://github.com/awaithumans/awaithumans/tree/main/examples/email-smoke-py) | Python | SDK → file-transport email → magic-link → SDK resolves |
+| [`examples/email-smoke/`](https://github.com/awaithumans/awaithumans/tree/main/examples/email-smoke) | TypeScript | Same loop, TS SDK |
+
+This pattern is the right call when you want to test the **whole chain** (SDK serialization → server task creation → channel rendering → magic-link auth → completion → SDK polling unblock).
+
+## 3. Direct `POST /complete` (skip the channel)
+
+If you're testing agent logic — branching on `decision.approved`, error handling for `TaskTimeoutError`, etc. — you don't need to exercise the channel layer. Hit the complete endpoint directly:
+
+```python
+# In a fixture / test setup, after kicking off your agent:
+import requests, os
+
+# Get the most recent task ID (or pre-stamp `idempotency_key` so you know it)
+tasks = requests.get(
+    f"http://localhost:3001/api/tasks?limit=1",
+    headers={"Authorization": f"Bearer {os.environ['AWAITHUMANS_ADMIN_API_TOKEN']}"},
+).json()
+task_id = tasks["items"][0]["id"]
+
+# Complete it
+requests.post(
+    f"http://localhost:3001/api/tasks/{task_id}/complete",
+    headers={"Authorization": f"Bearer {os.environ['AWAITHUMANS_ADMIN_API_TOKEN']}"},
+    json={"response": {"approved": True, "notes": "test fixture"}},
+)
+# Your agent's await_human() resolves on next poll cycle (~25s max).
+```
+
+Pre-stamping `idempotency_key=f"test:{test_name}"` lets a parallel test know exactly which task to complete without race conditions.
+
+## 4. Verifier-path tests (three corner cases)
+
+When you've configured a verifier, there are three behavioral paths to cover:
+
+| Path | How to drive it | Expected SDK behavior |
+|---|---|---|
+| **Pass** | Submit a response that meets the `instructions` | `await_human()` returns the typed response |
+| **Reject + retry** | Submit a response the verifier rejects, then resubmit with one that passes | Task transitions REJECTED → COMPLETED; SDK returns the second submission |
+| **Exhaust** | Submit `max_attempts` rejected responses | SDK raises `VerificationExhaustedError` |
+
+The runnable [`examples/verifier-py/`](https://github.com/awaithumans/awaithumans/tree/main/examples/verifier-py) walks all three paths against a real Claude verifier — useful as a fixture template.
+
+For tests that should not call a real LLM, set the verifier's `model` to a deployment that returns canned responses (a stub Claude proxy, or LocalAI's `claude` adapter), and override the API key env var per-test.
+
+## 5. Pinning idempotency keys for parallel safety
+
+If your test suite creates tasks in parallel, pin every test's `idempotency_key` to its test name so a flaky run doesn't accidentally pick up a sibling test's task:
+
+```python
+def test_refund_approval():
+    decision = await_human_sync(
+        task="...",
+        idempotency_key="test:refund-approval",   # ← stable per-test
+        # ...
+    )
+```
+
+Re-running the same test re-uses the same task (Stripe-style idempotency). To force a fresh task between runs, suffix with a UUID:
+
+```python
+idempotency_key=f"test:refund-approval:{uuid.uuid4()}"
+```
+
+## What to put in CI
+
+The minimum useful CI loop:
+
+1. Boot `awaithumans dev` (or use Docker Compose in CI runners).
+2. Run the file-transport email smoke against it.
+3. Run your agent test suite using pattern 3 (direct complete).
+
+That covers ~90% of regression risk: the SDK wire format, the channel renderer, the verifier path, and your own agent's branching.
+
+The slack channel doesn't have an automated smoke equivalent — Slack signs every interaction with a per-workspace secret routed through Slack's servers, which can't be driven from local code. The fall-back is the manual flow in [`examples/slack-native/`](https://github.com/awaithumans/awaithumans/tree/main/examples/slack-native).
+
+## Common pitfalls
+
+- **Tests timing out at the SDK's `timeout_seconds` rather than your test runner's timeout.** Set `timeout_seconds=60` in tests; the SDK's minimum is 60s. Anything shorter belongs in a different layer (your test runner's pytest-timeout, jest's testTimeout).
+- **Polluting prod data with test tasks.** Run tests against a separate `AWAITHUMANS_URL`. The dev server's SQLite DB is at `.awaithumans/dev.db` — wipe between test runs if you want isolation.
+- **Forgetting to clean up email identities.** Each test creates a `file` identity; tear down with `DELETE /api/channels/email/identities/{id}` so they don't accumulate.
+- **Verifier hits a real LLM in CI.** That's both a cost and a flakiness risk. Mock at the env-var level (point `ANTHROPIC_API_KEY` at a stub) or skip the verifier in non-prod-shape tests.
+
+## Where to next
+
+- [Webhooks (`callback_url`)](/webhooks) — for testing Temporal/LangGraph workflow callbacks
+- [Idempotency](/concepts/idempotency) — recover-from-crash semantics that test fixtures rely on
+- [Verifier](/adapters/verifier) — full provider list and prompt patterns

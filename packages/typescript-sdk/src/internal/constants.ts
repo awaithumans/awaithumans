@@ -29,4 +29,4 @@ export const CREATE_TASK_TIMEOUT_MS = 30_000;
 /** Docs base URLs for error messages. */
 export const DOCS_BASE_URL = "https://awaithumans.dev/docs";
 export const DOCS_TROUBLESHOOTING_URL = `${DOCS_BASE_URL}/troubleshooting`;
-export const DOCS_ROADMAP_URL = `${DOCS_BASE_URL}/roadmap`;
+export const DOCS_ROADMAP_URL = `${DOCS_BASE_URL}/community/roadmap`;

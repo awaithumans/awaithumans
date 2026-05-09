@@ -158,3 +158,9 @@ The TypeScript adapter at `awaithumans/temporal` produces the same wire format. 
 - **`AWAITHUMANS_PAYLOAD_KEY` mismatch** — the HMAC signing key derives from this. If the awaithumans server and the callback receiver have different keys, signatures never verify. Use the same value on both processes.
 - **`callback_url` not reachable** — the awaithumans server logs show `Webhook delivery failed task=… url=…: …`. Most often a tunnel/firewall issue.
 - **Duplicate idempotency key** — two `await_human()` calls in the same workflow with the same `(task, payload)` get the same key by default. Pass `idempotency_key=` explicitly to disambiguate. See [Idempotency](/concepts/idempotency).
+
+## Where to next
+
+- [Webhooks (`callback_url`)](/webhooks) — full wire format, retry policy, signature scheme
+- [Testing](/testing) — driving fixtures past the workflow boundary
+- [LangGraph adapter](/adapters/langgraph) — the same pattern with interrupt/resume instead of signals
