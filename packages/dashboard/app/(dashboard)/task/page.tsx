@@ -27,6 +27,7 @@ import { Eyebrow } from "@/components/eyebrow";
 import { StatusBadge } from "@/components/status-badge";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 import {
+	buildResponseValue,
 	FormRenderer,
 	initialValueFor,
 	type FormValue,
@@ -112,8 +113,14 @@ function TaskDetailPageInner() {
 		if (!task) return;
 		setSubmitting(true);
 		try {
+			// Drop blank optional fields before sending so Pydantic
+			// schemas with defaults (`field: str = ""`, etc.) apply
+			// server-side instead of failing validation on a wire null.
+			const responseBody = task.form_definition
+				? buildResponseValue(task.form_definition, formData)
+				: formData;
 			await completeTask(task.id, {
-				response: formData,
+				response: responseBody,
 				completed_via_channel: "dashboard",
 			});
 			await loadTask();
