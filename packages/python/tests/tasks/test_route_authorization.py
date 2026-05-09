@@ -424,3 +424,149 @@ def test_list_unassigned_ignored_for_non_operator(
     # The reviewer should see only their own task — the unassigned
     # broadcast does not leak into their queue.
     assert ids == {own}
+
+
+# ─── List filter: ?assigned_to=X (broad search across user fields) ─────
+
+
+def test_list_assigned_to_matches_email_exact(
+    client: TestClient, operator_user: User
+) -> None:
+    """Pre-#73 this was the only working query shape. Pin it so the
+    new broader logic doesn't regress the email-exact path."""
+    target = _make_task(
+        client, assigned_to_email=OPERATOR_EMAIL, idempotency_key="assignee-1"
+    )
+    _make_task(client, idempotency_key="assignee-1b")  # noise
+    resp = client.get(
+        f"/api/tasks?assigned_to={OPERATOR_EMAIL}", headers=_admin_headers()
+    )
+    assert resp.status_code == 200
+    ids = {r["id"] for r in resp.json()}
+    assert target in ids
+
+
+def test_list_assigned_to_matches_display_name_substring(
+    client: TestClient, operator_user: User
+) -> None:
+    """The user's actual ask: typing "operator" (display_name) finds
+    the task assigned to ops@example.com. Pre-#73 returned [].
+    Substring match is case-insensitive — typing "OP" or "ope" works
+    too."""
+    target = _make_task(
+        client, assigned_to_email=OPERATOR_EMAIL, idempotency_key="assignee-2"
+    )
+    # operator_user has display_name="Op Erator" or similar; check
+    # the conftest. We assume display_name is set to something that
+    # contains "op" (case-insensitive). If it isn't, the conftest
+    # needs to be updated alongside this filter.
+    resp = client.get(
+        "/api/tasks?assigned_to=op", headers=_admin_headers()
+    )
+    assert resp.status_code == 200
+    ids = {r["id"] for r in resp.json()}
+    assert target in ids, (
+        "expected task assigned to operator to surface via display-name "
+        f"substring. operator_user.display_name={operator_user.display_name!r}"
+    )
+
+
+def test_list_assigned_to_matches_slack_user_id_exact(
+    client: TestClient, operator_user: User
+) -> None:
+    """Slack-only users have no email but are assignable via
+    slack_user_id. The broad filter should match it exactly."""
+    # Patch the operator to have a slack_user_id we can search for.
+    from awaithumans.server.db.connection import get_async_session_factory
+
+    async def _attach_slack() -> None:
+        factory = get_async_session_factory()
+        async with factory() as session:
+            user = await session.get(User, operator_user.id)
+            assert user is not None
+            user.slack_user_id = "U_TEST_OP"
+            session.add(user)
+            await session.commit()
+
+    asyncio.new_event_loop().run_until_complete(_attach_slack())
+
+    target = _make_task(
+        client, assigned_to_email=OPERATOR_EMAIL, idempotency_key="assignee-3"
+    )
+    resp = client.get(
+        "/api/tasks?assigned_to=U_TEST_OP", headers=_admin_headers()
+    )
+    assert resp.status_code == 200
+    ids = {r["id"] for r in resp.json()}
+    assert target in ids
+
+
+def test_list_assigned_to_unknown_returns_empty(
+    client: TestClient, operator_user: User
+) -> None:
+    """Search that matches no user AND no assigned_to_email returns
+    an empty list, not an error."""
+    _make_task(
+        client, assigned_to_email=OPERATOR_EMAIL, idempotency_key="assignee-4"
+    )
+    resp = client.get(
+        "/api/tasks?assigned_to=nobody-by-this-name-exists",
+        headers=_admin_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+# ─── List filter: ?terminal=true (audit-log view) ───────────────────────
+
+
+def test_list_terminal_true_returns_only_terminal(
+    client: TestClient, operator_user: User
+) -> None:
+    """Audit Log uses ?terminal=true to fetch all completed/timed-out/
+    cancelled/verification-exhausted tasks in one call. Active tasks
+    (status=created etc) must NOT leak in."""
+    active = _make_task(
+        client, assigned_to_email=OPERATOR_EMAIL, idempotency_key="term-1"
+    )
+    completed = _make_task(
+        client, assigned_to_email=OPERATOR_EMAIL, idempotency_key="term-2"
+    )
+    client.post(
+        f"/api/tasks/{completed}/complete",
+        json={"response": {"approved": True}},
+        headers=_admin_headers(),
+    )
+
+    resp = client.get("/api/tasks?terminal=true", headers=_admin_headers())
+    assert resp.status_code == 200
+    ids = {r["id"] for r in resp.json()}
+    assert completed in ids
+    assert active not in ids
+
+
+def test_list_terminal_true_with_status_keeps_explicit_status(
+    client: TestClient, operator_user: User
+) -> None:
+    """When both are set, status= wins. terminal=true is the
+    "any-terminal" shorthand; if you want a specific terminal status
+    you can scope to one (e.g. status=cancelled) and the dashboard
+    still works."""
+    completed = _make_task(
+        client, assigned_to_email=OPERATOR_EMAIL, idempotency_key="term-3"
+    )
+    client.post(
+        f"/api/tasks/{completed}/complete",
+        json={"response": {"approved": True}},
+        headers=_admin_headers(),
+    )
+
+    resp = client.get(
+        "/api/tasks?terminal=true&status=cancelled",
+        headers=_admin_headers(),
+    )
+    assert resp.status_code == 200
+    ids = {r["id"] for r in resp.json()}
+    # The completed task is terminal but NOT cancelled, so the
+    # status= filter excludes it.
+    assert completed not in ids

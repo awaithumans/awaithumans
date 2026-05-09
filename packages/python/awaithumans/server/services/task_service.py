@@ -17,7 +17,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from awaithumans.server.db.models import AuditEntry, Task, TaskStatus
+from awaithumans.server.db.models import AuditEntry, Task, TaskStatus, User
 from awaithumans.server.services.exceptions import (
     TaskAlreadyClaimedError,
     TaskAlreadyTerminalError,
@@ -152,9 +152,10 @@ async def list_tasks(
     session: AsyncSession,
     *,
     status: TaskStatus | None = None,
-    assigned_to_email: str | None = None,
+    assigned_to_query: str | None = None,
     assigned_to_user_id: str | None = None,
     unassigned: bool = False,
+    terminal: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Task]:
@@ -165,26 +166,82 @@ async def list_tasks(
     routing time, which is stable across email changes and works for
     Slack-only users (where `assigned_to_email` is null).
 
+    `assigned_to_query` is a broad search the dashboard uses for the
+    Assignee filter input. Matches if any of:
+      - User.email == query (exact)
+      - User.slack_user_id == query (exact)
+      - lower(User.display_name) LIKE '%lower(query)%' (substring)
+    In all matching cases the corresponding User.id is collected; we
+    then filter `Task.assigned_to_user_id IN matched OR
+    Task.assigned_to_email == query`. The trailing-email branch
+    catches tasks that were assigned by email before the user was
+    provisioned (so the email column is set but user_id is null).
+
+    Pre-#73 this was `assigned_to_email == query` — which meant
+    typing a display name or Slack ID returned nothing.
+
     `unassigned=True` surfaces only broadcast tasks that no human has
     claimed yet (BOTH user_id AND email columns null). Useful for the
     dashboard's "Unassigned" filter so operators can spot tasks that
-    need a Claim. Wins over `assigned_to_email` / `assigned_to_user_id`
+    need a Claim. Wins over `assigned_to_query` / `assigned_to_user_id`
     if both are passed — those filters are nonsensical alongside
     "show only unassigned."
     """
     query = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
     if status is not None:
         query = query.where(Task.status == status)
+    elif terminal:
+        # Audit-log view: any of the four terminal statuses. Skipped
+        # when an explicit status= was passed so "filter within
+        # terminal" works (e.g. terminal=true&status=cancelled keeps
+        # the explicit one and the elif means we don't double-filter).
+        query = query.where(Task.status.in_(list(TERMINAL_STATUSES_SET)))
     if unassigned:
         query = query.where(Task.assigned_to_user_id.is_(None))
         query = query.where(Task.assigned_to_email.is_(None))
     else:
-        if assigned_to_email is not None:
-            query = query.where(Task.assigned_to_email == assigned_to_email)
+        if assigned_to_query is not None:
+            matched_user_ids = await _resolve_assignee_search(
+                session, assigned_to_query
+            )
+            from sqlalchemy import or_
+
+            conditions = [Task.assigned_to_email == assigned_to_query]
+            if matched_user_ids:
+                conditions.append(Task.assigned_to_user_id.in_(matched_user_ids))
+            query = query.where(or_(*conditions))
         if assigned_to_user_id is not None:
             query = query.where(Task.assigned_to_user_id == assigned_to_user_id)
     result = await session.execute(query)
     return list(result.scalars().all())
+
+
+async def _resolve_assignee_search(
+    session: AsyncSession, query: str
+) -> list[str]:
+    """Find all user IDs matching the broad-search rules in `list_tasks`.
+
+    Runs a single query: `email == X OR slack_user_id == X OR
+    lower(display_name) LIKE '%lower(X)%'`. Returns whatever set
+    matches — possibly empty. We don't enforce a length floor on
+    `query` because the caller already trimmed it to non-empty;
+    operators who paste a single character get a wide match and
+    that's their problem to refine."""
+    from sqlalchemy import func, or_
+
+    needle = query.strip()
+    if not needle:
+        return []
+    rows = await session.execute(
+        select(User.id).where(
+            or_(
+                User.email == needle,
+                User.slack_user_id == needle,
+                func.lower(User.display_name).like(f"%{needle.lower()}%"),
+            )
+        )
+    )
+    return [r[0] for r in rows.all()]
 
 
 async def claim_task(

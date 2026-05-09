@@ -203,13 +203,31 @@ async def create_task_route(
 async def list_tasks_route(
     request: Request,
     status: TaskStatus | None = Query(None, description="Filter by status"),
-    assigned_to: str | None = Query(None, description="Filter by assigned email"),
+    assigned_to: str | None = Query(
+        None,
+        description=(
+            "Filter by assignee. Matches against the directory user's "
+            "email (exact), Slack user ID (exact), or display name "
+            "(case-insensitive substring), as well as the legacy "
+            "assigned_to_email column for tasks routed by email "
+            "before the user was provisioned."
+        ),
+    ),
     unassigned: bool = Query(
         False,
         description=(
             "If true, return only tasks where no assignee has been pinned "
             "(both user_id and email are null). Used by the dashboard to "
             "surface broadcast tasks needing Claim. Overrides assigned_to."
+        ),
+    ),
+    terminal: bool = Query(
+        False,
+        description=(
+            "If true, return only tasks in a terminal status (completed, "
+            "timed_out, cancelled, verification_exhausted). Used by the "
+            "Audit Log dashboard view. Combine with `status=` to filter "
+            "within terminal (`status=` wins when both are set)."
         ),
     ),
     limit: int = Query(50, ge=1, le=200),
@@ -247,9 +265,10 @@ async def list_tasks_route(
     tasks = await list_tasks(
         session,
         status=status,
-        assigned_to_email=assigned_to,
+        assigned_to_query=assigned_to,
         assigned_to_user_id=scoped_assigned_user_id,
         unassigned=unassigned,
+        terminal=terminal,
         limit=limit,
         offset=offset,
     )

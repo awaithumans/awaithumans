@@ -18,11 +18,15 @@ import {
 	TASK_LIST_POLL_INTERVAL_MS,
 } from "@/lib/constants";
 import { ErrorBanner } from "@/components/error-banner";
+import {
+	TaskFilterBar,
+	type StatusOption,
+} from "@/components/filters/task-filter-bar";
 import { ShellEmptyState } from "@/components/shell-empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 
-const STATUS_OPTIONS: { label: string; value: TaskStatus | "all" }[] = [
+const STATUS_OPTIONS: readonly StatusOption[] = [
 	{ label: "All", value: "all" },
 	{ label: "Created", value: "created" },
 	{ label: "Notified", value: "notified" },
@@ -35,7 +39,7 @@ const STATUS_OPTIONS: { label: string; value: TaskStatus | "all" }[] = [
 	{ label: "Timed out", value: "timed_out" },
 	{ label: "Cancelled", value: "cancelled" },
 	{ label: "Verification exhausted", value: "verification_exhausted" },
-];
+] as const;
 
 interface FilterState {
 	status: TaskStatus | "all";
@@ -200,93 +204,17 @@ function TaskQueuePageInner() {
 				</div>
 			</div>
 
-			{/* Filter bar */}
-			<div className="border border-white/10 rounded-lg p-4 mb-6 flex flex-wrap items-center gap-3">
-				{/* Status dropdown */}
-				<label className="flex items-center gap-2 text-sm text-white/60">
-					<span>Status</span>
-					<select
-						value={filters.status}
-						onChange={(e) =>
-							updateFilters({
-								status: e.target.value as TaskStatus | "all",
-							})
-						}
-						className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-brand/40"
-					>
-						{STATUS_OPTIONS.map((o) => (
-							<option key={o.value} value={o.value}>
-								{o.label}
-							</option>
-						))}
-					</select>
-				</label>
-
-				{/* Assignee email */}
-				<label className="flex items-center gap-2 text-sm text-white/60">
-					<span>Assignee</span>
-					<input
-						type="text"
-						placeholder="email"
-						value={filters.assignedTo}
-						disabled={filters.unassigned || filters.mine}
-						onChange={(e) =>
-							updateFilters({ assignedTo: e.target.value })
-						}
-						className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-brand/40 disabled:opacity-40 disabled:cursor-not-allowed"
-					/>
-				</label>
-
-				{/* Toggles */}
-				<label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">
-					<input
-						type="checkbox"
-						checked={filters.unassigned}
-						onChange={(e) =>
-							updateFilters({
-								unassigned: e.target.checked,
-								// Mutually-exclusive with Mine.
-								mine: e.target.checked ? false : filters.mine,
-							})
-						}
-						className="accent-brand"
-					/>
-					<span>Unassigned only</span>
-				</label>
-				{me?.is_operator && (
-					<label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">
-						<input
-							type="checkbox"
-							checked={filters.mine}
-							onChange={(e) =>
-								updateFilters({
-									mine: e.target.checked,
-									unassigned: e.target.checked ? false : filters.unassigned,
-								})
-							}
-							className="accent-brand"
-						/>
-						<span>Mine only</span>
-					</label>
-				)}
-
-				{filtersActive && (
-					<button
-						type="button"
-						onClick={() =>
-							updateFilters({
-								status: "all",
-								assignedTo: "",
-								unassigned: false,
-								mine: false,
-							})
-						}
-						className="ml-auto text-xs text-white/40 hover:text-white/70 transition-colors underline"
-					>
-						Clear filters
-					</button>
-				)}
-			</div>
+			<TaskFilterBar
+				filters={{
+					status: filters.status,
+					assignedTo: filters.assignedTo,
+					unassigned: filters.unassigned,
+					mine: filters.mine,
+				}}
+				onChange={updateFilters}
+				isOperator={!!me?.is_operator}
+				statusOptions={STATUS_OPTIONS}
+			/>
 
 			{error && <ErrorBanner message={error} />}
 
