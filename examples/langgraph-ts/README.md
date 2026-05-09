@@ -45,7 +45,10 @@ resume model instead of Temporal signals.
 ## Prerequisites
 
 - Node 20+
-- The awaithumans dev server running locally (`awaithumans dev`)
+- [uv](https://docs.astral.sh/uv/) if you're booting the server via `npx awaithumans dev`. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+- `awaithumans dev` running locally (in another terminal). The TS SDK auto-discovers the URL + admin token via `~/.awaithumans-dev.json`.
+- The LangGraph adapter peer dep. This example's `package.json` already lists `@langchain/langgraph`. If you're copying this code into your own project, run `npm install awaithumans @langchain/langgraph`.
+- Both this app and the awaithumans server need the **same** `AWAITHUMANS_PAYLOAD_KEY`. The dev server writes its key to `<cwd-of-awaithumans-dev>/.awaithumans/payload.key` on first boot — find that path and export it as shown in step 2 below.
 
 ## Run it
 
@@ -58,7 +61,12 @@ awaithumans dev
 # Terminal 2 — this example's app (graph + checkpointer + callback)
 cd examples/langgraph-ts
 npm install
-export AWAITHUMANS_PAYLOAD_KEY=$(cat /tmp/<your-dev-cwd>/.awaithumans/payload.key)
+
+# AWAITHUMANS_PAYLOAD_KEY lives at .awaithumans/payload.key relative to wherever
+# you ran `awaithumans dev`. Easiest way to find it:
+#   cd <that-directory> && pwd && ls .awaithumans/payload.key
+# Then point this export at it:
+export AWAITHUMANS_PAYLOAD_KEY=$(cat /path/to/awaithumans-dev-cwd/.awaithumans/payload.key)
 # Demo-only: pre-assign every human-review task to your dashboard
 # login so the Approve / Reject form renders immediately. Leave
 # unset in production — operators claim tasks from the dashboard.

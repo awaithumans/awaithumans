@@ -45,7 +45,9 @@ end-to-end flow.
 ## Prerequisites
 
 - Python 3.10+
-- The awaithumans dev server running locally (`awaithumans dev`)
+- `awaithumans dev` running locally (in another terminal). The Python SDK auto-discovers the URL + admin token via `~/.awaithumans-dev.json`.
+- The LangGraph adapter extra. This example's `requirements.txt` installs `awaithumans[langgraph]` for you. If you're copying this code into your own project, run `pip install "awaithumans[langgraph]"` — without the extra, importing `awaithumans.adapters.langgraph` fails.
+- Both this app and the awaithumans server need the **same** `AWAITHUMANS_PAYLOAD_KEY`. The dev server writes its key to `<cwd-of-awaithumans-dev>/.awaithumans/payload.key` on first boot — find that path and export it as shown in step 2 below.
 
 ## Run it
 
@@ -59,7 +61,12 @@ awaithumans dev
 cd examples/langgraph-py
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export AWAITHUMANS_PAYLOAD_KEY=$(cat /tmp/<your-dev-cwd>/.awaithumans/payload.key)
+
+# AWAITHUMANS_PAYLOAD_KEY lives at .awaithumans/payload.key relative to wherever
+# you ran `awaithumans dev`. Easiest way to find it:
+#   cd <that-directory> && pwd && ls .awaithumans/payload.key
+# Then point this export at it:
+export AWAITHUMANS_PAYLOAD_KEY=$(cat /path/to/awaithumans-dev-cwd/.awaithumans/payload.key)
 # Demo-only: pre-assign every human-review task to your dashboard
 # login so the Approve / Reject form renders immediately. Leave
 # unset in production — operators claim tasks from the dashboard.

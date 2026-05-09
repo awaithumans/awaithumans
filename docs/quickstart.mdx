@@ -198,11 +198,59 @@ decision = await_human_sync(
 )
 ```
 
-See [Channels: Slack](/channels/slack) for setup. Email works the same way: `notify=["email:approvals@acme.com"]`.
+<Warning>
+**Set up the Slack channel first**, otherwise the `notify=` line is silently dropped and the task only appears in the dashboard — the snippet above won't post to any Slack workspace until you've configured the bot.
+
+You need three things on the **awaithumans server** (the process running `awaithumans dev`):
+
+1. A Slack app installed in your workspace with the right scopes ([app manifest in the Slack docs](/channels/slack#1-create-a-slack-app)).
+2. `AWAITHUMANS_SLACK_BOT_TOKEN` (`xoxb-...`) and `AWAITHUMANS_SLACK_SIGNING_SECRET` exported in the server's environment.
+3. The bot invited to the channel you're posting to (`/invite @Await Humans` in `#approvals`).
+
+Restart `awaithumans dev` after setting the env vars. Without this, the SDK call still succeeds — Slack delivery happens in a background task and only logs the failure server-side.
+</Warning>
+
+See [Channels: Slack](/channels/slack) for the full setup walkthrough (static-token mode is the fastest path; OAuth multi-workspace mode is also documented).
+
+Email works the same way — `notify=["email:approvals@acme.com"]` — and has the same prerequisite: configure a transport (Resend or SMTP) on the server first. See [Channels: Email](/channels/email).
 
 ## Add AI verification
 
-Have an LLM gut-check the human's decision before it lands:
+Have an LLM gut-check the human's decision before it lands.
+
+<Note>
+**Bring your own key.** The verifier runs **server-side**, not in your agent process. That means your LLM provider API key must be exported on the awaithumans server's environment (the same shell that ran `awaithumans dev`), **not** the shell running your agent script. If you skip this step, the task fails with `VERIFIER_API_KEY_MISSING` at submit time.
+</Note>
+
+In the terminal that's running `awaithumans dev` (or in your `.env`), set the key for whichever provider you'll use:
+
+<CodeGroup>
+```bash Claude (Anthropic)
+export ANTHROPIC_API_KEY=sk-ant-...
+# then restart: awaithumans dev
+```
+
+```bash OpenAI
+export OPENAI_API_KEY=sk-...
+```
+
+```bash Gemini (Google)
+export GEMINI_API_KEY=AIza...
+```
+
+```bash Azure OpenAI
+export AZURE_OPENAI_API_KEY=...
+export AZURE_OPENAI_ENDPOINT=https://my-resource.openai.azure.com
+```
+</CodeGroup>
+
+You also need the provider's SDK installed in the awaithumans server's Python environment:
+
+```bash
+pip install "awaithumans[verifier-claude]"   # for Claude — pick the one matching your provider
+```
+
+Then attach the verifier to your `await_human` call:
 
 ```python
 from awaithumans.verifiers.claude import claude_verifier
@@ -219,7 +267,9 @@ decision = await_human_sync(
 )
 ```
 
-See [Verifier](/adapters/verifier) for the full provider list and NL-parsing tricks.
+Your agent code doesn't carry any API key — it just declares the verifier config; the server does the LLM call.
+
+See [Verifier](/adapters/verifier) for the full provider list, custom env var names, and NL-parsing tricks.
 
 ## Next steps
 

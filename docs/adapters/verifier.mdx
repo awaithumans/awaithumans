@@ -10,18 +10,33 @@ The verifier runs server-side after a human submits, before the task lands in `C
 
 If the verifier rejects, the task goes to `REJECTED` (non-terminal), the reason is shown to the reviewer, and they get to retry. After `max_attempts`, it's `VERIFICATION_EXHAUSTED` (terminal) and the agent gets a typed error.
 
-## Providers
+## BYOK — bring your own key
 
-Built-in:
+<Warning>
+**The verifier LLM call runs server-side, not in your agent process.** That has two consequences worth internalizing before you wire anything up:
 
-| Provider | Install | Default model |
-|---|---|---|
-| `claude` | `pip install "awaithumans[verifier-claude]"` | `claude-sonnet-4-5` |
-| `openai` | `pip install "awaithumans[verifier-openai]"` | `gpt-4o-2024-11-20` |
-| `gemini` | `pip install "awaithumans[verifier-gemini]"` | `gemini-2.0-flash` |
-| `azure` | `pip install "awaithumans[verifier-azure]"` | (operator-supplied) |
+1. **Your provider API key must live on the awaithumans server's environment**, not the agent's. The agent process never sees the key, never sends it over the wire, and doesn't need it installed.
+2. **Your LLM provider bills you directly.** awaithumans has no inference layer of its own — every verifier call goes from your server to Anthropic / OpenAI / Google / Azure, on your account, at provider list price. There's no markup and no proxy.
+</Warning>
 
-Each provider's API key reads from an env var on the awaithumans **server** (NOT the agent process). Defaults: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_API_KEY`. Override via `api_key_env=` in the config.
+Each provider needs **two things** on the server: the SDK extra installed, and the API key exported as an env var.
+
+| Provider | Install | Required env var | Default model |
+|---|---|---|---|
+| `claude` | `pip install "awaithumans[verifier-claude]"` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-5` |
+| `openai` | `pip install "awaithumans[verifier-openai]"` | `OPENAI_API_KEY` | `gpt-4o-2024-11-20` |
+| `gemini` | `pip install "awaithumans[verifier-gemini]"` | `GEMINI_API_KEY` | `gemini-2.0-flash` |
+| `azure` | `pip install "awaithumans[verifier-azure]"` | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` | (operator-supplied deployment name) |
+
+Override the env var name with `api_key_env=` if you'd rather not use the default — e.g. `claude_verifier(api_key_env="ACME_CLAUDE_KEY")`.
+
+```bash
+# On the same shell that runs `awaithumans dev` (or in the server's .env):
+export ANTHROPIC_API_KEY=sk-ant-...
+awaithumans dev   # restart so the new var is picked up
+```
+
+Forget this step and the first verifier call returns `HTTP 500 VERIFIER_API_KEY_MISSING` with a docs link to [the troubleshooting page](/troubleshooting#verifier-api-key-missing). Set the key, restart the server, the failed task can be resubmitted by the human — the verifier didn't burn an attempt.
 
 ## Quickstart
 
@@ -47,6 +62,8 @@ decision = await_human_sync(
 ```
 
 If the human submits with empty notes on a $1500 refund, the verifier rejects with the reason "Amount over $1000 requires notes." The dashboard shows the reason; the reviewer fills the field and resubmits.
+
+Note that `claude_verifier(...)` doesn't take an API key — it just declares the config. The agent ships that config to the server, and the server reads `ANTHROPIC_API_KEY` from its own env.
 
 ## Other providers
 

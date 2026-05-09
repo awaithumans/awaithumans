@@ -101,7 +101,10 @@ export AWAITHUMANS_SLACK_BOT_TOKEN=xoxb-...
 export AWAITHUMANS_SLACK_SIGNING_SECRET=...
 export AWAITHUMANS_PUBLIC_URL=https://YOUR-NGROK-URL.ngrok.io  # so dashboard URLs match the tunnel
 
-# Optional — enables NL-thread-reply parsing
+# Optional — enables NL-thread-reply parsing.
+# The verifier runs server-side (BYOK), so the key lives on this server's env, not the agent's.
+# Also requires the Claude verifier extra:
+#   pip install "awaithumans[verifier-claude]"
 export ANTHROPIC_API_KEY=sk-ant-...
 
 awaithumans dev
