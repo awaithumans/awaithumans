@@ -1,0 +1,259 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Await Humans",
+  "colors": {
+    "primary": "#00E676",
+    "light": "#33EE99",
+    "dark": "#00B25A"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://awaithumans.dev"
+  },
+  "navigation": {
+    "anchors": [
+      {
+        "anchor": "Documentation",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/task-lifecycle",
+              "concepts/four-buckets",
+              "concepts/three-walls",
+              "concepts/idempotency"
+            ]
+          },
+          {
+            "group": "Adapters",
+            "pages": [
+              "adapters/temporal",
+              "adapters/langgraph",
+              "adapters/verifier"
+            ]
+          },
+          {
+            "group": "Channels",
+            "pages": [
+              "channels/overview",
+              "channels/slack",
+              "channels/email"
+            ]
+          },
+          {
+            "group": "Routing",
+            "pages": [
+              "routing/overview"
+            ]
+          },
+          {
+            "group": "Self-hosting",
+            "pages": [
+              "self-hosting/docker-compose",
+              "self-hosting/configuration",
+              "self-hosting/security"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "webhooks"
+            ]
+          },
+          {
+            "group": "SDK reference",
+            "pages": [
+              "sdk/python",
+              "sdk/typescript"
+            ]
+          },
+          {
+            "group": "API reference",
+            "pages": [
+              "api/overview",
+              "api/create-task",
+              "api/poll-task",
+              "api/complete-task"
+            ]
+          },
+          {
+            "group": "Help",
+            "pages": [
+              "testing",
+              "troubleshooting"
+            ]
+          },
+          {
+            "group": "Community",
+            "pages": [
+              "changelog",
+              "community/roadmap"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/awaithumans/awaithumans",
+          "icon": "github"
+        },
+        {
+          "anchor": "Discord",
+          "href": "https://discord.gg/awaithumans",
+          "icon": "discord"
+        },
+        {
+          "anchor": "Releases",
+          "href": "https://github.com/awaithumans/awaithumans/releases",
+          "icon": "tag"
+        }
+      ]
+    }
+  },
+  "styling": {
+    "codeblocks": "system"
+  },
+  "appearance": {
+    "default": "dark",
+    "strict": false
+  },
+  "background": {
+    "color": {
+      "light": "#F5F5F5",
+      "dark": "#0A0A0A"
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/awaithumans/awaithumans"
+      },
+      {
+        "label": "Releases",
+        "href": "https://github.com/awaithumans/awaithumans/releases"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get started",
+      "href": "/quickstart"
+    }
+  },
+  "search": {
+    "prompt": "Search the awaithumans docs..."
+  },
+  "seo": {
+    "metatags": {
+      "og:site_name": "Await Humans",
+      "og:type": "website",
+      "twitter:card": "summary_large_image",
+      "twitter:site": "@awaithumans"
+    },
+    "indexing": "navigable"
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/awaithumans/awaithumans",
+      "x": "https://x.com/awaithumans"
+    },
+    "links": [
+      {
+        "header": "Product",
+        "items": [
+          {
+            "label": "Quickstart",
+            "href": "/quickstart"
+          },
+          {
+            "label": "Concepts",
+            "href": "/concepts/task-lifecycle"
+          },
+          {
+            "label": "Releases",
+            "href": "https://github.com/awaithumans/awaithumans/releases"
+          }
+        ]
+      },
+      {
+        "header": "Developers",
+        "items": [
+          {
+            "label": "Python SDK",
+            "href": "/sdk/python"
+          },
+          {
+            "label": "TypeScript SDK",
+            "href": "/sdk/typescript"
+          },
+          {
+            "label": "API reference",
+            "href": "/api/overview"
+          },
+          {
+            "label": "Webhooks",
+            "href": "/webhooks"
+          }
+        ]
+      },
+      {
+        "header": "Self-host",
+        "items": [
+          {
+            "label": "Docker Compose",
+            "href": "/self-hosting/docker-compose"
+          },
+          {
+            "label": "Configuration",
+            "href": "/self-hosting/configuration"
+          },
+          {
+            "label": "Security",
+            "href": "/self-hosting/security"
+          }
+        ]
+      },
+      {
+        "header": "Community",
+        "items": [
+          {
+            "label": "GitHub",
+            "href": "https://github.com/awaithumans/awaithumans"
+          },
+          {
+            "label": "Discord",
+            "href": "https://discord.gg/awaithumans"
+          },
+          {
+            "label": "Roadmap & help wanted",
+            "href": "/community/roadmap"
+          }
+        ]
+      }
+    ]
+  },
+  "redirects": [
+    {
+      "source": "/roadmap",
+      "destination": "/community/roadmap"
+    },
+    {
+      "source": "/docs/roadmap",
+      "destination": "/community/roadmap"
+    }
+  ]
+}
