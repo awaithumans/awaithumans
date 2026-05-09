@@ -31,6 +31,9 @@
     "typescript": "^5.7.0",
     "vitest": "^4.1.4"
   },
+  "overrides": {
+    "postcss": ">=8.5.10"
+  },
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
