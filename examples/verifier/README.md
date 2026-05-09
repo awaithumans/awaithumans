@@ -10,11 +10,28 @@ submission.
 
 Mirrors [`../verifier-py/`](../verifier-py/) (Python).
 
+> **BYOK — bring your own key.** awaithumans has no inference layer
+> of its own; every verifier call goes from the server directly to
+> Anthropic on your account at provider list price. The agent
+> process never sees the key. Forget to export it on the server and
+> the first submission returns `HTTP 500 VERIFIER_API_KEY_MISSING`
+> ([docs](https://awaithumans.dev/docs/troubleshooting#verifier-api-key-missing)) —
+> the human can resubmit once you've fixed it; the verifier didn't
+> burn an attempt.
+
 ## Prerequisites
 
 - Node 20+
 - A Claude API key exported in the **server's** shell as
-  `ANTHROPIC_API_KEY` — the verifier runs server-side.
+  `ANTHROPIC_API_KEY`. The agent process (this Node script) doesn't
+  need it — the verifier LLM call runs on the awaithumans Python
+  server.
+- The server has the verifier extra installed. `npx awaithumans dev`
+  uses `uv` to run a Python venv under the hood; the first time you
+  add a new provider extra it's:
+  `uv tool install "awaithumans[verifier-claude]" --force`.
+  Without it, submissions return `VERIFIER_PROVIDER_UNAVAILABLE`
+  instead of running the check.
 
 ## Run
 
