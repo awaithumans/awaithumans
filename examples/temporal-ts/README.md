@@ -4,6 +4,14 @@ A real Temporal workflow that pauses for a human approval through awaithumans, t
 
 This is the canonical durable-HITL pattern: the workflow's `awaitHuman()` call gives Temporal back to the scheduler ("park me until a signal arrives"), the human reviews via the awaithumans dashboard / Slack / email, and a webhook from the awaithumans server signals the workflow back to life. Zero compute consumed while waiting; full Temporal durability if the worker restarts mid-await.
 
+## Prerequisites
+
+- Node 20+
+- [uv](https://docs.astral.sh/uv/) — `npx awaithumans dev` (and `awaithumans dev` directly) uses it under the hood to run the Python server. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+- The Temporal CLI — `brew install temporal` on macOS; see [temporal.io/setup-cli](https://docs.temporal.io/cli) for Linux / Windows.
+- `awaithumans dev` running locally (step 2 below). The SDK auto-discovers it via `~/.awaithumans-dev.json`.
+- The Temporal adapter has peer deps on `@temporalio/workflow` and `@temporalio/client`. This example's `package.json` already lists them. If you're copying this code into your own project, run `npm install awaithumans @temporalio/workflow @temporalio/client`.
+
 ## Architecture
 
 ```

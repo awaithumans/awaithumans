@@ -4,6 +4,13 @@ A real Temporal workflow that pauses for a human approval through awaithumans, t
 
 This is the canonical durable-HITL pattern: the workflow's `await_human()` call gives Temporal back to the scheduler ("park me until a signal arrives"), the human reviews via the awaithumans dashboard / Slack / email, and a webhook from the awaithumans server signals the workflow back to life. Zero compute consumed while waiting; full Temporal durability if the worker restarts mid-await.
 
+## Prerequisites
+
+- Python 3.10+
+- The Temporal CLI — `brew install temporal` on macOS; see [temporal.io/setup-cli](https://docs.temporal.io/cli) for Linux / Windows.
+- `awaithumans dev` running locally (covered in step 2 below). The SDK auto-discovers the URL + admin token via `~/.awaithumans-dev.json` so you don't have to set env vars in your agent process.
+- The Temporal adapter extra. This example's `requirements.txt` installs `awaithumans[temporal]` for you. If you're copying this code into your own project, run `pip install "awaithumans[temporal]"` — without the extra, the workflow fails to import `dispatch_signal`.
+
 ## Architecture
 
 ```
