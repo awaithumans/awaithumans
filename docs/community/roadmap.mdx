@@ -19,6 +19,18 @@ Picking this up means designing the persistence shape (where state lives, how ha
 
 This is exactly the kind of thing that's a good portfolio piece: real systems-design tradeoffs, a self-contained subsystem you don't have to refactor the server for, and direct user impact for the long tail of agent builders running on FastAPI / cron / serverless.
 
+## Multi-approval primitive — parallel and quorum approvals
+
+**Status:** open · **Issue:** [#76](https://github.com/awaithumans/awaithumans/issues/76) · **Effort:** ~1–2 weeks
+
+Today the server is strictly first-writer-wins — `assign_to=["alice@team.com", "bob@team.com"]` means "first to claim," not "both must approve." Sequential approval (lead → manager) already works by chaining two `await_human()` calls, but parallel and quorum patterns ("two-of-two sign-off," "any 2 of 3 reviewers approve") have no first-class primitive. Compliance-heavy domains — fintech sign-offs, healthcare consent, legal review, two-key approvals — need this to be expressible without serializing what should be parallel.
+
+This feature adds an `approval_policy` knob (`"all_of"`, `{"quorum": N}`) so a single `await_human()` call can require multiple humans to approve before the agent unblocks. Server-side: a per-approver completion accumulator, threshold checks, and audit rows for every approver's decision. Dashboard: per-approver progress indicators. Channels: each assignee notified independently with their own completion state.
+
+Picking this up means weighing real design questions — what does "approved" mean when approvers disagree, do rejections short-circuit, how do per-approver verifiers interact with each other, what's the right shape for the agent's return value (aggregate vs. list of decisions). [Full policy matrix and open questions in the issue.](https://github.com/awaithumans/awaithumans/issues/76)
+
+This pairs naturally with the [Judgment Wall](/concepts/three-walls) — the case where human accountability matters most is exactly the case where one signature isn't enough.
+
 ---
 
 Other "help wanted" issues land here as they're scoped. If you have something in mind that isn't listed, open a [GitHub Discussion](https://github.com/awaithumans/awaithumans/discussions) — we'd rather talk shape than code review a surprise.
