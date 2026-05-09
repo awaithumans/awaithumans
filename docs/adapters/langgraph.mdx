@@ -148,7 +148,14 @@ Catch them where you call `drive_human_loop` to recover.
 
 ## End-to-end example
 
-`examples/langgraph/refund_agent.py` in the repo is runnable on a laptop with just `awaithumans dev` running. See [the README](https://github.com/awaithumans/awaithumans/tree/main/examples/langgraph).
+Two runnable examples in the repo, same flow in each language:
+
+| Example | Language | Entry point |
+|---|---|---|
+| [`examples/langgraph-py/`](https://github.com/awaithumans/awaithumans/tree/main/examples/langgraph-py) | Python | `app.py` (FastAPI graph host) + `kickoff.py` |
+| [`examples/langgraph-ts/`](https://github.com/awaithumans/awaithumans/tree/main/examples/langgraph-ts) | TypeScript | `app.ts` + `kickoff.ts` |
+
+Both runnable on a laptop in three terminal windows alongside `awaithumans dev`. See the per-example README for the run commands.
 
 ## Cross-language
 
@@ -159,3 +166,9 @@ The TypeScript adapter at `awaithumans/langgraph` produces the same wire format.
 - **No checkpointer = no interrupts.** LangGraph requires a checkpointer to support `interrupt(...)`. Production graphs should use a durable backend (SQLite / Postgres / Redis), not `MemorySaver`.
 - **Side effects before `await_human`.** Run twice on resume. Move them after, or wrap in idempotency.
 - **Multiple `await_human` calls in one node.** Each interrupts independently; LangGraph routes resume values by call order. Pass distinct `idempotency_key=` if the `(task, payload)` tuples might collide.
+
+## Where to next
+
+- [Webhooks (`callback_url`)](/webhooks) — wire format and signature scheme for the callback your driver receives
+- [Testing](/testing) — patterns for testing graph nodes that call `await_human`
+- [Temporal adapter](/adapters/temporal) — the same pattern with signals instead of interrupt/resume

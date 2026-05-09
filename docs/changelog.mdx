@@ -1,0 +1,56 @@
+---
+title: "What's new"
+description: "Every release of awaithumans, with breaking changes flagged."
+---
+
+The canonical changelog lives at [github.com/awaithumans/awaithumans/releases](https://github.com/awaithumans/awaithumans/releases) — every tagged release ships with full notes, breaking changes, and migration guidance. This page summarizes the headline changes per version with deep links into the docs.
+
+<Note>
+Subscribe to release notifications on GitHub: open the repo → **Watch** → **Custom** → **Releases**. New version, new ping.
+</Note>
+
+## Versioning policy
+
+`awaithumans` follows [Semantic Versioning](https://semver.org/) with these conventions:
+
+- **MAJOR** (`v1.0.0` → `v2.0.0`) — breaking changes to the public SDK signature (`await_human()` parameters), wire format, or error codes. Migration guides ship in the release notes.
+- **MINOR** (`v0.1.0` → `v0.2.0`) — new features, new channels/adapters, deprecations. No breaking changes to the SDK signature within a minor.
+- **PATCH** (`v0.1.0` → `v0.1.1`) — bug fixes, doc fixes, internal refactors. Always safe to upgrade.
+
+**Pinning recommendation:** until v1.0.0, pin to a minor in your dependencies:
+
+```toml
+# Python (pyproject.toml)
+awaithumans = ">=0.1,<0.2"
+```
+
+```json
+// TypeScript (package.json)
+"awaithumans": "~0.1"
+```
+
+After v1.0.0 ships, the SDK signature is stable for the v1.x line — a `^1.0.0` range is safe.
+
+## Releases
+
+### v0.1.0 — Public preview (May 2026)
+
+The first tagged release. Everything in the docs ships with this version: the core primitive, three channels (dashboard, Slack, email), two durable adapters (Temporal, LangGraph), AI verification across four providers, the dashboard, CLI, and Docker image.
+
+**Highlights:**
+
+- One function call: [`await_human()`](/sdk/python) / [`awaitHuman()`](/sdk/typescript)
+- Strict Stripe-style [idempotency](/concepts/idempotency) — direct-mode resumes across agent restarts
+- HMAC-signed [webhooks](/webhooks) with 3-day retry envelope
+- Server-side [AI verification](/adapters/verifier) (Claude / OpenAI / Gemini / Azure OpenAI)
+- One-command [self-hosting](/self-hosting/docker-compose)
+
+**Migration:** if you were tracking `main` pre-tag, the only behavior break is the [strict idempotency change](/concepts/idempotency#re-triggering-a-review) — a terminal task's key now stays bound to that task.
+
+[Full release notes →](https://github.com/awaithumans/awaithumans/releases/tag/v0.1.0)
+
+## Where to next
+
+- [Roadmap](/community/roadmap) — what's coming after v0.1
+- [GitHub Releases](https://github.com/awaithumans/awaithumans/releases) — every version, full notes
+- [Versioning & release notes](/community/roadmap#versioning--release-notes) — pinning recommendations

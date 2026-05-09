@@ -1,6 +1,6 @@
 ---
-title: "Help wanted"
-description: "Substantial features we'd love community help shipping. Pick one up, drop a proposal in the linked issue, and we'll review."
+title: "Roadmap & help wanted"
+description: "What's coming next, and substantial features we'd love community help shipping."
 ---
 
 `awaithumans` ships small surface area on purpose. A few things on the roadmap are big enough that they make better community projects than founder-built features — well-bounded, self-contained, and meaty enough to be a real systems-design exercise.
@@ -22,3 +22,19 @@ This is exactly the kind of thing that's a good portfolio piece: real systems-de
 ---
 
 Other "help wanted" issues land here as they're scoped. If you have something in mind that isn't listed, open a [GitHub Discussion](https://github.com/awaithumans/awaithumans/discussions) — we'd rather talk shape than code review a surprise.
+
+## Workforce marketplace {#marketplace}
+
+**Status:** reserved for Phase 3 · **Tracking issue:** [#1](https://github.com/awaithumans/awaithumans/issues/1)
+
+The `assign_to={"marketplace": True, ...}` shape is reserved for the post-Phase-2 workforce marketplace, where tasks can be sourced from external reviewers (not just your own team).
+
+Today, calling `await_human()` with `marketplace=True` raises `MarketplaceNotAvailableError`. The error exists so the API surface is forward-compatible — when the marketplace ships, agent code can opt in by flipping a flag, no rewrites.
+
+**Why it's not in v0.1:** the open-source core is built around teams that own their reviewers. The marketplace adds a third party (the worker pool), payments, capability matching, and SLAs. That's a different product surface — it sits on top of the same `await_human()` primitive but ships separately so the core stays small.
+
+If you're interested in helping shape the marketplace before it ships, comment on the tracking issue with your use case (what task types, what reviewer capabilities you'd source externally, what your QA story would look like). We're scoping the first design partner cohort for late-2026.
+
+## Versioning & release notes
+
+Every public release is documented at [github.com/awaithumans/awaithumans/releases](https://github.com/awaithumans/awaithumans/releases) with version highlights, breaking changes, and migration notes. Version pinning recommendation: pin to a minor (`awaithumans>=0.1,<0.2`) until v1.0 cuts.

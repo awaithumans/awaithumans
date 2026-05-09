@@ -53,7 +53,7 @@ If the human submits with empty notes on a $1500 refund, the verifier rejects wi
 ```python
 from awaithumans.verifiers.openai import openai_verifier
 from awaithumans.verifiers.gemini import gemini_verifier
-from awaithumans.verifiers.azure_openai import azure_verifier
+from awaithumans.verifiers.azure_openai import azure_openai_verifier
 
 # OpenAI
 verifier = openai_verifier(instructions="...", model="gpt-4o-2024-11-20")
@@ -62,10 +62,11 @@ verifier = openai_verifier(instructions="...", model="gpt-4o-2024-11-20")
 verifier = gemini_verifier(instructions="...", model="gemini-2.0-flash")
 
 # Azure OpenAI (deployment-name addressing)
-verifier = azure_verifier(
+verifier = azure_openai_verifier(
     instructions="...",
-    deployment="my-gpt4-deployment",
-    endpoint_env="AZURE_OPENAI_ENDPOINT",
+    deployment_name="my-gpt4-deployment",
+    endpoint_env="AZURE_OPENAI_ENDPOINT",   # default
+    api_version="2024-10-21",                # default
 )
 ```
 
@@ -139,3 +140,18 @@ The verifier fires on every submission. At ~1k input tokens + ~100 output per ca
 - Gemini 2.0 Flash: ~$0.0005 / call
 
 For most workloads this is negligible. For very high-volume queues, consider `gemini-2.0-flash`.
+
+## Runnable examples
+
+| Example | Language | Walks through |
+|---|---|---|
+| [`examples/verifier-py/`](https://github.com/awaithumans/awaithumans/tree/main/examples/verifier-py) | Python | All three verifier paths: pass, reject + retry, exhaust |
+| [`examples/verifier/`](https://github.com/awaithumans/awaithumans/tree/main/examples/verifier) | TypeScript | Same flow, TS SDK |
+
+Both run against a real Claude verifier — drop in your `ANTHROPIC_API_KEY`, `python refund.py` (or `npx tsx`), and walk the dashboard through each path. A useful template for fixture-driven tests of your own verifier prompts.
+
+## Where to next
+
+- [Testing](/testing) — patterns for testing verifier paths in CI
+- [Idempotency](/concepts/idempotency) — what happens to in-flight tasks across verifier retries
+- [Troubleshooting](/troubleshooting#verifier-provider-unavailable) — every verifier error code with the matching fix

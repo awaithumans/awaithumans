@@ -1,0 +1,208 @@
+---
+title: "Webhooks (callback_url)"
+description: "How awaithumans pushes terminal-state notifications to your service. HMAC scheme, retry policy, and a copy-paste receiver."
+---
+
+When you create a task with `callback_url=...`, the awaithumans server stops asking you to long-poll. Instead, on every terminal-state transition it POSTs an HMAC-signed JSON body to your URL. This is the foundation the [Temporal](/adapters/temporal) and [LangGraph](/adapters/langgraph) adapters ride on — but it's also useful on its own for any service that prefers push over pull.
+
+## When to use callback_url vs polling
+
+| You're building | Use |
+|---|---|
+| A short-lived script (Flask handler, cron job, REPL session) | SDK long-poll (default — no `callback_url` needed) |
+| A Temporal / LangGraph workflow that may park for hours | The adapter's `callback_url` (auto-wired) |
+| A serverless function that times out at 15 minutes | `callback_url` to a separate handler |
+| A FaaS or queue-driven worker that shouldn't hold a connection | `callback_url` |
+
+If your agent process can stay alive long enough to await the human, polling is simpler — no need for an inbound HTTP route.
+
+## Wire format
+
+```http
+POST {callback_url}
+Content-Type: application/json
+X-Awaithumans-Signature: sha256=<hex-digest>
+X-Awaithumans-Task-Id: tsk_4f8a2c1e9b...
+
+{
+  "task_id": "tsk_4f8a2c1e9b...",
+  "idempotency_key": "refund:order-12345",
+  "status": "completed",
+  "response": {"approved": true, "notes": "Duplicate charge confirmed."},
+  "completed_at": "2026-05-12T08:05:23.456Z",
+  "timed_out_at": null,
+  "completed_by_email": "alice@acme.com",
+  "completed_via_channel": "dashboard",
+  "verification_attempt": 1
+}
+```
+
+`status` is one of `completed`, `timed_out`, `cancelled`, `verification_exhausted`. The body is self-contained — your receiver doesn't need a second round-trip.
+
+## Signature verification
+
+The signature is `HMAC-SHA256(body)` using a key HKDF-derived from `AWAITHUMANS_PAYLOAD_KEY`. Both sides need the same `PAYLOAD_KEY` value.
+
+### Python receiver
+
+```python
+import json
+from fastapi import FastAPI, HTTPException, Request
+from awaithumans.utils.webhook_signing import verify_signature
+
+app = FastAPI()
+
+
+@app.post("/awaithumans/callback")
+async def callback(request: Request):
+    body = await request.body()
+    sig = request.headers.get("x-awaithumans-signature")
+
+    if not verify_signature(body=body, signature=sig):
+        raise HTTPException(401, "bad signature")
+
+    payload = json.loads(body)
+    # ... do work, return 2xx ...
+    return {"ok": True}
+```
+
+`verify_signature` is keyword-only and reads `AWAITHUMANS_PAYLOAD_KEY` from the environment — the receiver process needs the same `PAYLOAD_KEY` value that the awaithumans server signs with. The helper lives in `awaithumans.utils.*` deliberately: it has no dependency on the `[server]` extra, so a Temporal worker or LangGraph driver can verify callbacks without installing FastAPI / SQLModel.
+
+### TypeScript — using an adapter
+
+The Temporal and LangGraph adapters bundle signature verification into their dispatch helpers — call them directly from your route and you don't have to write the HMAC code:
+
+```ts
+// Temporal — verify + signal a workflow
+import { dispatchSignal } from "awaithumans/temporal";
+
+app.post("/awaithumans/callback", async (req, res) => {
+  const body = await readRawBody(req);
+  try {
+    await dispatchSignal({
+      temporalClient,
+      workflowId: req.query.wf as string,
+      body,
+      signatureHeader: req.headers["x-awaithumans-signature"] as string,
+      payloadKey: process.env.AWAITHUMANS_PAYLOAD_KEY!,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(401).json({ error: String(e) });
+  }
+});
+```
+
+```ts
+// LangGraph — verify + resume a graph
+import { createWebhookHandler } from "awaithumans/langgraph";
+
+const handler = createWebhookHandler({
+  graph,
+  payloadKey: process.env.AWAITHUMANS_PAYLOAD_KEY!,
+});
+
+app.post("/awaithumans/callback", async (req, res) => {
+  const body = await readRawBody(req);
+  await handler({ body, signatureHeader: req.headers["x-awaithumans-signature"] as string });
+  res.json({ ok: true });
+});
+```
+
+### Other languages
+
+The signing key is **not** `PAYLOAD_KEY` itself — it's an HKDF-SHA256 derivation of `PAYLOAD_KEY` with a channel-scoped salt + info pair. This way the same root key can sign sessions, magic links, AND webhooks without any one of those subkeys ever colliding.
+
+```
+HKDF-SHA256(
+  ikm  = base64-decode(PAYLOAD_KEY),  # 32 raw bytes
+  salt = b"awaithumans-webhook-v1",
+  info = b"v1",
+  length = 32,
+)
+```
+
+Then `signature = HMAC-SHA256(derived_key, body)` and the header value is `sha256={hex(signature)}`.
+
+The Python source is `awaithumans/utils/webhook_signing.py` and the TS source is `packages/typescript-sdk/src/adapters/temporal/index.ts` (look for `verifySignature`). Both are short, single-purpose, and documented — the canonical place to look when porting to Go, Rust, or any other language.
+
+Cross-language compatibility is asserted in the test suite: a body signed by Python verifies in TypeScript and vice versa.
+
+## Retry & backoff
+
+awaithumans persists the body bytes when the task transitions and dispatches with at-least-once semantics. A `WebhookDelivery` row tracks the attempts.
+
+| Attempt | Wait before this attempt |
+|---|---|
+| 1 | 0s (immediate) |
+| 2 | 30s |
+| 3 | 60s |
+| 4 | 2m |
+| 5 | 5m |
+| 6 | 15m |
+| 7 | 30m |
+| 8 | 1h |
+| 9 | 2h |
+| 10 | 4h |
+| 11 | 8h |
+| 12+ | 24h, daily |
+
+Total schedule covers ~3 days. After that, the row is marked `ABANDONED` and an admin can redrive via the dashboard's webhook deliveries page (or `POST /api/admin/webhook-deliveries/{id}/redeliver`).
+
+The receiver only needs to be up "most of the time" — a 4-hour outage during business hours is fine; a 4-day outage requires manual redrive.
+
+## What "success" means
+
+A 2xx response from your receiver counts as success. Anything else (4xx, 5xx, timeout, network error) is a failure and triggers retry. Your receiver should:
+
+1. Verify the signature (fail with 401 if bad — but this counts as a failure and will retry; legitimate cases shouldn't fail signature verification, so a 401 indicates real misconfiguration).
+2. Acknowledge fast — return 200 within 10 seconds. Long work belongs in a queue/job.
+3. Be idempotent — the same `task_id` may be delivered twice in extreme retry-during-outage cases. Use `task_id` (or `idempotency_key`) as a dedup key.
+
+The default per-attempt timeout is 10 seconds. Receivers that are slower than that will time out and retry.
+
+## What the dashboard shows
+
+Operators can monitor the delivery queue in the dashboard at **Settings → Webhook deliveries**:
+
+- Pending / Succeeded / Failed (retrying) / Abandoned
+- Last attempt status code & error
+- Manual redrive button per row (and bulk redrive for "all abandoned in the last X days")
+
+For production, set up a log alert on the structured log line `Webhook abandoned` so an outage that exceeds the 3-day cap doesn't silently swallow tasks.
+
+## Headers in detail
+
+| Header | Value | Purpose |
+|---|---|---|
+| `Content-Type` | `application/json` | The body is a JSON object. |
+| `X-Awaithumans-Signature` | `sha256=<hex>` | HMAC of the raw body. Verify before parsing. |
+| `X-Awaithumans-Task-Id` | `tsk_...` | Convenience for log filtering — the same value is in the body. |
+
+The `sha256=` prefix is intentional — it future-proofs for an algorithm upgrade. Receivers should reject signatures that don't start with that prefix.
+
+## Testing your receiver
+
+The simplest test loop is to run `awaithumans dev`, hit `POST /api/tasks` with a `callback_url` pointing at your local receiver (use ngrok if needed), and complete the task from the dashboard. Your receiver gets the live signed POST.
+
+For automated CI:
+
+1. Generate the expected signature in your test fixture using the same `PAYLOAD_KEY`.
+2. POST a synthetic body to your receiver with that signature.
+3. Assert your handler ran the right side effect.
+
+This skips the awaithumans server entirely — your test exercises just the verification path, which is the security-critical bit.
+
+## Common gotchas
+
+- **`PAYLOAD_KEY` mismatch.** Both processes must use the same value. The HMAC derivation depends on it; without symmetry, signatures never verify.
+- **Body parsing before verification.** Some frameworks (Express with `express.json()`, FastAPI's auto-JSON) consume the raw body and discard it. Read the raw bytes BEFORE the body-parser fires, then verify, then parse JSON.
+- **Sub-10s receiver budget violated.** A receiver that stalls 30+ seconds gets timed out and retried — your handler may run multiple times. Acknowledge fast; defer work.
+- **Localhost callbacks from a remote server.** If awaithumans runs on prod and your receiver is on `localhost`, the POST never lands. Use ngrok for dev, a real public URL for prod.
+- **Mixing the signing key with `PAYLOAD_KEY` directly.** They're different — `PAYLOAD_KEY` is the root, the signing key is HKDF-derived. Use the helpers; don't try to HMAC with `PAYLOAD_KEY` itself.
+
+## Where to next
+
+- [Temporal adapter](/adapters/temporal) — full workflow + receiver pattern
+- [LangGraph adapter](/adapters/langgraph) — interrupt/resume in a single process, no separate receiver
+- [Self-hosting → Security](/self-hosting/security) — full crypto primitives reference
