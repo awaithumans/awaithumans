@@ -11,7 +11,7 @@ import asyncio
 import logging
 from collections.abc import Iterable
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ from awaithumans.server.channels.slack.post_completion import (
 )
 from awaithumans.server.core.admin_auth import require_admin
 from awaithumans.server.core.auth import SessionClaims
+from awaithumans.server.core.embed_auth import get_embed_ctx
 from awaithumans.server.core.task_auth import (
     caller_is_operator,
     caller_user_id,
@@ -242,7 +243,12 @@ async def list_tasks_route(
     could enumerate every task in the system (payloads, responses,
     audit data) — that defeats the routing model. Server-side filter
     is the authoritative gate; the dashboard's per-user view is a
-    convenience, not a security control."""
+    convenience, not a security control.
+
+    Embed tokens are scoped to a single task and may NOT access the list
+    endpoint — block them before any scoping logic."""
+    if get_embed_ctx(request) is not None:
+        raise HTTPException(status_code=403, detail="embed_token_cannot_list_tasks")
     if caller_is_operator(request) or getattr(
         request.state, "auth_admin_token", False
     ):
@@ -290,7 +296,14 @@ async def get_task_route(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> TaskResponse:
-    """Get a single task by ID. Operator / admin / assignee only."""
+    """Get a single task by ID. Operator / admin / assignee / embed-token only."""
+    embed_ctx = get_embed_ctx(request)
+    if embed_ctx is not None:
+        if embed_ctx.task_id != task_id:
+            raise HTTPException(status_code=403, detail="task_outside_token_scope")
+        task = await get_task(session, task_id)
+        return await _task_to_response_with_lookup(session, task)
+    # Cookie / admin-bearer path.
     task = await get_task(session, task_id)
     require_task_read(request, task)
     return await _task_to_response_with_lookup(session, task)
@@ -315,6 +328,27 @@ async def complete_task_route(
     email. That's the correct attribution: client can't fake it, server
     authoritatively stamps who clicked submit.
     """
+    # Embed-bearer path: authorise by task_id scope, skip cookie auth.
+    embed_ctx = get_embed_ctx(request)
+    if embed_ctx is not None:
+        if embed_ctx.task_id != task_id:
+            raise HTTPException(status_code=403, detail="task_outside_token_scope")
+        task = await complete_task(
+            session,
+            task_id=task_id,
+            response=body.response,
+            completed_by_email=body.completed_by_email,
+            completed_by_user_id=None,
+            completed_via_channel="embed",
+            channel="embed",
+            embed_sub=embed_ctx.sub,
+            embed_jti=embed_ctx.jti,
+        )
+        if task.status in TERMINAL_STATUSES_SET:
+            await enqueue_completion_webhook(session, task)
+            background_tasks.add_task(update_slack_messages_for_task, task.id)
+        return await _task_to_response_with_lookup(session, task)
+
     # Authorise BEFORE running the verifier — a non-assignee
     # submitting via the dashboard form would otherwise burn an
     # attempt and ship the (potentially sensitive) payload to the LLM.

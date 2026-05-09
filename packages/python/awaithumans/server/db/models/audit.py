@@ -28,8 +28,20 @@ class AuditEntry(SQLModel, table=True):
     actor_email: str | None = Field(default=None)
 
     # Context
-    channel: str | None = Field(default=None, description="E.g., 'slack', 'email', 'dashboard'")
+    channel: str | None = Field(
+        default=None,
+        description="E.g., 'slack', 'email', 'dashboard', 'embed'",
+    )
     extra_data: dict[str, Any] | None = Field(sa_column=Column(JSON), default=None)
+
+    # Embed-token attribution. Both nullable; populated only when the
+    # action came through an /embed/* request authenticated by a
+    # short-lived embed JWT. `embed_sub` is whatever opaque identifier
+    # the partner put in the token's `sub` claim ('acme:user_4271');
+    # `embed_jti` is the unique token id, useful for revoking a leaked
+    # token's effects. See spec §6.
+    embed_sub: str | None = Field(default=None, max_length=256)
+    embed_jti: str | None = Field(default=None, max_length=64)
 
     # When
     created_at: datetime = Field(default_factory=utc_now)

@@ -14,11 +14,15 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from awaithumans.server.core.auth import DashboardAuthMiddleware
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.dashboard_static import DashboardStaticFiles
+from awaithumans.server.core.embed_auth import EmbedAuthMiddleware
 from awaithumans.server.core.exceptions import exception_handlers
 from awaithumans.server.core.logging_config import setup_logging
 from awaithumans.server.core.middleware import RequestIDMiddleware
@@ -35,11 +39,58 @@ from awaithumans.server.routes import (
     users,
     webhook_deliveries,
 )
+from awaithumans.server.routes import embed as embed_routes
+from awaithumans.server.services.embed_token_service import parse_origin_allowlist
 from awaithumans.server.services.timeout_scheduler import run_timeout_scheduler
 from awaithumans.server.services.user_service import count_users
 from awaithumans.server.services.webhook_scheduler import run_webhook_scheduler
 
 logger = logging.getLogger("awaithumans.server")
+
+
+# ── Embed security middleware ─────────────────────────────────────────────────
+
+
+class EmbedResponseHeadersMiddleware(BaseHTTPMiddleware):
+    """Apply strict security headers to /embed/* responses (spec §5.7).
+
+    Runs on every response whose path starts with ``/embed``.  Adds:
+
+    * ``Content-Security-Policy`` — locks down what the embedded page may
+      load.  ``frame-ancestors`` is built from ``settings.EMBED_PARENT_ORIGINS``
+      so only the operator's listed origins may host the iframe.
+    * ``Referrer-Policy: no-referrer`` — prevents the task URL leaking to
+      third-party resources the page happens to load.
+    * ``Permissions-Policy`` — denies access to browser APIs the embed frame
+      has no business touching.
+    * ``X-Content-Type-Options: nosniff`` — defence-in-depth against MIME
+      sniffing of the JS/CSS bundles.
+    """
+
+    async def dispatch(self, request: Request, call_next: object) -> Response:
+        response: Response = await call_next(request)  # type: ignore[arg-type]
+        if not request.url.path.startswith("/embed"):
+            return response
+
+        allowlist = parse_origin_allowlist(settings.EMBED_PARENT_ORIGINS)
+        ancestors = " ".join(allowlist) if allowlist else "'none'"
+        csp = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-src 'none'; "
+            f"frame-ancestors {ancestors}"
+        )
+        response.headers["Content-Security-Policy"] = csp
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=(), payment=()"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 @asynccontextmanager
@@ -188,7 +239,16 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     # ── Middleware (order matters — last added = first executed) ──────
     # Auth runs after CORS (so preflight OPTIONS still works) and after
     # RequestID (so failed-auth responses carry a request ID).
+    # EmbedResponseHeadersMiddleware runs after DashboardAuthMiddleware so
+    # it can annotate the final response with security headers even if the
+    # auth layer short-circuits (the auth skip for /embed/* means the response
+    # comes from whatever handler answers, and the headers are appended here).
     app.add_middleware(DashboardAuthMiddleware)
+    app.add_middleware(EmbedResponseHeadersMiddleware)
+    app.add_middleware(
+        EmbedAuthMiddleware,
+        secret_provider=lambda: settings.EMBED_SIGNING_SECRET,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -209,6 +269,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(users.router, prefix="/api")
     app.include_router(setup.router, prefix="/api")
     app.include_router(webhook_deliveries.router, prefix="/api")
+    app.include_router(embed_routes.router)
 
     # ── Dashboard static files ───────────────────────────────────────
     # The bundled dashboard lives inside the package

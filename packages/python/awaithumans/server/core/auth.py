@@ -66,10 +66,11 @@ _PUBLIC_PREFIXES = (
     "/api/auth/",
     "/api/setup/",
     "/api/health",
-    "/api/channels/slack/oauth/",           # Slack-signed state gates these
-    "/api/channels/slack/interactions",     # HMAC request signature gates this
-    "/api/channels/slack/events",           # HMAC request signature gates this
-    "/api/channels/email/action/",          # magic links are self-signed
+    "/api/channels/slack/oauth/",  # Slack-signed state gates these
+    "/api/channels/slack/interactions",  # HMAC request signature gates this
+    "/api/channels/slack/events",  # HMAC request signature gates this
+    "/api/channels/email/action/",  # magic links are self-signed
+    "/api/embed/",  # service-key auth via require_service_key dep
 )
 
 
@@ -112,9 +113,7 @@ def _canonical(payload: dict[str, object]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
 
-def sign_session(
-    *, user_id: str, is_operator: bool, ttl_seconds: int | None = None
-) -> str:
+def sign_session(*, user_id: str, is_operator: bool, ttl_seconds: int | None = None) -> str:
     """Produce a signed session cookie value."""
     ttl = ttl_seconds if ttl_seconds is not None else DASHBOARD_SESSION_MAX_AGE_SECONDS
     body = _canonical(
@@ -197,12 +196,26 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         path = request.url.path
 
+        # Embed routes carry their own JWT-based auth (EmbedAuthMiddleware).
+        # DashboardAuthMiddleware must not redirect or 401 embed requests —
+        # the browser fetches /embed/<taskId> anonymously and the JS bundle
+        # then reads the URL fragment to obtain the embed token.
+        if path.startswith("/embed/"):
+            return await call_next(request)
+
         # Non-API requests (static assets, /docs, etc.) pass through.
         # The dashboard enforces its own redirect via middleware.ts.
         if not path.startswith("/api/"):
             return await call_next(request)
 
         if _is_public_path(path):
+            return await call_next(request)
+
+        # Embed-bearer caller — EmbedAuthMiddleware already verified the
+        # JWT and stamped `request.state.embed_ctx`. Routes that accept
+        # embed access (currently `/api/tasks/{id}` and
+        # `/api/tasks/{id}/complete`) check this themselves.
+        if getattr(request.state, "embed_ctx", None) is not None:
             return await call_next(request)
 
         if _has_valid_admin_token(request):
@@ -224,5 +237,3 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
             {"detail": "Authentication required."},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
-
-

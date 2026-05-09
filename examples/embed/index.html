@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>awaithumans embed example</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 720px; margin: 4rem auto; padding: 0 1rem; }
+  button { padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
+  iframe { width: 100%; min-height: 300px; border: 1px solid #ccc; border-radius: 8px; margin-top: 1rem; }
+  #status { margin: 1rem 0; padding: 0.6rem; background: #f6f6f6; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 13px; }
+  pre { background: #f6f6f6; padding: 0.6rem; border-radius: 4px; font-size: 13px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>Approve a refund (embedded)</h1>
+<p>This is a partner-side page. Click "Start approval" to create a task and embed the awaithumans review form below.</p>
+<button id="start">Start approval</button>
+<div id="status">Idle.</div>
+<iframe id="frame" allow="clipboard-write" title="Refund approval"></iframe>
+<h3>Result</h3>
+<pre id="result">(none yet)</pre>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+$("start").addEventListener("click", async () => {
+  $("status").textContent = "Creating task…";
+  const res = await fetch("/api/start-approval");
+  const { approval_url } = await res.json();
+  $("frame").src = approval_url;
+  $("status").textContent = "Waiting for completion.";
+});
+
+window.addEventListener("message", (e) => {
+  if (e.data?.source !== "awaithumans") return;
+  switch (e.data.type) {
+    case "loaded":
+      $("status").textContent = "Loaded — fill in the form and submit.";
+      break;
+    case "resize":
+      $("frame").style.height = e.data.payload.height + "px";
+      break;
+    case "task.completed":
+      $("status").textContent = "Completed.";
+      $("result").textContent = JSON.stringify(e.data.payload.response, null, 2);
+      break;
+    case "task.error":
+      $("status").textContent = "Error: " + e.data.payload.message;
+      break;
+  }
+});
+</script>
+</body>
+</html>

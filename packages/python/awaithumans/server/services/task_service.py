@@ -328,6 +328,9 @@ async def complete_task(
     completed_by_user_id: str | None = None,
     completed_via_channel: str | None = None,
     raw_input: str | None = None,
+    channel: str | None = None,
+    embed_sub: str | None = None,
+    embed_jti: str | None = None,
 ) -> Task:
     """Complete a task with the human's response.
 
@@ -448,6 +451,10 @@ async def complete_task(
             # Reason can quote payload back at us; gate on redaction.
             audit_extra["verifier_reason"] = verifier_outcome.result.reason
 
+    # When the caller passed an explicit `channel` kwarg (e.g., "embed"),
+    # prefer it over `completed_via_channel` so the audit trail records
+    # the authoritative channel name even when the body's field is None.
+    resolved_channel = channel if channel is not None else completed_via_channel
     audit = AuditEntry(
         task_id=task_id,
         from_status=task.status.value,
@@ -455,7 +462,9 @@ async def complete_task(
         action=audit_action,
         actor_type="human",
         actor_email=completed_by_email,
-        channel=completed_via_channel,
+        channel=resolved_channel,
+        embed_sub=embed_sub,
+        embed_jti=embed_jti,
         extra_data=audit_extra or None,
     )
     session.add(audit)

@@ -279,3 +279,43 @@ class VerifierProviderUnknownError(ServiceError):
         super().__init__(
             f"Unknown verifier provider '{provider}'. Supported providers: {', '.join(known)}."
         )
+
+
+# ── Dashboard embedding ──────────────────────────────────────────────
+# See docs/superpowers/specs/2026-05-06-dashboard-embedding-design.md
+# §3 (mint endpoint), §5.1 (EmbedAuthMiddleware), §7 (security model).
+
+
+class InvalidEmbedTokenError(ServiceError):
+    """Embed JWT failed signature, audience, expiry, or claim checks."""
+
+    status_code = 401
+    error_code = "INVALID_EMBED_TOKEN"
+    docs_path = "invalid-embed-token"
+
+    def __init__(self, *, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"Invalid embed token: {reason}.")
+
+
+class EmbedOriginNotAllowedError(ServiceError):
+    """parent_origin in the mint request is not in the tenant allowlist."""
+
+    status_code = 400
+    error_code = "EMBED_ORIGIN_NOT_ALLOWED"
+    docs_path = "embed-origin-not-allowed"
+
+    def __init__(self, *, origin: str) -> None:
+        self.origin = origin
+        super().__init__(f"Origin '{origin}' is not in the embed allowlist.")
+
+
+class ServiceKeyNotFoundError(ServiceError):
+    """The Authorization bearer didn't resolve to a known service key."""
+
+    status_code = 401
+    error_code = "SERVICE_KEY_NOT_FOUND"
+    docs_path = "service-key-not-found"
+
+    def __init__(self) -> None:
+        super().__init__("Service key not recognised or revoked.")

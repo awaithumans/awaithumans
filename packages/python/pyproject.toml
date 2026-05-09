@@ -88,6 +88,9 @@ server = [
     # Password hashing for per-user dashboard login. argon2id is the
     # OWASP-recommended default for new systems (RFC 9106 params).
     "argon2-cffi>=23.1.0",
+    # Embed-token sign/verify (HS256). PyPI package name is `pyjwt`;
+    # import is `import jwt`. Used only in embed_token_service.py.
+    "pyjwt>=2.8.0",
 ]
 temporal = [
     "temporalio>=1.7.0",

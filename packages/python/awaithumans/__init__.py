@@ -24,6 +24,7 @@ from __future__ import annotations
 __version__ = "0.1.0"
 
 from awaithumans.client import await_human, await_human_sync
+from awaithumans.embed import EmbedTokenResult, embed_token, embed_token_sync
 from awaithumans.errors import (
     AwaitHumansError,
     MarketplaceNotAvailableError,
@@ -52,6 +53,9 @@ from awaithumans.types import (
 __all__ = [
     "await_human",
     "await_human_sync",
+    "embed_token",
+    "embed_token_sync",
+    "EmbedTokenResult",
     "AssignTo",
     "AwaitHumanOptions",
     "HumanIdentity",
