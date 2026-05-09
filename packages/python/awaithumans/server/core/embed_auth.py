@@ -71,6 +71,13 @@ class EmbedAuthMiddleware(BaseHTTPMiddleware):
         if token.startswith("ah_sk_"):
             return await call_next(request)
 
+        # Only handle JWT-shaped tokens (header.payload.signature). Other
+        # bearer credentials — admin API tokens, dashboard session JWTs from
+        # core/auth.py, etc. — must pass through untouched. Without this
+        # guard the middleware would 401 on any non-embed bearer.
+        if token.count(".") != 2:
+            return await call_next(request)
+
         secret = self._secret_provider()
         if not secret:
             # EMBED_SIGNING_SECRET unset → embed feature disabled at the

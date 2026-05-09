@@ -70,6 +70,7 @@ _PUBLIC_PREFIXES = (
     "/api/channels/slack/interactions",  # HMAC request signature gates this
     "/api/channels/slack/events",  # HMAC request signature gates this
     "/api/channels/email/action/",  # magic links are self-signed
+    "/api/embed/",  # service-key auth via require_service_key dep
 )
 
 
@@ -208,6 +209,13 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if _is_public_path(path):
+            return await call_next(request)
+
+        # Embed-bearer caller — EmbedAuthMiddleware already verified the
+        # JWT and stamped `request.state.embed_ctx`. Routes that accept
+        # embed access (currently `/api/tasks/{id}` and
+        # `/api/tasks/{id}/complete`) check this themselves.
+        if getattr(request.state, "embed_ctx", None) is not None:
             return await call_next(request)
 
         if _has_valid_admin_token(request):

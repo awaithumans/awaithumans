@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import {
 	FormRenderer,
@@ -13,12 +14,17 @@ import { postEmbed } from "@/lib/embed/post-message";
 import { extractEmbedToken } from "@/lib/embed/token";
 import type { CompleteTaskRequest, Task } from "@/lib/server";
 
-export default function EmbedTaskPage({
-	params,
-}: {
-	params: { taskId: string };
-}) {
-	const taskId = params.taskId;
+export default function EmbedTaskPage() {
+	return (
+		<Suspense fallback={<div className="p-6 font-mono text-sm text-fg-2">Loading...</div>}>
+			<EmbedTaskInner />
+		</Suspense>
+	);
+}
+
+function EmbedTaskInner() {
+	const searchParams = useSearchParams();
+	const taskId = searchParams.get("id") ?? "";
 	const [token, setToken] = useState<string | null>(null);
 	const [task, setTask] = useState<Task | null>(null);
 	const [value, setValue] = useState<FormValue>({});
@@ -26,8 +32,11 @@ export default function EmbedTaskPage({
 	const [error, setError] = useState<string | null>(null);
 	const parentOriginRef = useRef<string>("");
 
-	// 1. Extract token + parent_origin from URL fragment.
 	useEffect(() => {
+		if (!taskId) {
+			setError("Missing task id. The URL must include ?id=...");
+			return;
+		}
 		const t = extractEmbedToken();
 		if (!t) {
 			setError("Missing embed token. The URL must include #token=...");
@@ -51,9 +60,8 @@ export default function EmbedTaskPage({
 		}
 	}, [taskId]);
 
-	// 2. Fetch task once token is available.
 	useEffect(() => {
-		if (!token) return;
+		if (!token || !taskId) return;
 		void (async () => {
 			try {
 				const fetched = await embedFetch<Task>(`/api/tasks/${taskId}`, {
@@ -80,7 +88,6 @@ export default function EmbedTaskPage({
 		})();
 	}, [token, taskId]);
 
-	// 3. Auto-resize: report scrollHeight on every layout change.
 	useEffect(() => {
 		const report = () =>
 			postEmbed(parentOriginRef.current, {

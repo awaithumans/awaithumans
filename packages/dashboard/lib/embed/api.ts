@@ -28,6 +28,10 @@ export class EmbedFetchError extends Error {
 }
 
 function getApiBase(): string {
+	// Bundled mode: dashboard served by the Python server itself, so
+	// every fetch is same-origin. Avoids hard-coding localhost vs
+	// 127.0.0.1 mismatches that trip CSP `connect-src 'self'`.
+	if (process.env.NEXT_PUBLIC_AWAITHUMANS_BUNDLED === "true") return "";
 	if (typeof window !== "undefined") {
 		const overridden = (
 			window as unknown as { __AWAITHUMANS_API_URL__?: string }

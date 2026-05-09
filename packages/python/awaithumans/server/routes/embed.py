@@ -22,6 +22,7 @@ from awaithumans.server.services.exceptions import (
 )
 from awaithumans.server.services.service_key_service import verify_service_key
 from awaithumans.server.services.task_service import get_task
+from awaithumans.utils.constants import EMBED_TOKEN_DEFAULT_TTL_SECONDS
 
 logger = logging.getLogger("awaithumans.server.embed")
 router = APIRouter()
@@ -70,12 +71,12 @@ async def mint_embed_token(
         sub=body.sub,
         kind="end_user",
         parent_origin=body.parent_origin,
-        ttl_seconds=body.ttl_seconds or 0,
+        ttl_seconds=body.ttl_seconds or EMBED_TOKEN_DEFAULT_TTL_SECONDS,
     )
 
     base = str(request.base_url).rstrip("/")
     return EmbedTokenResponse(
         embed_token=token,
-        embed_url=f"{base}/embed/{body.task_id}#token={token}",
+        embed_url=f"{base}/embed?id={body.task_id}#token={token}",
         expires_at=datetime.fromtimestamp(exp, tz=UTC).isoformat(),
     )
