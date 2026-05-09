@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 128" width="720" height="128">
+  <!-- Mark: bracket + dot, brand green #00E676 -->
+  <rect x="4.5" y="4.5" width="119" height="119" rx="23" ry="23" fill="none" stroke="#00E676" stroke-width="9"/>
+  <circle cx="64" cy="64" r="28" fill="#00E676"/>
+  <!-- Wordmark: monospace, light foreground for dark backgrounds -->
+  <text
+    x="180" y="64"
+    fill="#F5F5F5"
+    font-family="ui-monospace, 'SF Mono', Menlo, Monaco, 'Cascadia Mono', 'Roboto Mono', Consolas, monospace"
+    font-size="76"
+    font-weight="500"
+    letter-spacing="-0.5"
+    dominant-baseline="middle"
+    text-anchor="start"
+  >awaithumans</text>
+</svg>
