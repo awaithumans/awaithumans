@@ -31,6 +31,11 @@ function EmbedTaskInner() {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const parentOriginRef = useRef<string>("");
+	// `submitting` is React state, which doesn't update synchronously —
+	// a fast double-click fires `onSubmit` twice before the button's
+	// `disabled` prop flips. The ref flips on the same tick so the
+	// second call returns early.
+	const inFlightRef = useRef(false);
 
 	useEffect(() => {
 		if (!taskId) {
@@ -102,6 +107,8 @@ function EmbedTaskInner() {
 
 	const onSubmit = async () => {
 		if (!token || !task) return;
+		if (inFlightRef.current) return;
+		inFlightRef.current = true;
 		setSubmitting(true);
 		setError(null);
 		try {
@@ -135,6 +142,7 @@ function EmbedTaskInner() {
 			});
 		} finally {
 			setSubmitting(false);
+			inFlightRef.current = false;
 		}
 	};
 
