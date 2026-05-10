@@ -29,5 +29,10 @@ const SOURCE = "awaithumans" as const;
 export function postEmbed(parentOrigin: string, event: EmbedEvent): void {
 	if (typeof window === "undefined" || !window.parent) return;
 	if (!parentOrigin) return;
+	// Top-level page (opened directly, not iframed) — `window.parent`
+	// IS `window`, and posting to the JWT's parent_origin would throw
+	// because that origin doesn't match the page's own origin. There's
+	// nobody to notify anyway, so skip silently.
+	if (window.parent === window) return;
 	window.parent.postMessage({ source: SOURCE, ...event }, parentOrigin);
 }
