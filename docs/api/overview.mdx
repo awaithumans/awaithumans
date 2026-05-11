@@ -59,7 +59,7 @@ The `error_code` is stable across versions; the message and docs URL may change.
 |---|---|
 | 400 | Malformed request body |
 | 401 | Auth required or session invalid |
-| 403 | Authorized but not authorized (e.g. non-operator hitting admin endpoint) |
+| 403 | Authenticated but not authorized (e.g. non-operator hitting admin endpoint) |
 | 404 | Task / user / identity not found |
 | 409 | Idempotency conflict, terminal state, or already-completed |
 | 410 | Magic-link token already consumed |
