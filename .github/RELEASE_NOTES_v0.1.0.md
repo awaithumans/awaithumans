@@ -111,7 +111,7 @@ If you were running off `main` before tagging:
 - 🚀 [Quickstart](https://awaithumans.dev/docs/quickstart)
 - 🐛 [Report an issue](https://github.com/awaithumans/awaithumans/issues)
 - 💬 [Discord](https://discord.gg/awaithumans)
-- 🔒 Security disclosures: **security@awaithumans.com**
+- 🔒 Security disclosures: **security@awaithumans.dev**
 
 ## Thanks
 
