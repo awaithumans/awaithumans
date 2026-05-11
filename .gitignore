@@ -21,6 +21,12 @@ __pycache__/
 .venv/
 venv/
 
+# `uv` writes a resolver lockfile next to pyproject.toml. We don't
+# pin builds via it (Hatchling + the version ranges in pyproject.toml
+# are authoritative), so committing it would just generate noise on
+# every `uv sync`. Local-only.
+uv.lock
+
 # Dev-mode auto-generated state — payload encryption key + admin
 # token + sqlite DB. Per-developer secrets, never committed.
 .awaithumans/

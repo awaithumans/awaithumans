@@ -68,7 +68,8 @@
           {
             "group": "Integrations",
             "pages": [
-              "webhooks"
+              "webhooks",
+              "embedding"
             ]
           },
           {
@@ -207,6 +208,10 @@
           {
             "label": "Webhooks",
             "href": "/webhooks"
+          },
+          {
+            "label": "Embedding",
+            "href": "/embedding"
           }
         ]
       },
