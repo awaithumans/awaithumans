@@ -31,7 +31,7 @@ license = "Apache-2.0"
 # require 3.10+, so no real user is left behind.
 requires-python = ">=3.10"
 authors = [
-    { name = "Await Humans", email = "hello@awaithumans.com" },
+    { name = "Await Humans", email = "hello@awaithumans.dev" },
 ]
 keywords = [
     "human-in-the-loop", "hitl", "ai-agents", "langchain", "langgraph",
