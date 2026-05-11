@@ -1,0 +1,239 @@
+---
+title: "Embed the review form in your product"
+description: "Render the awaithumans task form inside your own UI via iframe — your auth, your domain, no awaithumans login screen for your users."
+---
+
+When `await_human()` fires, the default path is a Slack message, an email, or a tab on the awaithumans dashboard. **Embedding** is a fourth option: render the same form inside your own product, signed into your own auth, on your own domain.
+
+You keep:
+
+- **Your auth.** The user is already logged into your app; they never see an awaithumans login screen.
+- **Your shell.** The form sits in an `<iframe>` you control — header, sidebar, branding, everything outside the form stays yours.
+- **The audit trail.** Every submission is recorded against an opaque `sub` identifier you choose, alongside the task's full audit log.
+
+Three pieces wire it together: your backend mints a short-lived token, your frontend drops the URL into an iframe, your frontend listens for `task.completed`.
+
+<Steps>
+  <Step title="Configure the server">
+    Add two environment variables to your awaithumans server and create a service key.
+  </Step>
+  <Step title="Mint a token (backend)">
+    On the partner backend, after `await_human()` creates the task, mint a short-lived JWT scoped to that task and the iframe's origin.
+  </Step>
+  <Step title="Drop the iframe (frontend)">
+    Render an `<iframe>` with `src = embed_url`, listen for `task.completed`, react.
+  </Step>
+</Steps>
+
+## 1. Configure the server
+
+Set two env vars on the awaithumans server:
+
+```bash
+AWAITHUMANS_EMBED_SIGNING_SECRET=$(openssl rand -hex 32)
+AWAITHUMANS_EMBED_PARENT_ORIGINS=https://app.acme.com
+```
+
+- **`AWAITHUMANS_EMBED_SIGNING_SECRET`** — HMAC key for the embed JWTs. 32+ bytes of random hex. Without it, the embed feature is off and `POST /api/embed/tokens` returns 404.
+- **`AWAITHUMANS_EMBED_PARENT_ORIGINS`** — comma-separated allowlist of iframe parent origins. Drives both the `parent_origin` check at mint time and the `Content-Security-Policy: frame-ancestors` header on `/embed/*`.
+
+Then create a service key — the partner-side secret used to mint embed tokens:
+
+```bash
+awaithumans create-service-key --name "acme-prod"
+# ✓ service key created
+#   id:     0019e0...
+#   name:   acme-prod
+#   Save this key now — it will not be shown again:
+#   ah_sk_27b5fc4889071608410cbf0b91476cf8aa68043a
+```
+
+<Warning>
+  Service keys are shown **once** at creation. Store them like database passwords — never commit them, never put them in frontend code. To rotate, create a new key, deploy, then `awaithumans revoke-service-key <id>`.
+</Warning>
+
+## 2. Mint a token (backend)
+
+After your agent calls `await_human(...)` and you have a `task.id`, mint a token scoped to that task and the iframe's parent origin.
+
+<CodeGroup>
+
+```python Python
+import os
+from awaithumans import embed_token_sync
+
+embed = embed_token_sync(
+    task_id=task.id,
+    sub=f"acme:{current_user.id}",       # opaque per-user identifier
+    parent_origin="https://app.acme.com",
+    api_key=os.environ["AH_SERVICE_KEY"],
+    ttl_seconds=300,                     # default 300, max 3600
+)
+return {"approval_url": embed.embed_url}
+```
+
+```ts TypeScript
+import { embedToken } from "awaithumans";
+
+const embed = await embedToken({
+  taskId: task.id,
+  sub: `acme:${currentUser.id}`,
+  parentOrigin: "https://app.acme.com",
+  apiKey: process.env.AH_SERVICE_KEY!,
+});
+return { approvalUrl: embed.embedUrl };
+```
+
+```http HTTP
+POST /api/embed/tokens
+Authorization: Bearer ah_sk_27b5fc...
+Content-Type: application/json
+
+{
+  "task_id": "tsk_4f8a2c...",
+  "parent_origin": "https://app.acme.com",
+  "sub": "acme:user_123",
+  "ttl_seconds": 300
+}
+```
+
+</CodeGroup>
+
+The response contains everything your frontend needs:
+
+```json
+{
+  "embed_token": "eyJhbGciOi...",
+  "embed_url":   "https://reviews.acme.com/embed?id=tsk_4f8a2c...#token=eyJhbGciOi...",
+  "expires_at":  "2026-05-12T08:05:23+00:00"
+}
+```
+
+<Note>
+  The token lives in the URL **fragment** (`#token=...`), not the query string. Fragments are never sent in HTTP requests or written to access logs — the iframe reads `location.hash` client-side and forwards the token in an `Authorization` header.
+</Note>
+
+## 3. Drop the iframe (frontend)
+
+```html
+<iframe
+  id="approval"
+  src="<embed_url>"
+  style="width: 100%; border: 0;"
+  allow="clipboard-write"
+></iframe>
+
+<script>
+const iframe = document.getElementById("approval");
+
+window.addEventListener("message", (e) => {
+  // Only trust messages from your awaithumans server's origin
+  if (e.source !== iframe.contentWindow) return;
+  if (e.data?.source !== "awaithumans") return;
+
+  switch (e.data.type) {
+    case "loaded":
+      // Task fetched and rendered. Safe to remove your own loading state.
+      break;
+    case "resize":
+      iframe.style.height = e.data.payload.height + "px";
+      break;
+    case "task.completed":
+      // e.data.payload.response is the typed object the user submitted.
+      continueAcmeFlow(e.data.payload.response);
+      // You decide what happens next: hide the iframe, navigate, swap UI.
+      break;
+    case "task.error":
+      handleError(e.data.payload.code, e.data.payload.message);
+      break;
+  }
+});
+</script>
+```
+
+After a successful submit the iframe also shows a built-in "Submitted" panel, so users get inline confirmation even if your `task.completed` handler is slow to update the surrounding page.
+
+## Event protocol
+
+The iframe posts messages to `window.parent` with `targetOrigin` pinned to the JWT's `parent_origin` claim. Every message includes `source: "awaithumans"` so you can multiplex multiple iframes through one listener.
+
+| `type` | When it fires | `payload` |
+|---|---|---|
+| `loaded` | Task fetched, form rendered | `{ taskId }` |
+| `resize` | Iframe content height changed | `{ height }` |
+| `task.completed` | User submitted, server accepted | `{ taskId, response, completedAt }` |
+| `task.error` | Anything failed (load, submit, expired token) | `{ taskId, code, message }` |
+
+### Error codes on `task.error`
+
+| Code | Meaning |
+|---|---|
+| `INVALID_EMBED_TOKEN` | Signature failed, expired, or missing from URL |
+| `EMBED_ORIGIN_NOT_ALLOWED` | `parent_origin` not in the server allowlist |
+| `SERVICE_KEY_NOT_FOUND` | Service key revoked or unknown (mint endpoint) |
+| `TASK_NOT_FOUND` | Task ID in the token doesn't exist |
+| `TASK_ALREADY_TERMINAL` | Task was already completed/cancelled |
+| `internal` | Network failure or unhandled exception |
+
+## Origin allowlist
+
+`AWAITHUMANS_EMBED_PARENT_ORIGINS` is comma-separated and matched **exactly** on scheme, host, and port.
+
+```
+https://app.acme.com               # exact origin
+https://*.acme.com                 # any single-label subdomain
+http://localhost:3000              # dev only — http allowed on localhost/127.0.0.1
+```
+
+| Allowed | Reason |
+|---|---|
+| Multiple wildcards (`https://*.*.acme.com`) | ❌ Rejected at server startup |
+| Trailing slashes | ❌ Rejected at server startup |
+| Scheme mismatch (`http://` vs `https://`) | ❌ Mint returns 400 |
+| Port mismatch (`acme.com` vs `acme.com:8080`) | ❌ Mint returns 400 |
+
+The same list drives the iframe's CSP `frame-ancestors`, so browsers refuse to render the iframe inside any other site.
+
+## Security model
+
+<AccordionGroup>
+
+  <Accordion title="Service keys live server-side only">
+    `ah_sk_...` is the partner secret that authorises minting. Never put it in browser code, mobile app bundles, public env files, or build artifacts. Treat it like a database password.
+  </Accordion>
+
+  <Accordion title="Task payloads are visible to the embed user">
+    Whatever you pass as `payload` to `await_human()` is rendered to the human reviewing the task. Don't put internal-only data, secrets, or PII the partner doesn't want to expose. Use `redact_payload=True` on task creation to keep payload server-side only.
+  </Accordion>
+
+  <Accordion title="`sub` is partner-controlled, not verified">
+    awaithumans records whatever `sub` you pass at mint time into the audit row as `embed_sub`. We don't verify the identity — that's the partner's job (e.g., extract from your own session cookie before minting).
+  </Accordion>
+
+  <Accordion title="`parent_origin` must match the actual iframe parent exactly">
+    `https://app.acme.com` and `https://acme.com` are different origins. The server signs the parent_origin into the token, the iframe posts messages with that exact origin, and the browser drops anything mismatched.
+  </Accordion>
+
+  <Accordion title="HTTPS in production, full stop">
+    Mixed content (`http://` iframe inside `https://` parent) is blocked by every modern browser. The only `http://` origins that work at all are `localhost` and `127.0.0.1` for local dev.
+  </Accordion>
+
+  <Accordion title="Tokens are short-lived and single-task-scoped">
+    Default TTL is 300 seconds, max 3600. Each token is bound to one `task_id` — a leaked token can't be used to enumerate other tasks. Tampered tokens fail signature verification and return 401 `INVALID_EMBED_TOKEN`.
+  </Accordion>
+
+</AccordionGroup>
+
+## End-to-end example
+
+A runnable Flask demo lives at [`examples/embed/`](https://github.com/awaithumans/awaithumans/tree/main/examples/embed) — a partner backend that creates a task, mints an embed URL, and a parent HTML page that hosts the iframe and listens for `task.completed`.
+
+## Troubleshooting
+
+**Iframe loads but shows "Authentication required"** — `/api/embed/tokens` returned 401. The service key is wrong, revoked, or `AWAITHUMANS_EMBED_SIGNING_SECRET` isn't set on the server.
+
+**Iframe loads but shows a 404 page** — the dashboard isn't bundled into your server image. Self-hosters need to run `scripts/build-bundled.sh` before `pip install`. The official wheel ships pre-bundled.
+
+**`task.error` with `EMBED_ORIGIN_NOT_ALLOWED`** — the `parent_origin` you passed at mint time isn't in `AWAITHUMANS_EMBED_PARENT_ORIGINS`. Schemes and ports must match exactly.
+
+**postMessage events never fire on the parent** — the parent page's origin doesn't match the JWT's `parent_origin`. Open browser devtools; the iframe page will log the mismatch.
