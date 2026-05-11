@@ -29,6 +29,7 @@ function EmbedTaskInner() {
 	const [task, setTask] = useState<Task | null>(null);
 	const [value, setValue] = useState<FormValue>({});
 	const [submitting, setSubmitting] = useState(false);
+	const [completed, setCompleted] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const parentOriginRef = useRef<string>("");
 	// `submitting` is React state, which doesn't update synchronously —
@@ -77,6 +78,10 @@ function EmbedTaskInner() {
 				if (fetched.form_definition) {
 					setValue(initialValueFor(fetched.form_definition));
 				}
+				// Reopening an embed URL after the task already completed
+				// (e.g. partner stored the URL and the user clicks it
+				// again) — show the done view, not the form.
+				if (fetched.status === "completed") setCompleted(true);
 				postEmbed(parentOriginRef.current, {
 					type: "loaded",
 					payload: { taskId },
@@ -124,6 +129,8 @@ function EmbedTaskInner() {
 				method: "POST",
 				body: JSON.stringify(body),
 			});
+			setTask(result);
+			setCompleted(true);
 			postEmbed(parentOriginRef.current, {
 				type: "task.completed",
 				payload: {
@@ -158,6 +165,20 @@ function EmbedTaskInner() {
 	if (!task) {
 		return (
 			<div className="p-6 font-mono text-sm text-fg-2">Loading task...</div>
+		);
+	}
+
+	if (completed) {
+		return (
+			<div className="mx-auto max-w-xl p-6">
+				<h1 className="mb-4 font-mono text-lg font-medium">{task.task}</h1>
+				<div className="rounded-md border border-brand/40 bg-brand/10 p-4 font-mono text-sm">
+					<p className="mb-1 text-brand">Submitted</p>
+					<p className="text-fg-2">
+						Your response has been recorded. You can close this window.
+					</p>
+				</div>
+			</div>
 		);
 	}
 
