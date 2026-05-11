@@ -276,6 +276,6 @@ the project's trademarks without permission.
 
 The full primitive, all three channels (dashboard / Slack / email), both durable adapters (Temporal / LangGraph), AI verification across four providers, and one-command self-hosting are all live in this release.
 
-This is a young project — APIs are stable for v0.x, but expect rough edges in the long tail. File issues, open PRs, drop questions in [Discussions](https://github.com/awaithumans/awaithumans/discussions) or [Discord](https://discord.gg/awaithumans). Every reproducible bug report shipped with a fix in v0.2.
+This is a young project — APIs are stable for v0.x, but expect rough edges in the long tail. File issues, open PRs, drop questions in [Discussions](https://github.com/awaithumans/awaithumans/discussions) or [Discord](https://discord.gg/Kewdh7vjdc). Every reproducible bug report shipped with a fix in v0.2.
 
 For the post-launch roadmap — local task book for runtimes without an orchestrator, custom router strategies, post-launch hardening — see [Roadmap & help wanted](https://awaithumans.dev/docs/community/roadmap).
