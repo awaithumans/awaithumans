@@ -20,7 +20,7 @@ All HMAC keys are HKDF-derived from a single root `PAYLOAD_KEY`, with channel-sc
 
 ## Authorization model
 
-Two trust tiers:
+Three trust tiers:
 
 1. **Admin bearer token** (`AWAITHUMANS_ADMIN_API_TOKEN`). Highest trust. Held by the agent process. Allows everything.
 2. **Operator session** (dashboard login). High trust. Allows everything except things the admin gate enforces explicitly (e.g. server config).
