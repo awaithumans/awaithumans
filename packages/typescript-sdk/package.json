@@ -1,6 +1,6 @@
 {
   "name": "awaithumans",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The human layer for AI agents. Your agents already await promises. Now they can await humans.",
   "type": "module",
   "sideEffects": false,
@@ -31,7 +31,7 @@
   "peerDependencies": {
     "@temporalio/client": "^1.0.0",
     "@temporalio/workflow": "^1.0.0",
-    "@langchain/langgraph": "^0.2.0"
+    "@langchain/langgraph": "^0.2.0 || ^1.0.0"
   },
   "peerDependenciesMeta": {
     "@temporalio/client": { "optional": true },
@@ -54,7 +54,7 @@
     "typescript": "^5.7.0",
     "@temporalio/workflow": "^1.0.0",
     "@temporalio/client": "^1.0.0",
-    "@langchain/langgraph": "^0.2.0"
+    "@langchain/langgraph": "^0.2.0 || ^1.0.0"
   },
   "overrides": {
     "langsmith": ">=0.6.0"
