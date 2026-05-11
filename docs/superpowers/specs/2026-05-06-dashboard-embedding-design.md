@@ -4,7 +4,7 @@
 **Date:** 2026-05-06
 **Branch:** `feat/embed-dashboard`
 **Owner:** Founder
-**Related pillars:** [04-open-source.md](../../../../pillars/04-open-source.md), [07-monetization.md](../../../../pillars/07-monetization.md), [11-partnerships.md](../../../../pillars/11-partnerships.md) (in review)
+**Related pillars:** `04-open-source.md`, `07-monetization.md`, `11-partnerships.md` (in review)
 
 ---
 
@@ -658,10 +658,10 @@ paying us. This is non-negotiable.
 
 ## 11. References
 
-- [Pillar 03 — Technical Architecture](../../../../pillars/03-architecture.md) — adapter buckets, server boundaries.
-- [Pillar 04 — Open Source Strategy](../../../../pillars/04-open-source.md) — what stays MIT.
-- [Pillar 07 — Monetization](../../../../pillars/07-monetization.md) — cloud tier model.
-- [Pillar 11 — Partnerships & Ecosystem Distribution](../../../../pillars/11-partnerships.md) — distribution lever framing (in review).
+- Pillar 03 — Technical Architecture (`pillars/03-architecture.md`) — adapter buckets, server boundaries.
+- Pillar 04 — Open Source Strategy (`pillars/04-open-source.md`) — what stays MIT.
+- Pillar 07 — Monetization (`pillars/07-monetization.md`) — cloud tier model.
+- Pillar 11 — Partnerships & Ecosystem Distribution (`pillars/11-partnerships.md`) — distribution lever framing (in review).
 - [CSP `frame-ancestors`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors).
 - [JWT Best Current Practices (RFC 8725)](https://www.rfc-editor.org/rfc/rfc8725) — algorithm allowlist, audience checking.
 - [postMessage targetOrigin](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage) — why `*` is unsafe.

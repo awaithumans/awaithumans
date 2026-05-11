@@ -7,7 +7,7 @@ This page is the source of truth for the `docs` URL field in error responses. Ev
 
 ## Server-side errors
 
-### task-not-found {#task-not-found}
+### task-not-found
 
 The task ID doesn't exist in the database.
 
@@ -18,7 +18,7 @@ The task ID doesn't exist in the database.
 
 **Fix:** Check the dashboard's task list. If the task is genuinely gone, the agent should not retry — treat it as a permanent failure and your application's compensating logic should kick in.
 
-### task-already-terminal {#task-already-terminal}
+### task-already-terminal
 
 Tried to complete / cancel a task that's already `completed`, `timed_out`, `cancelled`, or `verification_exhausted`.
 
@@ -29,7 +29,7 @@ Tried to complete / cancel a task that's already `completed`, `timed_out`, `canc
 
 **Fix:** Refresh and check the current status. If you're an agent, the long-poll endpoint already handles this — don't retry the complete call.
 
-### task-already-exists {#task-already-exists}
+### task-already-exists
 
 Idempotency key conflict where the existing task is somehow inaccessible.
 
@@ -38,7 +38,7 @@ Idempotency key conflict where the existing task is somehow inaccessible.
 
 **Fix:** Open a GitHub issue with the task ID. This shouldn't happen.
 
-### task-already-claimed {#task-already-claimed}
+### task-already-claimed
 
 Slack broadcast claim race lost.
 
@@ -47,37 +47,37 @@ Slack broadcast claim race lost.
 
 **Fix:** Move on. The dashboard / DM tells you who won.
 
-### user-not-found {#user-not-found}
+### user-not-found
 
 Lookup by email or ID returned nothing.
 
 **Fix:** Check Settings → Users. Add the user, or fix the lookup.
 
-### user-already-exists {#user-already-exists}
+### user-already-exists
 
 Tried to create a user whose email or `(slack_team_id, slack_user_id)` matches an existing row.
 
 **Fix:** Edit the existing user, or use a different email.
 
-### user-no-address {#user-no-address}
+### user-no-address
 
 Tried to create a user with neither an email nor a Slack pair.
 
 **Fix:** A user must have at least one delivery address. Add one or the other.
 
-### last-operator {#last-operator}
+### last-operator
 
 Tried to delete / demote / deactivate the only active operator.
 
 **Fix:** Promote another user to operator first, then retry the action. This guards against operators locking themselves out of the dashboard.
 
-### setup-already-completed {#setup-already-completed}
+### setup-already-completed
 
 Hit `/api/setup/operator` after a user already exists.
 
 **Fix:** Setup is one-shot. Use `/api/auth/login` to log in as the existing operator.
 
-### invalid-setup-token {#invalid-setup-token}
+### invalid-setup-token
 
 The bootstrap token didn't match.
 
@@ -85,7 +85,7 @@ The bootstrap token didn't match.
 
 ## Verifier errors
 
-### verifier-provider-unavailable {#verifier-provider-unavailable}
+### verifier-provider-unavailable
 
 The verifier provider's SDK isn't installed.
 
@@ -97,7 +97,7 @@ pip install "awaithumans[verifier-gemini]"   # for "gemini"
 pip install "awaithumans[verifier-azure]"    # for "azure"
 ```
 
-### verifier-api-key-missing {#verifier-api-key-missing}
+### verifier-api-key-missing
 
 The env var named in `VerifierConfig.api_key_env` isn't set on the awaithumans **server** (NOT on the agent process — the LLM call runs server-side).
 
@@ -108,7 +108,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 Restart the server. Agent code can resubmit without recreating the task.
 
-### verifier-endpoint-missing {#verifier-endpoint-missing}
+### verifier-endpoint-missing
 
 Azure OpenAI requires both an API key and an endpoint URL.
 
@@ -118,7 +118,7 @@ export AZURE_OPENAI_API_KEY=...
 export AZURE_OPENAI_ENDPOINT=https://my-resource.openai.azure.com
 ```
 
-### verifier-config-invalid {#verifier-config-invalid}
+### verifier-config-invalid
 
 The task's stored `verifier_config` JSON doesn't match the current `VerifierConfig` schema.
 
@@ -128,13 +128,13 @@ The task's stored `verifier_config` JSON doesn't match the current `VerifierConf
 
 **Fix:** Cancel the task, recreate it with the agent on the current SDK.
 
-### verifier-provider-unknown {#verifier-provider-unknown}
+### verifier-provider-unknown
 
 `VerifierConfig.provider` is set to a value we don't recognize.
 
 **Fix:** The error message includes the supported list. Pick one.
 
-### verifier-provider-error {#verifier-provider-error}
+### verifier-provider-error
 
 The LLM provider returned an error (rate limit, transient outage, model not available, etc.).
 
@@ -142,7 +142,7 @@ The LLM provider returned an error (rate limit, transient outage, model not avai
 
 ## SDK errors
 
-### timeout {#timeout}
+### timeout
 
 `TaskTimeoutError` — the task hit its `timeout_seconds` without completion.
 
@@ -156,37 +156,37 @@ The LLM provider returned an error (rate limit, transient outage, model not avai
 2. Verify the user is in your directory (Settings → Users)
 3. Consider raising `timeout_seconds` for slower review windows
 
-### timeout-range {#timeout-range}
+### timeout-range
 
 `timeout_seconds` outside the allowed range.
 
 **Fix:** Use 60 to 2,592,000 (1 minute to 30 days). For sub-minute or beyond-30-days needs, use a queue / scheduler — not human-in-the-loop.
 
-### schema-validation {#schema-validation}
+### schema-validation
 
 The payload or response doesn't match the schema you provided.
 
 **Fix:** Check the validation error in the message. Make sure your data conforms to the Pydantic / Zod model you passed.
 
-### task-create-failed {#task-create-failed}
+### task-create-failed
 
 `POST /api/tasks` returned non-2xx.
 
 **Fix:** The error message includes the server's response. Common causes: missing `Authorization` header, malformed body, server not running.
 
-### poll-failed {#poll-failed}
+### poll-failed
 
 Long-poll request returned non-200.
 
 **Fix:** Same as above. Usually a transient network blip — the SDK retries.
 
-### task-cancelled {#task-cancelled}
+### task-cancelled
 
 Task was cancelled by the agent or an operator.
 
 **Fix:** Decide what your agent should do — retry with a different reviewer, escalate, or fail.
 
-### server-unreachable {#server-unreachable}
+### server-unreachable
 
 Couldn't connect to the awaithumans server URL.
 
@@ -195,7 +195,7 @@ Couldn't connect to the awaithumans server URL.
 2. Is the URL correct? Override with `server_url=` or `AWAITHUMANS_URL` env var
 3. Network / firewall issue?
 
-### verification-exhausted {#verification-exhausted}
+### verification-exhausted
 
 Verifier rejected `max_attempts` times.
 
