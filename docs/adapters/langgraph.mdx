@@ -78,7 +78,12 @@ graph = builder.compile(checkpointer=MemorySaver())
 
 ```python
 import asyncio
+import os
+
 from awaithumans.adapters.langgraph import drive_human_loop
+
+# `graph` is the compiled StateGraph from the "Node side" snippet above.
+
 
 async def main():
     config = {"configurable": {"thread_id": "wf-1"}}
@@ -90,6 +95,7 @@ async def main():
         api_key=os.environ.get("AWAITHUMANS_ADMIN_API_TOKEN"),
     )
     print(final_state.values)
+
 
 asyncio.run(main())
 ```
@@ -110,21 +116,44 @@ Other interrupts (operator confirmations, branching decisions) flow through unch
 LangGraph re-executes the entire node on resume. Any work BEFORE `await_human(...)` runs twice. Move expensive or non-idempotent work to a separate node downstream:
 
 ```python
-# ❌ DON'T do this — process_refund runs on the first execution
-def review_node(state):
-    decision = await_human(...)
-    refund_id = process_refund(...)   # runs twice on resume!
+# Pretend this is your real money-moving call.
+def process_refund(customer_id: str, amount_usd: int) -> str:
+    ...  # returns a refund id
+
+
+# ❌ DON'T do this — process_refund runs on every node re-execution.
+def review_node_bad(state):
+    decision = await_human(
+        task="Approve refund?",
+        payload_schema=RefundPayload,
+        payload=RefundPayload(
+            customer_id=state["customer_id"], amount_usd=state["amount_usd"]
+        ),
+        response_schema=RefundDecision,
+        timeout_seconds=15 * 60,
+    )
+    refund_id = process_refund(state["customer_id"], state["amount_usd"])
     return {"refund_id": refund_id, "approved": decision.approved}
 
-# ✅ DO this — split into two nodes
+
+# ✅ DO this — split human review and the side-effect into two nodes.
 def review_node(state):
-    decision = await_human(...)
+    decision = await_human(
+        task="Approve refund?",
+        payload_schema=RefundPayload,
+        payload=RefundPayload(
+            customer_id=state["customer_id"], amount_usd=state["amount_usd"]
+        ),
+        response_schema=RefundDecision,
+        timeout_seconds=15 * 60,
+    )
     return {"approved": decision.approved}
+
 
 def process_refund_node(state):
     if not state["approved"]:
         return {"refund_id": None}
-    return {"refund_id": process_refund(...)}
+    return {"refund_id": process_refund(state["customer_id"], state["amount_usd"])}
 ```
 
 ## Error contract

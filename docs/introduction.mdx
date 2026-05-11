@@ -4,6 +4,20 @@ description: "The human layer for AI agents. Your agents already await promises.
 ---
 
 ```python
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundPayload(BaseModel):
+    amount: int
+    customer_id: str
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    reason: str = ""
+
+
 result = await_human_sync(
     task="Approve this $250 refund?",
     payload_schema=RefundPayload,
@@ -13,7 +27,7 @@ result = await_human_sync(
 )
 
 if result.approved:
-    process_refund(...)
+    print(f"refund approved: {result.reason}")
 ```
 
 That's the whole product. One function call in your agent code; a real human in the loop on the other side, reviewing through Slack, email, or a web dashboard. Your agent waits — durably, idempotently — until they decide.

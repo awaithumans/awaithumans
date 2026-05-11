@@ -103,7 +103,10 @@ This is what makes direct-mode `await_human()` resumable across agent restarts: 
 To create a fresh task for the same logical event (e.g. a yesterday's task timed out and you want a new review today), pass a distinct key — convention is to suffix with a retry counter:
 
 ```python
-idempotency_key=f"refund:{order_id}:retry-{attempt}"
+# In real code these come from your own state:
+order_id = "order_12345"
+attempt = 2
+idempotency_key = f"refund:{order_id}:retry-{attempt}"
 ```
 
 ## Errors
@@ -123,7 +126,20 @@ Channel notifications fire in a `BackgroundTask` AFTER the response is sent — 
 
 ```python
 # Python
+from pydantic import BaseModel
 from awaithumans import await_human_sync
+
+
+class RefundPayload(BaseModel):
+    amount_usd: int
+    customer_id: str
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    notes: str = ""
+
+
 decision = await_human_sync(
     task="Approve $250 refund?",
     payload_schema=RefundPayload,

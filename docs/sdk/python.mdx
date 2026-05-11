@@ -21,25 +21,47 @@ Python 3.10+. The base SDK (`pip install awaithumans`) has only two runtime deps
 The primitive. Async and sync flavors:
 
 ```python
+import asyncio
+from pydantic import BaseModel
 from awaithumans import await_human, await_human_sync
 
-# async (inside an asyncio context)
-decision = await await_human(
-    task="Approve refund?",
-    payload_schema=RefundPayload,
-    payload=RefundPayload(amount=250),
-    response_schema=RefundDecision,
-    timeout_seconds=900,
-)
 
-# sync (from a non-async context — Flask, Celery, scripts)
+# Define the shape of the data your agent sends to the human...
+class RefundPayload(BaseModel):
+    amount: int
+    customer: str
+
+
+# ...and the shape of the response form they fill in.
+class RefundDecision(BaseModel):
+    approved: bool
+    reason: str = ""
+
+
+# Sync (from a regular Python script, Flask, Celery, etc.)
 decision = await_human_sync(
     task="Approve refund?",
     payload_schema=RefundPayload,
-    payload=RefundPayload(amount=250),
+    payload=RefundPayload(amount=250, customer="cus_123"),
     response_schema=RefundDecision,
     timeout_seconds=900,
 )
+print(decision.approved, decision.reason)
+
+
+# Async (inside an existing asyncio context — agent frameworks, ASGI)
+async def main() -> None:
+    decision = await await_human(
+        task="Approve refund?",
+        payload_schema=RefundPayload,
+        payload=RefundPayload(amount=250, customer="cus_123"),
+        response_schema=RefundDecision,
+        timeout_seconds=900,
+    )
+    print(decision.approved, decision.reason)
+
+
+asyncio.run(main())
 ```
 
 ### Parameters
@@ -88,9 +110,9 @@ from awaithumans.verifiers.gemini import gemini_verifier
 from awaithumans.verifiers.azure_openai import azure_openai_verifier
 
 verifier = claude_verifier(
-    instructions="...",
-    model="claude-sonnet-4-5",     # optional, has default
-    max_attempts=3,                # default 3
+    instructions="Reject any refund decision that lacks a clear reason.",
+    model="claude-sonnet-4-5",         # optional, has default
+    max_attempts=3,                    # default 3
     api_key_env="ANTHROPIC_API_KEY",   # default
 )
 ```
@@ -152,12 +174,13 @@ Production deployments should use environment variables. The discovery file is a
 The package ships with `py.typed`. mypy/pyright pick up the types automatically:
 
 ```python
+# (using the RefundPayload / RefundDecision models defined earlier)
 decision: RefundDecision = await_human_sync(
-    task="...",
+    task="Approve refund?",
     payload_schema=RefundPayload,
-    payload=...,
+    payload=RefundPayload(amount=250, customer="cus_123"),
     response_schema=RefundDecision,
     timeout_seconds=900,
 )
-# decision is typed as RefundDecision — IDE autocomplete + mypy enforcement
+# `decision` is typed as RefundDecision — IDE autocomplete + mypy enforcement.
 ```

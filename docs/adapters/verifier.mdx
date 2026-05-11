@@ -41,8 +41,20 @@ Forget this step and the first verifier call returns `HTTP 500 VERIFIER_API_KEY_
 ## Quickstart
 
 ```python
+from pydantic import BaseModel
 from awaithumans import await_human_sync
 from awaithumans.verifiers.claude import claude_verifier
+
+
+class RefundPayload(BaseModel):
+    amount_usd: int
+    customer_id: str
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    notes: str = ""
+
 
 decision = await_human_sync(
     task="Approve $250 refund?",
@@ -72,15 +84,17 @@ from awaithumans.verifiers.openai import openai_verifier
 from awaithumans.verifiers.gemini import gemini_verifier
 from awaithumans.verifiers.azure_openai import azure_openai_verifier
 
+_INSTRUCTIONS = "Reject any refund decision that lacks a clear reason."
+
 # OpenAI
-verifier = openai_verifier(instructions="...", model="gpt-4o-2024-11-20")
+verifier = openai_verifier(instructions=_INSTRUCTIONS, model="gpt-4o-2024-11-20")
 
 # Gemini
-verifier = gemini_verifier(instructions="...", model="gemini-2.0-flash")
+verifier = gemini_verifier(instructions=_INSTRUCTIONS, model="gemini-2.0-flash")
 
 # Azure OpenAI (deployment-name addressing)
 verifier = azure_openai_verifier(
-    instructions="...",
+    instructions=_INSTRUCTIONS,
     deployment_name="my-gpt4-deployment",
     endpoint_env="AZURE_OPENAI_ENDPOINT",   # default
     api_version="2024-10-21",                # default

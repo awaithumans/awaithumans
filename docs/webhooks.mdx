@@ -72,9 +72,35 @@ async def callback(request: Request):
 
 The Temporal and LangGraph adapters bundle signature verification into their dispatch helpers — call them directly from your route and you don't have to write the HMAC code:
 
+Both snippets below assume an Express app and the same raw-body helper:
+
 ```ts
-// Temporal — verify + signal a workflow
+// raw-body.ts
+import type { IncomingMessage } from "node:http";
+
+// HMAC verification needs the exact bytes the awaithumans server hashed
+// — any framework body-parser that re-serializes JSON will silently
+// break the signature. Read once, verify, then parse.
+export function readRawBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+```
+
+```ts
+// Temporal — verify + signal a workflow.
+import express from "express";
+import { Client } from "@temporalio/client";
 import { dispatchSignal } from "awaithumans/temporal";
+
+import { readRawBody } from "./raw-body";
+
+const app = express();
+const temporalClient = await Client.connect({ address: "localhost:7233" });
 
 app.post("/awaithumans/callback", async (req, res) => {
   const body = await readRawBody(req);
@@ -91,12 +117,19 @@ app.post("/awaithumans/callback", async (req, res) => {
     res.status(401).json({ error: String(e) });
   }
 });
+
+app.listen(8765);
 ```
 
 ```ts
-// LangGraph — verify + resume a graph
+// LangGraph — verify + resume a graph.
+import express from "express";
 import { createWebhookHandler } from "awaithumans/langgraph";
 
+import { graph } from "./graph";           // your compiled StateGraph
+import { readRawBody } from "./raw-body";
+
+const app = express();
 const handler = createWebhookHandler({
   graph,
   payloadKey: process.env.AWAITHUMANS_PAYLOAD_KEY!,
@@ -104,9 +137,14 @@ const handler = createWebhookHandler({
 
 app.post("/awaithumans/callback", async (req, res) => {
   const body = await readRawBody(req);
-  await handler({ body, signatureHeader: req.headers["x-awaithumans-signature"] as string });
+  await handler({
+    body,
+    signatureHeader: req.headers["x-awaithumans-signature"] as string,
+  });
   res.json({ ok: true });
 });
+
+app.listen(8765);
 ```
 
 ### Other languages
