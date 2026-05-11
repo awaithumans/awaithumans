@@ -110,7 +110,7 @@ If you were running off `main` before tagging:
 - 📚 [Documentation](https://awaithumans.dev/docs)
 - 🚀 [Quickstart](https://awaithumans.dev/docs/quickstart)
 - 🐛 [Report an issue](https://github.com/awaithumans/awaithumans/issues)
-- 💬 [Discord](https://discord.gg/awaithumans)
+- 💬 [Discord](https://discord.gg/Kewdh7vjdc)
 - 🔒 Security disclosures: **security@awaithumans.dev**
 
 ## Thanks
