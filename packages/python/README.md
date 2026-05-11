@@ -170,9 +170,7 @@ human with the reason attached.
 
 ## License
 
-MIT for the SDK, adapters, and channels. Elastic License v2 for the
-server and dashboard (fully self-hostable — only restriction is
-offering a competing managed service).
-
-See the [repo README](https://github.com/awaithumans/awaithumans#packages)
-for the per-file breakdown.
+[Apache License 2.0](https://github.com/awaithumans/awaithumans/blob/main/LICENSE)
+across the whole package — SDK, server, dashboard, adapters, channels.
+Permissive, OSI-approved, with an explicit patent grant. Use it in
+proprietary stacks, fork it, ship it inside paid products.

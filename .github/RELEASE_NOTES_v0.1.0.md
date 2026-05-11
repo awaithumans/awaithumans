@@ -10,7 +10,7 @@ The first tagged release of `awaithumans` — the human layer for AI agents. One
 - 🤖 **AI verification** server-side: Claude / OpenAI / Gemini / Azure OpenAI ([docs](https://awaithumans.dev/docs/adapters/verifier)).
 - 🪪 **User directory + routing** by email, list, pool, or role with least-recently-assigned fairness.
 - 🛡️ **Self-host in one command:** `awaithumans dev` for development, `docker compose up` for production.
-- 📦 **MIT** on the SDK (Python + TS); ELv2 on the server. Free forever for self-hosted use.
+- 📦 **Apache 2.0** across the whole stack — SDK, server, dashboard, adapters, channels. Free forever for self-hosted use, with an explicit patent grant.
 
 ## Install
 
