@@ -174,9 +174,7 @@ function EmbedTaskInner() {
 				<h1 className="mb-4 font-mono text-lg font-medium">{task.task}</h1>
 				<div className="rounded-md border border-brand/40 bg-brand/10 p-4 font-mono text-sm">
 					<p className="mb-1 text-brand">Submitted</p>
-					<p className="text-fg-2">
-						Your response has been recorded. You can close this window.
-					</p>
+					<p className="text-fg-2">Your response has been recorded.</p>
 				</div>
 			</div>
 		);
