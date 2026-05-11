@@ -1,6 +1,6 @@
 {
   "name": "awaithumans",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "The human layer for AI agents. Your agents already await promises. Now they can await humans.",
   "type": "module",
   "sideEffects": false,

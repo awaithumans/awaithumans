@@ -12,9 +12,17 @@ into a versioned release when tagged.
 
 ## [Unreleased]
 
+_Nothing yet — open the next change here._
+
+---
+
+## [0.1.0] — 2026-05-11
+
+First tagged release. Everything below is in the shipped package.
+
 ### Changed (BREAKING)
 
-- **Idempotency keys now follow strict Stripe semantics.** A task's
+- **Idempotency keys follow strict Stripe semantics.** A task's
   `idempotency_key` always returns the same task, regardless of
   status. Previously a terminal task's key was released, allowing a
   fresh task with the same key — convenient for "re-trigger a
@@ -28,11 +36,12 @@ into a versioned release when tagged.
   `VERIFICATION_EXHAUSTED`). Aligns the implementation with the
   Stripe model the docs already claimed.
 
----
-
-## [0.1.0] — Pre-launch (planned for 2026-05-12)
-
-First tagged release. Everything below is in the shipped package.
+- **Repo and packages are now Apache 2.0** across the whole stack
+  (SDK, server, dashboard, adapters, channels). Pre-tag the README
+  claimed a dual-license (MIT SDK + ELv2 server) that was never
+  realized in pyproject.toml or package.json. The explicit patent
+  grant in Apache 2.0 matters more for AI infra than the brevity of
+  MIT.
 
 ### Added
 

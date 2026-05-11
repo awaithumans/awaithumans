@@ -1,6 +1,6 @@
 {
   "name": "@awaithumans/dashboard",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Self-hosted HITL review dashboard — Next.js 16 + React 19",
   "type": "module",
   "private": true,
