@@ -16,6 +16,20 @@ _Nothing yet — open the next change here._
 
 ---
 
+## [0.1.1] — 2026-05-11
+
+### Fixed
+
+- **TypeScript SDK: widen `@langchain/langgraph` peer-dep range** to
+  `"^0.2.0 || ^1.0.0"` (was `"^0.2.0"`). Users on a fresh
+  `npm install awaithumans @langchain/langgraph` would get the
+  current upstream (`1.x`) and hit `ERESOLVE` against the old
+  pinned range. Verified the `interrupt(...)` API surface the
+  adapter uses is signature-identical across both majors. No
+  runtime code changed; this is purely a peer-range fix.
+
+---
+
 ## [0.1.0] — 2026-05-11
 
 First tagged release. Everything below is in the shipped package.
