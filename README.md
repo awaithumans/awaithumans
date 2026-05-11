@@ -258,14 +258,15 @@ the entire extension surface.
 
 | Package | Registry | License |
 |---|---|---|
-| `awaithumans` (Python SDK + server + CLI + dashboard) | PyPI | MIT + ELv2 mix — see below |
-| `awaithumans` (TypeScript SDK) | npm | MIT |
-| `ghcr.io/awaithumans/awaithumans` (container) | GHCR | MIT + ELv2 mix |
+| `awaithumans` (Python SDK + server + CLI + dashboard) | PyPI | Apache 2.0 |
+| `awaithumans` (TypeScript SDK) | npm | Apache 2.0 |
+| `ghcr.io/awaithumans/awaithumans` (container) | GHCR | Apache 2.0 |
 
-**License:** the SDK, adapters, channels, examples, and docs are MIT.
-The server and dashboard are [Elastic License v2](https://www.elastic.co/licensing/elastic-license)
-— fully self-hostable for your own organization, only restriction is
-offering a competing managed service.
+**License:** [Apache License 2.0](LICENSE). Permissive, OSI-approved,
+with an explicit patent grant. Use it in proprietary stacks, fork it,
+ship it inside paid products — no fee, no contact required. The only
+thing the license asks is that you preserve the notice and don't use
+the project's trademarks without permission.
 
 ---
 

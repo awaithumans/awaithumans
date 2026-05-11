@@ -123,10 +123,7 @@ client.onAwait((task) => ({ approved: true, note: "looks good" }));
 
 ## License
 
-MIT. The TypeScript SDK and all adapter subpath exports are MIT.
-
-The server + dashboard (separately distributed, Python) are
-[Elastic License v2](https://www.elastic.co/licensing/elastic-license)
-— fully self-hostable for your own organization. See the
-[repo README](https://github.com/awaithumans/awaithumans#packages)
-for the per-file breakdown.
+[Apache License 2.0](https://github.com/awaithumans/awaithumans/blob/main/LICENSE).
+The TypeScript SDK, every adapter subpath export, and the Python
+server + dashboard it talks to are all under the same license —
+permissive, OSI-approved, with an explicit patent grant.

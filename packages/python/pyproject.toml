@@ -23,7 +23,7 @@ name = "awaithumans"
 version = "0.1.0"
 description = "The human layer for AI agents. Your agents already await promises. Now they can await humans."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 # PEP 604 union syntax (`X | None`) is used throughout the codebase —
 # that's 3.10+. Pydantic v2 evaluates annotations at runtime and crashes
 # on 3.9 with "unsupported operand type(s) for |" if we claim 3.9 compat.
@@ -40,7 +40,7 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
