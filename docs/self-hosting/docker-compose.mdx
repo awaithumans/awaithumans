@@ -74,9 +74,34 @@ volumes:
   awaithumans-data:
 ```
 
+## .env file
+
+Compose interpolates `${VAR}` from a `.env` file next to `docker-compose.yml`. Drop this template in beside it and fill in each value before you `docker compose up`:
+
+```bash
+# .env  (sit beside docker-compose.yml)
+
+# === Secrets you generate yourself (see "Generate the secrets" below) ===
+PAYLOAD_KEY=replace-me-with-a-fresh-32-byte-urlsafe-string
+ADMIN_API_TOKEN=replace-me-with-a-fresh-32-byte-urlsafe-string
+POSTGRES_PASSWORD=replace-me-with-a-strong-db-password
+
+# === Slack channel (optional — leave blank to disable) ===
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+
+# === Email channel — Resend (optional — leave blank to disable) ===
+RESEND_KEY=re_...
+
+# === AI verifier (optional — only the providers you use) ===
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Add `.env` to `.gitignore`. Production deployments should pull these from your secrets manager (Vault, AWS Secrets Manager, GCP Secret Manager) rather than a flat file.
+
 ## Generate the secrets
 
-Two secrets you need to set yourself: `PAYLOAD_KEY` (the encryption root) and `ADMIN_API_TOKEN` (the bearer token your agent uses).
+`PAYLOAD_KEY` (the encryption root), `ADMIN_API_TOKEN` (the bearer token your agent uses), and `POSTGRES_PASSWORD` are the three secrets you set yourself.
 
 ```bash
 python -c 'import secrets; print(secrets.token_urlsafe(32))'
@@ -84,9 +109,12 @@ python -c 'import secrets; print(secrets.token_urlsafe(32))'
 
 python -c 'import secrets; print(secrets.token_urlsafe(32))'
 # YrKxVj9FOaEP2UnVQWf1kT87Ld6sPmA9XgB3ZNzuIqs      ← ADMIN_API_TOKEN
+
+python -c 'import secrets; print(secrets.token_urlsafe(24))'
+# 9k4-ZmHFlS3sLNyq4mUgQAxRpO72j8wB                  ← POSTGRES_PASSWORD
 ```
 
-Store them somewhere your container orchestrator can read. Both must NEVER be regenerated after first deploy:
+Paste each into `.env`. Both `PAYLOAD_KEY` and `ADMIN_API_TOKEN` must NEVER be regenerated after first deploy:
 
 - Rotating `PAYLOAD_KEY` invalidates every session cookie + magic-link token + encrypted Slack OAuth row.
 - Rotating `ADMIN_API_TOKEN` breaks every running agent until you redeploy them with the new value.

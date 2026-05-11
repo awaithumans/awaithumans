@@ -30,12 +30,33 @@ pip install "awaithumans[temporal]"
 ## Workflow side
 
 ```python
+import os
+from datetime import timedelta
+
+from pydantic import BaseModel
 from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
     from awaithumans.adapters.temporal import await_human
 
 
+class RefundPayload(BaseModel):
+    amount_usd: int
+    customer_id: str
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    notes: str = ""
+
+
+# Defined in the "Constructing callback_url" section below.
+def callback_url_for_workflow(workflow_id: str) -> str:
+    base = os.environ.get("AWAITHUMANS_CALLBACK_BASE", "http://localhost:8765")
+    return f"{base.rstrip('/')}/awaithumans/callback?wf={workflow_id}"
+
+
+# Your real refund implementation — registered as a Temporal activity.
 @workflow.defn
 class RefundWorkflow:
     @workflow.run
@@ -55,7 +76,9 @@ class RefundWorkflow:
             return {"refund_id": None, "outcome": "rejected"}
 
         refund_id = await workflow.execute_activity(
-            process_refund, ..., start_to_close_timeout=timedelta(seconds=30)
+            "process_refund",
+            args=[amount, customer_id],
+            start_to_close_timeout=timedelta(seconds=30),
         )
         return {"refund_id": refund_id, "outcome": "approved"}
 ```
@@ -114,6 +137,9 @@ async def callback(request: Request, wf: str):
 The workflow ID has to round-trip through the awaithumans server. The simplest pattern: bake it into the callback URL as a query param.
 
 ```python
+import os
+
+
 def callback_url_for_workflow(workflow_id: str) -> str:
     base = os.environ.get("AWAITHUMANS_CALLBACK_BASE", "http://localhost:8765")
     return f"{base.rstrip('/')}/awaithumans/callback?wf={workflow_id}"

@@ -60,37 +60,50 @@ After your agent calls `await_human(...)` and you have a `task.id`, mint a token
 
 ```python Python
 import os
+from flask import Flask, jsonify, session
 from awaithumans import embed_token_sync
 
-embed = embed_token_sync(
-    task_id=task.id,
-    sub=f"acme:{current_user.id}",       # opaque per-user identifier
-    parent_origin="https://app.acme.com",
-    api_key=os.environ["AH_SERVICE_KEY"],
-    ttl_seconds=300,                     # default 300, max 3600
-)
-return {"approval_url": embed.embed_url}
+app = Flask(__name__)
+
+
+@app.post("/api/start-approval")
+def start_approval():
+    # `task` is whatever object you got back from your earlier
+    # await_human(...) call; in real code, look it up by user / order.
+    task_id = "tsk_4f8a2c1e9b"
+    user_id = session.get("user_id", "user_demo")
+
+    embed = embed_token_sync(
+        task_id=task_id,
+        sub=f"acme:{user_id}",                  # opaque per-user identifier
+        parent_origin="https://app.acme.com",
+        api_key=os.environ["AH_SERVICE_KEY"],
+        ttl_seconds=300,                        # default 300, max 3600
+    )
+    return jsonify({"approval_url": embed.embed_url})
 ```
 
 ```ts TypeScript
 import { embedToken } from "awaithumans";
 
-const embed = await embedToken({
-  taskId: task.id,
-  sub: `acme:${currentUser.id}`,
-  parentOrigin: "https://app.acme.com",
-  apiKey: process.env.AH_SERVICE_KEY!,
-});
-return { approvalUrl: embed.embedUrl };
+export async function startApproval(taskId: string, userId: string) {
+  const embed = await embedToken({
+    taskId,
+    sub: `acme:${userId}`,
+    parentOrigin: "https://app.acme.com",
+    apiKey: process.env.AH_SERVICE_KEY!,         // set in your server env
+  });
+  return { approvalUrl: embed.embedUrl };
+}
 ```
 
 ```http HTTP
 POST /api/embed/tokens
-Authorization: Bearer ah_sk_27b5fc...
+Authorization: Bearer ah_sk_27b5fc4889071608410cbf0b91476cf8aa68043a
 Content-Type: application/json
 
 {
-  "task_id": "tsk_4f8a2c...",
+  "task_id": "tsk_4f8a2c1e9b",
   "parent_origin": "https://app.acme.com",
   "sub": "acme:user_123",
   "ttl_seconds": 300
@@ -118,13 +131,29 @@ The response contains everything your frontend needs:
 ```html
 <iframe
   id="approval"
-  src="<embed_url>"
   style="width: 100%; border: 0;"
   allow="clipboard-write"
 ></iframe>
 
 <script>
 const iframe = document.getElementById("approval");
+
+// Pull the embed URL from your backend (the route from step 2)
+// and point the iframe at it.
+fetch("/api/start-approval", { method: "POST" })
+  .then((r) => r.json())
+  .then((d) => {
+    iframe.src = d.approval_url;
+  });
+
+function continueAcmeFlow(response) {
+  // Your continuation — e.g. update the order page with the decision.
+  console.log("approved:", response.approved, "reason:", response.reason);
+}
+
+function handleError(code, message) {
+  console.error(`[awaithumans] ${code}: ${message}`);
+}
 
 window.addEventListener("message", (e) => {
   // Only trust messages from your awaithumans server's origin

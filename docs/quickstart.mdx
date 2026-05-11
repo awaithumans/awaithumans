@@ -79,7 +79,9 @@ def main():
         ),
         response_schema=RefundDecision,
         timeout_seconds=900,
-        idempotency_key=f"refund:{order_id}",  # same key = same task, even after restart
+        # In real code use a stable per-event ID — e.g. `f"refund:{order.id}"`.
+        # Same key = same task, even if your script restarts mid-wait.
+        idempotency_key="refund:order_demo",
     )
 
     if decision.approved:
@@ -119,7 +121,9 @@ async function main() {
     },
     responseSchema: RefundDecision,
     timeoutMs: 15 * 60 * 1000,
-    idempotencyKey: `refund:${orderId}`,
+    // In real code use a stable per-event ID — e.g. `refund:${order.id}`.
+    // Same key = same task, even if your script restarts mid-wait.
+    idempotencyKey: "refund:order_demo",
   });
 
   if (decision.approved) {
@@ -188,12 +192,17 @@ The SDK long-polls until the task reaches a terminal state. For agents that can 
 
 ## Add a notification channel
 
-Right now the only place a human sees the task is the dashboard. Add Slack:
+Right now the only place a human sees the task is the dashboard. Add Slack with one extra kwarg — the rest of the call is identical to the script above:
 
 ```python
 decision = await_human_sync(
     task="Approve $250 refund?",
-    # ...
+    payload_schema=RefundPayload,
+    payload=RefundPayload(
+        amount_usd=250, customer_id="cus_demo", reason="Duplicate charge"
+    ),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
     notify=["slack:#approvals"],   # ← post to this channel
 )
 ```
@@ -256,7 +265,13 @@ Then attach the verifier to your `await_human` call:
 from awaithumans.verifiers.claude import claude_verifier
 
 decision = await_human_sync(
-    # ...
+    task="Approve $250 refund?",
+    payload_schema=RefundPayload,
+    payload=RefundPayload(
+        amount_usd=250, customer_id="cus_demo", reason="Duplicate charge"
+    ),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
     verifier=claude_verifier(
         instructions=(
             "Reject if the notes contradict the decision, or if "
