@@ -18,6 +18,13 @@ _Nothing yet — open the next change here._
 
 ## [0.1.1] — 2026-05-11
 
+### Security
+
+- **Bumped bundled Next.js `16.2.3` → `16.2.6`** in the dashboard,
+  clearing 13 GHSA advisories. The dashboard ships statically built
+  into the Python wheel, so this fix only reaches PyPI users via a
+  republish — bump the Python version accordingly.
+
 ### Fixed
 
 - **TypeScript SDK: widen `@langchain/langgraph` peer-dep range** to
@@ -27,6 +34,10 @@ _Nothing yet — open the next change here._
   pinned range. Verified the `interrupt(...)` API surface the
   adapter uses is signature-identical across both majors. No
   runtime code changed; this is purely a peer-range fix.
+
+- **Python package version bumped 0.1.0 → 0.1.1** so the bundled-Next.js
+  security fix above can be republished to PyPI. Mono-version with the
+  TypeScript SDK at 0.1.1.
 
 ---
 
