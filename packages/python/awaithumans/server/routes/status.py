@@ -32,7 +32,7 @@ async def get_status() -> SystemStatus:
     # but is always True now — we left it in place so the dashboard
     # doesn't need redeployment just to drop a field.
     return SystemStatus(
-        version="0.1.0",
+        version="0.1.1",
         environment=settings.ENVIRONMENT,
         public_url=settings.PUBLIC_URL,
         auth_enabled=True,

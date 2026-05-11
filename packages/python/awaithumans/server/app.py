@@ -228,7 +228,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app = FastAPI(
         title="awaithumans",
         description="The human layer for AI agents.",
-        version="0.1.0",
+        version="0.1.1",
         lifespan=lifespan,
     )
 
