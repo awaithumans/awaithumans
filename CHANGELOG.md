@@ -16,6 +16,61 @@ _Nothing yet — open the next change here._
 
 ---
 
+## [0.1.2] — 2026-05-12
+
+### Fixed
+
+- **Bare `notify=["email:user@x"]` now routes through a single configured
+  DB identity** when `AWAITHUMANS_EMAIL_TRANSPORT` is unset. Operators
+  who set email up through the dashboard saw the docs quickstart example
+  silently skip because nothing pointed at their identity — now it
+  "just works" when exactly one identity is configured. Multi-identity
+  deployments still require explicit `email+<id>:...` (no arbitrary
+  pick). Existing env-configured deployments unchanged. ([#101](https://github.com/awaithumans/awaithumans/pull/101))
+
+- **SMTP factory accepts `user` as an alias for `username`.** The
+  dashboard form hint advertised `user`, Python's stdlib `smtplib`
+  uses `user` too, but the factory only read `username` — credentials
+  were silently dropped, producing opaque auth failures. Explicit
+  `username` still wins when both keys are present. ([#101](https://github.com/awaithumans/awaithumans/pull/101))
+
+- **SMTP factory defaults `use_tls=True` on port 465.** Port 465 is
+  implicit-TLS by convention; the previous default of `use_tls=False,
+  start_tls=True` attempted STARTTLS on an implicit-TLS port and failed
+  the handshake — the exact trap operators hit with Hostinger, Zoho,
+  Fastmail, and most managed SMTP providers. Explicit overrides are
+  still respected. ([#101](https://github.com/awaithumans/awaithumans/pull/101))
+
+- **Listing email identities tolerates rows encrypted under a rotated
+  or stale `PAYLOAD_KEY`.** A single undecryptable row used to 500 the
+  entire `GET /api/channels/email/identities` endpoint (the Settings
+  page showed "An unexpected error occurred."). The list view now
+  defers the encrypted `transport_config` column so a single bad row
+  doesn't poison the response; per-row ops that actually need the
+  secret still surface decryption failures loudly at use-time. ([#100](https://github.com/awaithumans/awaithumans/pull/100))
+
+- **Dashboard SMTP form hint shows a port-465 example** and uses the
+  canonical `username` key. The Email-sender-identities panel
+  description now also mentions the bare-`email:` solo-identity
+  shortcut so the UI matches the docs. ([#101](https://github.com/awaithumans/awaithumans/pull/101))
+
+### Docs
+
+- **`docs/channels/email.mdx`** documents the solo-identity shortcut
+  in both "Two ways to configure" and "Route to a specific identity"
+  so the quickstart example is honest for operators who configure
+  through the dashboard.
+
+### Version note
+
+The **TypeScript SDK has no functional changes** — `awaithumans@0.1.2`
+on npm is byte-equivalent to `0.1.1` at the source level. The bump is
+purely to keep the Python and TypeScript SDK versions in lock-step;
+pinning one and pinning the other to the same version remains the
+recommended pattern.
+
+---
+
 ## [0.1.1] — 2026-05-11
 
 ### Security
