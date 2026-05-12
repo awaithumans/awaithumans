@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from awaithumans.server.db.models import EmailSenderIdentity
 
@@ -70,9 +71,7 @@ async def upsert_identity(
     return existing
 
 
-async def get_identity(
-    session: AsyncSession, identity_id: str
-) -> EmailSenderIdentity | None:
+async def get_identity(session: AsyncSession, identity_id: str) -> EmailSenderIdentity | None:
     result = await session.execute(
         select(EmailSenderIdentity).where(EmailSenderIdentity.id == identity_id)
     )
@@ -80,7 +79,27 @@ async def get_identity(
 
 
 async def list_identities(session: AsyncSession) -> list[EmailSenderIdentity]:
-    result = await session.execute(select(EmailSenderIdentity))
+    """List all identities WITHOUT loading the encrypted transport_config.
+
+    Listing is a public-fields-only view (see route's `_to_public`). If we
+    let SQLAlchemy materialize `transport_config`, EncryptedString runs
+    AES-GCM decrypt on every row — a single row encrypted under a rotated
+    or stale PAYLOAD_KEY then raises InvalidTag and kills the whole
+    endpoint with a 500. Deferring the column means listing keeps working;
+    per-row ops that genuinely need the secret (upsert, get_identity,
+    transport resolution) load it through `get_identity` and surface
+    decrypt failures loudly at use-time.
+
+    `raiseload=True`: any accidental read of `.transport_config` on a
+    listed row raises immediately instead of silently lazy-loading inside
+    async context (which would either fail with MissingGreenlet or
+    re-trigger the InvalidTag bug). Forces callers to use `get_identity`.
+    """
+    result = await session.execute(
+        select(EmailSenderIdentity).options(
+            defer(EmailSenderIdentity.transport_config, raiseload=True)
+        )
+    )
     return list(result.scalars().all())
 
 
