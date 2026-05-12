@@ -51,12 +51,23 @@ def resolve_transport(name: str, config: dict[str, Any]) -> EmailTransport:
         port = int(config.get("port") or 587)
         if not host:
             raise EmailTransportError("smtp transport: config.host is required.")
+        # Accept `user` as an alias for `username`. The dashboard's
+        # Email-identity form hint advertises `user`, Python's stdlib
+        # smtplib uses `user` too — silently dropping it on the floor
+        # left users with unauthenticated SMTP and no signal.
+        username = config.get("username") or config.get("user")
+        # Port 465 is implicit-TLS; default `use_tls` to True there
+        # unless explicitly overridden. STARTTLS on 465 fails the
+        # handshake, which is the exact trap most operators hit on
+        # the first send. Matches the convention every mature SMTP
+        # library (aiosmtplib, smtplib, Nodemailer, etc.) uses.
+        use_tls = bool(config["use_tls"]) if "use_tls" in config else port == 465
         return SMTPTransport(
             host=host,
             port=port,
-            username=config.get("username"),
+            username=username,
             password=config.get("password"),
-            use_tls=bool(config.get("use_tls", False)),
+            use_tls=use_tls,
             start_tls=bool(config.get("start_tls", True)),
         )
 
@@ -73,8 +84,7 @@ def resolve_transport(name: str, config: dict[str, Any]) -> EmailTransport:
         return FileTransport(dir=directory)
 
     raise EmailTransportError(
-        f"Unknown email transport: '{name}'. "
-        "Valid: resend, smtp, logging, noop, file."
+        f"Unknown email transport: '{name}'. Valid: resend, smtp, logging, noop, file."
     )
 
 

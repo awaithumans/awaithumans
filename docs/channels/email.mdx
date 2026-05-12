@@ -22,7 +22,7 @@ The server accepts email configuration through **either**:
 1. **Environment variables** — picks one default identity, applied to every `notify=["email:..."]` entry. Best for single-tenant deployments and quickstart.
 2. **Per-identity sender records** stored in the DB — each identity has its own transport, `from_email`, and credentials. Routed via `notify=["email+<identity>:..."]`. Best for multi-tenant deployments or when you need multiple senders from one server.
 
-You can mix both: env vars provide the default, per-identity overrides for specific routes.
+You can mix both: env vars provide the default, per-identity overrides for specific routes. And as a UX shortcut, when no env transport is set and **exactly one** identity is configured in the DB, bare `notify=["email:..."]` routes through it automatically (see [Solo-identity shortcut](#solo-identity-shortcut)).
 
 ## Quickstart with Resend (env-var path)
 
@@ -163,8 +163,17 @@ POST is upsert — same `id` overwrites. Re-run to rotate credentials in place.
 ```python
 notify=["email+acme-prod:reviewer@acme.com"]    # send via the "acme-prod" identity
 notify=["email+initech:bob@initech.com"]        # send via the "initech" identity
-notify=["email:reviewer@acme.com"]              # send via the env-var default
+notify=["email:reviewer@acme.com"]              # send via the env-var default,
+                                                # or — when no env transport is set and
+                                                # exactly one DB identity is configured —
+                                                # via that identity (solo-identity shortcut)
 ```
+
+### Solo-identity shortcut
+
+When the server has **no `AWAITHUMANS_EMAIL_TRANSPORT` set** and the dashboard has **exactly one** sender identity configured, bare `notify=["email:..."]` routes through that identity. This is what makes the quickstart example honest for operators who set up email through the dashboard instead of env vars.
+
+The shortcut stops applying as soon as you add a second identity — at that point bare `email:` skips (with a clear log warning) and you must specify `email+<id>:...`. We don't pick arbitrarily.
 
 ## Action buttons vs dashboard link-out
 

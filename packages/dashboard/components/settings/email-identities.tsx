@@ -50,7 +50,9 @@ export function EmailIdentities() {
 		<SettingsSection
 			icon={Mail}
 			title="Email sender identities"
-			description={'Per-team sender profiles referenced as notify="email+<id>:user@example.com".'}
+			description={
+				'Per-team sender profiles. Reference as notify="email+<id>:user@example.com" — or bare "email:user@example.com" when this is your only identity.'
+			}
 			action={
 				!showForm && (
 					<button
