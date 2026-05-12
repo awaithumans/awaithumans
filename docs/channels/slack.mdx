@@ -48,7 +48,10 @@ settings:
 
 Replace `YOUR-PUBLIC-URL` with your awaithumans server's public address. For local dev: `https://<your-ngrok-id>.ngrok.io`. The `users:read.email` scope is needed for the `slack:alice@acme.com` route format (resolves emails to Slack user IDs).
 
-Install to your workspace. Copy the **Bot User OAuth Token** (`xoxb-...`) and the **Signing Secret** from Basic Information.
+Install the app to your workspace. Two values to copy — they live on **different pages** in the Slack admin UI:
+
+- **Bot User OAuth Token** (`xoxb-...`) — left sidebar: **Features → OAuth & Permissions**. The token is in the **OAuth Tokens** section at the top of that page.
+- **Signing Secret** — left sidebar: **Settings → Basic Information**. Scroll to **App Credentials**; the signing secret is in that block.
 
 ### 2. Set env vars
 
@@ -61,15 +64,47 @@ Restart `awaithumans dev`. The dashboard's Settings → Slack page now shows the
 
 ### 3. Test it
 
+Save as `slack_test.py` and run with `python slack_test.py`:
+
 ```python
-await_human_sync(
-    task="Approve $250 refund?",
-    # ...
-    notify=["slack:#general"],   # any channel your bot is in
-)
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundRequest(BaseModel):
+    order_id: str
+    customer_email: str
+    amount_usd: int
+    reason: str
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    notes: str | None = None
+
+
+def main() -> None:
+    decision = await_human_sync(
+        task="Approve $250 refund?",
+        payload_schema=RefundRequest,
+        payload=RefundRequest(
+            order_id="A-4721",
+            customer_email="alex@example.com",
+            amount_usd=250,
+            reason="Duplicate charge",
+        ),
+        response_schema=RefundDecision,
+        timeout_seconds=900,
+        notify=["slack:#general"],   # any channel your bot is invited to
+    )
+    print(f"approved={decision.approved} · notes={decision.notes}")
+
+
+if __name__ == "__main__":
+    main()
 ```
 
-The bot posts the task. Click "Review", fill the modal, submit. The script's `await_human` returns.
+The bot posts the task to `#general`. Click **Review**, fill the modal, submit. The script's `await_human_sync` returns and prints the typed `RefundDecision`. Swap the channel to whatever your bot has been invited to.
 
 ## OAuth setup
 
