@@ -98,25 +98,49 @@ This is one of the [four buckets](/concepts/four-buckets) — extension points b
 ## Example: KYC review queue
 
 ```python
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class KYCPayload(BaseModel):
+    applicant_id: str
+    amount_usd: int
+    country: str
+
+
+class KYCDecision(BaseModel):
+    approved: bool
+    notes: str | None = None
+
+
 # Fast lane: senior reviewers handle anything over $10k
-async def review_high_value(amount: int):
+async def review_high_value(applicant_id: str, amount: int, country: str):
     return await_human_sync(
         task=f"KYC review for ${amount} transaction",
-        # ...
+        payload_schema=KYCPayload,
+        payload=KYCPayload(applicant_id=applicant_id, amount_usd=amount, country=country),
+        response_schema=KYCDecision,
+        timeout_seconds=3600,
         assign_to={"role": "kyc-reviewer", "access_level": "senior"},
         notify=["slack:#kyc-senior"],
     )
 
+
 # Default lane: junior pool
-async def review_standard(amount: int):
+async def review_standard(applicant_id: str, amount: int, country: str):
     return await_human_sync(
         task=f"KYC review for ${amount} transaction",
-        # ...
+        payload_schema=KYCPayload,
+        payload=KYCPayload(applicant_id=applicant_id, amount_usd=amount, country=country),
+        response_schema=KYCDecision,
+        timeout_seconds=3600,
         assign_to={"role": "kyc-reviewer"},
         notify=["slack:#kyc"],
     )
 
+
 # Pick the lane in your agent code
+amount = 12_500
 review = review_high_value if amount > 10_000 else review_standard
 ```
 

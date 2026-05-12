@@ -14,9 +14,25 @@ A channel is "where does the human find out about the task and respond?" awaithu
 You activate channels per-task via `notify=`:
 
 ```python
-await_human_sync(
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundRequest(BaseModel):
+    order_id: str
+    amount_usd: int
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+
+
+decision = await_human_sync(
     task="Approve refund?",
-    # ...
+    payload_schema=RefundRequest,
+    payload=RefundRequest(order_id="A-4721", amount_usd=250),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
     notify=[
         "slack:#approvals",            # post to a channel
         "email:reviews@acme.com",      # email a person
