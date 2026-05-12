@@ -127,11 +127,37 @@ A reviewer can now reply to the Slack DM with "approve, looks legit" and the ver
 If the task's `redact_payload=True`, the verifier is **skipped entirely**. The operator marked the payload sensitive; we don't ship it to a third-party LLM regardless of verifier config.
 
 ```python
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+from awaithumans.verifiers.claude import claude_verifier
+
+
+class KYCPayload(BaseModel):
+    ssn: str
+    legal_name: str
+    country: str
+
+
+class KYCDecision(BaseModel):
+    approved: bool
+    notes: str | None = None
+
+
 decision = await_human_sync(
-    # ...
-    payload=KYCPayload(ssn="123-45-6789", ...),
+    task="Approve KYC for new account",
+    payload_schema=KYCPayload,
+    payload=KYCPayload(
+        ssn="123-45-6789",
+        legal_name="Priya Iyer",
+        country="IN",
+    ),
+    response_schema=KYCDecision,
+    timeout_seconds=3600,
     redact_payload=True,    # never sent to the verifier
-    verifier=claude_verifier(...),   # silently ignored
+    verifier=claude_verifier(
+        instructions="Reject if notes contradict the decision.",
+        max_attempts=3,
+    ),    # silently ignored because redact_payload=True
 )
 ```
 

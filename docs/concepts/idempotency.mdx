@@ -49,10 +49,28 @@ The Temporal and LangGraph adapters use prefixed defaults:
 ## When to pass an explicit key
 
 ```python
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundRequest(BaseModel):
+    order_id: str
+    amount_usd: int
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+
+
+order_id = "A-4721"
+
 # RECOMMENDED: bake your application's natural ID into the key
 decision = await_human_sync(
     task=f"Approve refund for order {order_id}?",
-    # ...
+    payload_schema=RefundRequest,
+    payload=RefundRequest(order_id=order_id, amount_usd=250),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
     idempotency_key=f"refund:{order_id}",
 )
 ```
@@ -73,7 +91,10 @@ When you genuinely want to start a *fresh* review for the same logical event —
 attempt = 1
 decision = await_human_sync(
     task=f"Approve refund for {order_id}?",
-    # ...
+    payload_schema=RefundRequest,
+    payload=RefundRequest(order_id=order_id, amount_usd=250),
+    response_schema=RefundDecision,
+    timeout_seconds=900,
     idempotency_key=f"refund:{order_id}:retry-{attempt}",
 )
 ```
@@ -99,13 +120,53 @@ If the verifier exhausts attempts → `VERIFICATION_EXHAUSTED` (terminal). Subse
 ## Example: a refund pipeline
 
 ```python
-async def process_refund(order):
+from dataclasses import dataclass
+
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundApprovalPayload(BaseModel):
+    order_id: str
+    customer_id: str
+    amount_usd: int
+
+
+class RefundApprovalDecision(BaseModel):
+    approved: bool
+    notes: str | None = None
+
+
+class RefundConfirmationPayload(BaseModel):
+    refund_id: str
+    order_id: str
+
+
+class RefundConfirmation(BaseModel):
+    correct: bool
+
+
+@dataclass
+class Order:
+    id: str
+    amount: int
+    customer_id: str
+
+
+async def process_refund(order: Order):
     # First HITL: approval. If we ever retry this whole function,
     # the same order_id maps to the same task — including the stored
     # decision if the human completed it during a previous outage.
     decision = await_human_sync(
         task=f"Approve ${order.amount} refund for {order.customer_id}?",
-        # ...
+        payload_schema=RefundApprovalPayload,
+        payload=RefundApprovalPayload(
+            order_id=order.id,
+            customer_id=order.customer_id,
+            amount_usd=order.amount,
+        ),
+        response_schema=RefundApprovalDecision,
+        timeout_seconds=900,
         idempotency_key=f"refund-approval:{order.id}",
     )
     if not decision.approved:
@@ -117,7 +178,13 @@ async def process_refund(order):
     # Second HITL: post-refund review. Different key, different task.
     confirmation = await_human_sync(
         task=f"Confirm refund {refund_id} processed correctly?",
-        # ...
+        payload_schema=RefundConfirmationPayload,
+        payload=RefundConfirmationPayload(
+            refund_id=refund_id,
+            order_id=order.id,
+        ),
+        response_schema=RefundConfirmation,
+        timeout_seconds=900,
         idempotency_key=f"refund-confirmation:{order.id}",
     )
 

@@ -59,16 +59,22 @@ requests.post(
 )
 
 # 2. Kick off await_human (in a thread so we can drive the response)
+class WirePayload(BaseModel):
+    vendor: str
+    amount_usd: int
+
+
 class Decision(BaseModel):
     approved: bool
+
 
 import threading
 result_box = {}
 def run_agent():
     result_box["v"] = await_human_sync(
         task="Approve wire?",
-        payload_schema=...,
-        payload=...,
+        payload_schema=WirePayload,
+        payload=WirePayload(vendor="Atlas Logistics", amount_usd=48200),
         response_schema=Decision,
         timeout_seconds=120,
         notify=["email+smoke:reviewer@example.test"],
@@ -148,12 +154,29 @@ For tests that should not call a real LLM, set the verifier's `model` to a deplo
 If your test suite creates tasks in parallel, pin every test's `idempotency_key` to its test name so a flaky run doesn't accidentally pick up a sibling test's task:
 
 ```python
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundRequest(BaseModel):
+    order_id: str
+    amount_usd: int
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+
+
 def test_refund_approval():
     decision = await_human_sync(
-        task="...",
+        task="Approve refund for test order",
+        payload_schema=RefundRequest,
+        payload=RefundRequest(order_id="test-A-4721", amount_usd=250),
+        response_schema=RefundDecision,
+        timeout_seconds=60,
         idempotency_key="test:refund-approval",   # ← stable per-test
-        # ...
     )
+    assert decision.approved is True
 ```
 
 Re-running the same test re-uses the same task (Stripe-style idempotency). To force a fresh task between runs, suffix with a UUID:

@@ -43,15 +43,47 @@ Restart `awaithumans dev`.
 
 ### 3. Send
 
+Save as `email_test.py` and run with `python email_test.py`:
+
 ```python
-await_human_sync(
-    task="Approve $250 refund?",
-    # ...
-    notify=["email:reviewer@acme.com"],
-)
+from pydantic import BaseModel
+from awaithumans import await_human_sync
+
+
+class RefundRequest(BaseModel):
+    order_id: str
+    customer_email: str
+    amount_usd: int
+    reason: str
+
+
+class RefundDecision(BaseModel):
+    approved: bool
+    notes: str | None = None
+
+
+def main() -> None:
+    decision = await_human_sync(
+        task="Approve $250 refund?",
+        payload_schema=RefundRequest,
+        payload=RefundRequest(
+            order_id="A-4721",
+            customer_email="alex@example.com",
+            amount_usd=250,
+            reason="Duplicate charge",
+        ),
+        response_schema=RefundDecision,
+        timeout_seconds=900,
+        notify=["email:reviewer@acme.com"],
+    )
+    print(f"approved={decision.approved} · notes={decision.notes}")
+
+
+if __name__ == "__main__":
+    main()
 ```
 
-The recipient gets an email; clicking through completes the task.
+The recipient gets an email; clicking through completes the task and the script prints the typed `RefundDecision`.
 
 ## SMTP — env-var path
 
