@@ -31,7 +31,10 @@ from awaithumans.server.channels.routing import ChannelRoute, routes_for_channel
 from awaithumans.server.core.config import settings
 from awaithumans.server.db.connection import get_async_session_factory
 from awaithumans.server.db.models import EmailSenderIdentity
-from awaithumans.server.services.email_identity_service import get_identity
+from awaithumans.server.services.email_identity_service import (
+    get_identity,
+    list_identities,
+)
 
 logger = logging.getLogger("awaithumans.server.channels.email.notifier")
 
@@ -66,9 +69,7 @@ async def notify_task(
             logger.warning("notify_task (email): task %s missing: %s", task_id, exc)
             return
 
-        handoff_exp_unix = (
-            int(task.timeout_at.timestamp()) if task.timeout_at else None
-        )
+        handoff_exp_unix = int(task.timeout_at.timestamp()) if task.timeout_at else None
 
         for route in routes:
             try:
@@ -152,18 +153,57 @@ async def _deliver_one(
     )
 
 
-async def _resolve_identity(
-    session: Any, identity_id: str | None
-) -> EmailSenderIdentity | None:
-    if identity_id is None:
+async def _resolve_identity(session: Any, identity_id: str | None) -> EmailSenderIdentity | None:
+    """Resolve which sender identity a route should use.
+
+    Precedence:
+      1. Explicit `email+<id>:...` → that identity (None + log if missing).
+      2. Bare `email:...` AND env transport (`AWAITHUMANS_EMAIL_TRANSPORT`)
+         is set → None (caller uses env-derived transport, unchanged).
+      3. Bare `email:...` AND env transport is unset AND exactly one
+         identity is configured in the DB → use that one.
+      4. Bare `email:...` AND env transport is unset AND multiple
+         identities exist → None + log a clear "be explicit" warning.
+
+    Path 3 is the UX fix for dashboard-configured users: the docs'
+    quickstart `notify=["email:reviewer@acme.com"]` example would
+    otherwise silently skip when the operator set up email through
+    the dashboard instead of env vars. Solo identity = unambiguous
+    default; >1 identity = we don't pick arbitrarily.
+    """
+    if identity_id is not None:
+        row = await get_identity(session, identity_id)
+        if row is None:
+            logger.warning(
+                "Email identity '%s' not found; falling back to env default.",
+                identity_id,
+            )
+        return row
+
+    # Bare `email:` route. If env vars provide a default transport,
+    # honor that (existing deployments don't change behavior).
+    if settings.EMAIL_TRANSPORT:
         return None
-    row = await get_identity(session, identity_id)
-    if row is None:
+
+    rows = await list_identities(session)
+    if len(rows) == 1:
+        # list_identities defers transport_config (PR #100) so we
+        # re-fetch via get_identity to load the encrypted column.
+        full = await get_identity(session, rows[0].id)
+        if full is not None:
+            logger.info(
+                "Bare 'email:' route resolved to single configured identity '%s'.",
+                full.id,
+            )
+        return full
+    if len(rows) > 1:
         logger.warning(
-            "Email identity '%s' not found; falling back to env default.",
-            identity_id,
+            "Bare 'email:' route but %d identities configured and no "
+            "AWAITHUMANS_EMAIL_TRANSPORT set — route via 'email+<id>:...' "
+            "or set env vars. Skipping send.",
+            len(rows),
         )
-    return row
+    return None
 
 
 async def _resolve_transport_for(

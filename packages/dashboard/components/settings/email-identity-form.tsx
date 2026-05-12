@@ -20,7 +20,7 @@ const inputClass =
 
 const TRANSPORT_CONFIG_HINT: Record<EmailTransport, string> = {
 	resend: '{"api_key": "re_…"}',
-	smtp: '{"host": "smtp.…", "port": 587, "user": "…", "password": "…"}',
+	smtp: '587/STARTTLS: {"host":"smtp.…","port":587,"username":"…","password":"…"} · 465/implicit TLS: add "use_tls": true',
 	logging: "{} for logging / noop",
 	noop: "{} for logging / noop",
 };

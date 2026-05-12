@@ -15,7 +15,6 @@ from awaithumans.server.channels.email.transport.logging import LoggingTransport
 from awaithumans.server.channels.email.transport.noop import NoopTransport
 from awaithumans.server.channels.email.transport.resend import ResendTransport
 
-
 # ─── EmailMessage header-injection defense ──────────────────────────────
 
 
@@ -91,10 +90,71 @@ def test_factory_resend_requires_api_key() -> None:
 def test_factory_smtp_requires_host() -> None:
     with pytest.raises(EmailTransportError, match="host"):
         resolve_transport("smtp", {})
-    t = resolve_transport(
-        "smtp", {"host": "smtp.example.com", "port": 587}
-    )
+    t = resolve_transport("smtp", {"host": "smtp.example.com", "port": 587})
     assert t.name == "smtp"
+
+
+def test_factory_smtp_accepts_user_alias_for_username() -> None:
+    """The dashboard form hint advertises `user`, Python stdlib smtplib
+    uses `user` too — the factory must accept either spelling. Before
+    this fix, the `user` key was silently dropped, leaving operators
+    with unauthenticated SMTP and no signal."""
+    t = resolve_transport(
+        "smtp",
+        {
+            "host": "smtp.example.com",
+            "port": 587,
+            "user": "alice@example.com",
+            "password": "secret",
+        },
+    )
+    assert t._username == "alice@example.com"  # type: ignore[attr-defined]
+    assert t._password == "secret"  # type: ignore[attr-defined]
+
+
+def test_factory_smtp_username_wins_over_user_when_both_present() -> None:
+    """Explicit `username` takes precedence over the `user` alias —
+    avoids ambiguity if a config carries both keys."""
+    t = resolve_transport(
+        "smtp",
+        {
+            "host": "smtp.example.com",
+            "port": 587,
+            "username": "canonical@x.com",
+            "user": "legacy@x.com",
+        },
+    )
+    assert t._username == "canonical@x.com"  # type: ignore[attr-defined]
+
+
+def test_factory_smtp_port_465_defaults_use_tls_true() -> None:
+    """Port 465 is implicit-TLS by convention. The factory must default
+    use_tls=True there — STARTTLS on 465 fails the handshake, which is
+    the exact trap most operators (Hostinger, Zoho, fastmail, etc.) hit
+    on the first send."""
+    t = resolve_transport("smtp", {"host": "smtp.example.com", "port": 465})
+    assert t._use_tls is True  # type: ignore[attr-defined]
+    # SMTPTransport's __init__ resolves the use_tls + start_tls
+    # conflict by clearing start_tls when use_tls is True.
+    assert t._start_tls is False  # type: ignore[attr-defined]
+
+
+def test_factory_smtp_port_587_defaults_use_tls_false() -> None:
+    """Port 587 is STARTTLS by convention; use_tls stays False so the
+    handshake upgrades after EHLO. No regression for existing setups."""
+    t = resolve_transport("smtp", {"host": "smtp.example.com", "port": 587})
+    assert t._use_tls is False  # type: ignore[attr-defined]
+    assert t._start_tls is True  # type: ignore[attr-defined]
+
+
+def test_factory_smtp_explicit_use_tls_overrides_port_default() -> None:
+    """Explicit use_tls=False on port 465 is respected — operator knows
+    something we don't (e.g. a non-standard relay)."""
+    t = resolve_transport(
+        "smtp",
+        {"host": "smtp.example.com", "port": 465, "use_tls": False},
+    )
+    assert t._use_tls is False  # type: ignore[attr-defined]
 
 
 # ─── Noop + Logging (trivial, smoke tests) ──────────────────────────────
@@ -103,9 +163,7 @@ def test_factory_smtp_requires_host() -> None:
 @pytest.mark.asyncio
 async def test_noop_send_returns_id() -> None:
     t = NoopTransport()
-    msg = EmailMessage(
-        to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com"
-    )
+    msg = EmailMessage(to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com")
     result = await t.send(msg)
     assert result.transport == "noop"
     assert result.message_id and result.message_id.startswith("noop-")
@@ -114,9 +172,7 @@ async def test_noop_send_returns_id() -> None:
 @pytest.mark.asyncio
 async def test_logging_send_returns_id() -> None:
     t = LoggingTransport()
-    msg = EmailMessage(
-        to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com"
-    )
+    msg = EmailMessage(to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com")
     result = await t.send(msg)
     assert result.transport == "logging"
 
@@ -127,9 +183,7 @@ async def test_logging_send_returns_id() -> None:
 @pytest.mark.asyncio
 async def test_resend_send_success() -> None:
     t = ResendTransport(api_key="re_test")
-    msg = EmailMessage(
-        to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com"
-    )
+    msg = EmailMessage(to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com")
 
     class FakeResp:
         status_code = 200
@@ -156,9 +210,7 @@ async def test_resend_send_success() -> None:
 @pytest.mark.asyncio
 async def test_resend_send_failure_raises() -> None:
     t = ResendTransport(api_key="re_test")
-    msg = EmailMessage(
-        to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com"
-    )
+    msg = EmailMessage(to="a@x.com", subject="s", html="<p/>", text="t", from_email="f@x.com")
 
     class FakeResp:
         status_code = 401
