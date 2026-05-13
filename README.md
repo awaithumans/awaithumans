@@ -28,6 +28,8 @@ The agent waits on `decision` like it waits on any other Promise or Future.
 A human gets notified (Slack, email, dashboard), reviews the request, and
 submits a typed response. The agent resumes with the typed answer.
 
+![awaithumans demo — an agent creates a task, a human reviews it, the agent resumes with the typed response](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-demo.gif)
+
 ![The awaithumans dashboard — pending tasks queued for human review](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-dashboard.png)
 
 ---
