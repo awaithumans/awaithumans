@@ -5,47 +5,52 @@ description: "Why a human-in-the-loop layer is permanent infrastructure, not a t
 
 A common skeptical question: *"Won't HITL go away once the models are good enough?"*
 
-The answer is no, and it's not a defensive answer. There are three walls between an AI agent and the world. Bigger models knock on the first wall harder; they don't move the second or third.
+The answer is no, and it's not a defensive answer. There are three walls between an AI agent and the world. The first one gets **higher** as agents get more capable, not lower. The other two are physics problems that no amount of intelligence closes.
 
-## Wall 1 — Judgment
+## Wall 1 — Authorization
 
-The agent has a confidence score. The cost of being wrong isn't symmetric. Someone has to make the call.
+Agents can reason. They cannot be trusted to decide alone — consequence, liability, and accountability require a human signature. This wall gets **higher** as agents get more capable, not lower: a more powerful agent doing more autonomous work means a bigger blast radius when it's wrong, which means more reason to gate the consequential calls.
 
-Examples:
-- KYC: the model says 73% likely match; the regulator says you can't reject without a manual review
-- Refunds: the model says fraud; the human knows the customer just had a bad week
-- Content moderation: the model says borderline hate speech; the policy team owns the line
+**Examples:**
 
-This is the wall bigger models DO knock on — a 95%-confident model needs less human input than a 73%-confident one. But "less" never gets to "zero" for high-stakes decisions, because the cost of the long-tail wrong answer is higher than the cost of a human review.
+- A CFO agent pauses before wiring $2M to a new vendor.
+- A medical agent routes a dosage decision to the on-call physician.
+- KYC: the model says 73% likely match; the regulator says you can't reject without a manual review.
+- Refunds over $1k: the model says fraud; the human knows the customer just had a bad week.
+- Content moderation escalations: the model says borderline hate speech; the policy team owns the line.
 
-Even with frontier models, the regulatory and reputational tail-risk of being wrong locks in some human review forever. KYC reviewers, fraud analysts, content policy teams — these jobs grow alongside AI, not despite it.
+The cost of being wrong isn't symmetric. A 95%-confident model needs less human input than a 73%-confident one, but "less" never gets to "zero" for high-stakes decisions, because the cost of the long-tail wrong answer is higher than the cost of a human review. KYC reviewers, fraud analysts, content policy teams, compliance officers — these jobs grow alongside AI, not despite it.
 
-## Wall 2 — System uncertainty
+## Wall 2 — Reality
 
-The agent doesn't know what happened.
+The world exists outside the model's context window. No amount of intelligence closes the gap between what the model knows and what's actually happening on the ground. This isn't a training problem — it's a physics problem.
 
-The Stripe webhook never fired. The wire to the bank didn't come back. The third-party API returned 200 but the downstream system is in an inconsistent state. The model can guess, but the only way to actually know is for a human to call the bank.
+**Examples:**
 
-This is the most under-appreciated wall. Bigger models do nothing here — by definition, no amount of reasoning can recover information that wasn't captured. The system needs a human to look at the actual external state and report back.
-
-Examples:
-- Transaction reconciliation: payment provider didn't ack; was the transfer applied?
-- Distributed-system inconsistency: order shows as shipped in one DB and not-shipped in another
+- A logistics agent waits for confirmation the package was actually picked up.
+- A real-estate agent needs a human to walk the property before listing.
+- Transaction reconciliation: the payment provider didn't ack — was the transfer applied?
+- Distributed-system inconsistency: order shows as shipped in one DB and not-shipped in another.
 - Vendor outage during a long-running workflow: did the workflow's last side effect take?
 
-Human-in-the-loop here isn't about judgment, it's about being the eyes and ears of a system that can't self-introspect. This wall doesn't move.
+This is the most under-appreciated wall. Bigger models do nothing here — by definition, no amount of reasoning can recover information that wasn't captured. The system needs a human to look at the actual external state and report back. Human-in-the-loop here isn't about judgment, it's about being the eyes and ears of a system that can't self-introspect. This wall doesn't move.
 
-## Wall 3 — Embodiment
+## Wall 3 — Presence
 
-The task needs a body.
+Software 2.0 will be headless — agents navigating the internet autonomously. But the physical world wasn't built for agents and won't be rebuilt overnight. Until it catches up, agents need humans to be their hands.
 
-Examples:
-- KYC ID-photo verification (a human compares face to document)
-- Pickup-and-delivery (someone has to physically grab the thing)
-- Phone calls to vendors who don't have APIs
-- Visits to physical locations (inspections, audits)
+**Examples:**
 
-This is the wall where the workforce-marketplace future lives — `assign_to: { capability: "pickup-and-deliver", region: "SF" }`. For v0.1 the embodiment wall is just "humans on your team, routed via `assign_to`." The post-Phase-3 marketplace expansion targets the broader case where the embodied work is sourced from outside your team.
+- An agent needs a wet signature on a legal document before filing.
+- An agent managing a retail store needs someone to restock a shelf.
+- KYC ID-photo verification: a human compares face to document.
+- Pickup-and-delivery: someone has to physically grab the thing.
+- Phone calls to vendors who don't have APIs.
+- Visits to physical locations: inspections, audits, walkthroughs.
+
+This is the wall where the workforce-marketplace future lives — `assign_to: { capability: "pickup-and-deliver", region: "SF" }`. For v0.1 the presence wall is just "humans on your team, routed via `assign_to`." The post-Phase-3 marketplace expansion targets the broader case where the embodied work is sourced from outside your team.
+
+The wall doesn't go away; it shrinks unevenly. Some industries (digital-first SaaS) feel it less. Others (logistics, real estate, regulated finance, healthcare) feel it every day. Wherever your stack lives on that spectrum, the wall is where awaithumans plugs in.
 
 ## Why this matters for your stack
 
