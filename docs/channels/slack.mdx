@@ -5,6 +5,8 @@ description: "Deliver tasks via Slack. Block Kit modal review, NL thread replies
 
 The Slack channel posts tasks to a channel or DM, opens a Block Kit modal for the form, and accepts both structured submissions and natural-language thread replies (parsed by the [verifier](/adapters/verifier)). Reviewers without an email/password get a signed handoff URL that drops them into the dashboard authenticated.
 
+![Slack broadcast — a task posted to a channel with a Claim button](/images/slack-broadcast.png)
+
 ## Two install modes
 
 **Static-token (single workspace)** — fastest setup. One bot token in env, all tasks posted to that workspace. Use this for self-hosted deployments where one team owns the awaithumans server.
@@ -169,6 +171,8 @@ TTL is bound to `task.timeout_at` — a 7-day approval has a working link on day
 The post-claim "View in dashboard" button on broadcast messages is also signed, so claimers without password credentials get the same handoff.
 
 ## Modal form
+
+![Slack review modal — Block Kit form auto-generated from the response schema](/images/slack-modal.png)
 
 The modal is auto-generated from the response schema's `form_definition`. Fields render as:
 
