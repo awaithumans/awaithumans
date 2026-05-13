@@ -22,5 +22,8 @@
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "protobufjs": "^7.5.8"
   }
 }
