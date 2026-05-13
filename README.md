@@ -28,6 +28,8 @@ The agent waits on `decision` like it waits on any other Promise or Future.
 A human gets notified (Slack, email, dashboard), reviews the request, and
 submits a typed response. The agent resumes with the typed answer.
 
+![The awaithumans dashboard — pending tasks queued for human review](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-dashboard.png)
+
 ---
 
 ## The problem
@@ -107,14 +109,16 @@ Add `notify=["slack:#ops"]` and the task lands in the channel with a
 response form opens as a modal. Completing it unblocks the agent
 just like the dashboard path.
 
+![Slack broadcast — a task posted to a channel with a Claim button](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/slack-broadcast.png)
+
 ```python
 decision = await await_human(
     task="Approve refund",
     payload_schema=RefundRequest,
-    payload=...,
+    payload=RefundRequest(order_id="A-4721", amount_usd=250),
     response_schema=Decision,
-    notify=["slack:#ops"],
     timeout_seconds=900,
+    notify=["slack:#ops"],
 )
 ```
 
@@ -248,7 +252,7 @@ the entire extension surface.
 ## Documentation
 
 - **Quickstart:** [`examples/quickstart/`](./examples/quickstart/)
-- **Full docs:** [awaithumans.dev](https://awaithumans.dev)
+- **Full docs:** [docs.awaithumans.dev](https://docs.awaithumans.dev)
 - **Contributing:** [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - **Security policy:** [`SECURITY.md`](./SECURITY.md)
 
@@ -278,4 +282,4 @@ The full primitive, all three channels (dashboard / Slack / email), both durable
 
 This is a young project — APIs are stable for v0.x, but expect rough edges in the long tail. File issues, open PRs, drop questions in [Discussions](https://github.com/awaithumans/awaithumans/discussions) or [Discord](https://discord.gg/Kewdh7vjdc). Every reproducible bug report shipped with a fix in v0.2.
 
-For the post-launch roadmap — local task book for runtimes without an orchestrator, custom router strategies, post-launch hardening — see [Roadmap & help wanted](https://awaithumans.dev/docs/community/roadmap).
+For the post-launch roadmap — local task book for runtimes without an orchestrator, custom router strategies, post-launch hardening — see [Roadmap & help wanted](https://docs.awaithumans.dev/community/roadmap).
