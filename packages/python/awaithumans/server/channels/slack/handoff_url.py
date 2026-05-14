@@ -16,11 +16,12 @@ flow instead.
 from __future__ import annotations
 
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime
 
 from awaithumans.server.channels.slack.handoff_url_types import HandoffParams
 from awaithumans.server.core.config import settings
 from awaithumans.server.core.slack_handoff import sign_handoff
+from awaithumans.utils.time import to_utc_unix
 
 
 def _unsigned_url(task_id: str) -> str:
@@ -52,6 +53,4 @@ def task_handoff_expiry(timeout_at: datetime) -> int:
     We bind the URL's expiry to the task's own deadline so a 7-day
     approval still has a working link on day 6. Using `task.timeout_at`
     directly keeps the contract simple: link dies with the task."""
-    if timeout_at.tzinfo is None:
-        timeout_at = timeout_at.replace(tzinfo=timezone.utc)
-    return int(timeout_at.timestamp())
+    return to_utc_unix(timeout_at)
