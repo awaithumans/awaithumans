@@ -5,6 +5,20 @@ description: "Every environment variable the awaithumans server reads."
 
 All configuration is via environment variables prefixed `AWAITHUMANS_`. The server reads these once at startup; restart the process to pick up changes.
 
+## Two namespaces under one prefix
+
+The `AWAITHUMANS_` prefix is shared by two unrelated consumers — pay attention when filling a `.env` file:
+
+| Variable | Read by | Used for |
+|---|---|---|
+| `AWAITHUMANS_URL` | **SDK only** | Tells `await_human()` where the server lives. |
+| `AWAITHUMANS_ADMIN_API_TOKEN` | **Both** | Server gates admin routes with it; SDK sends it as bearer. |
+| Every other `AWAITHUMANS_*` on this page | **Server only** | Not read by the SDK. |
+
+The server silently ignores any `AWAITHUMANS_*` key in `.env` that it doesn't recognize — so a shared `.env` containing `AWAITHUMANS_URL=…` for the agent and `AWAITHUMANS_PAYLOAD_KEY=…` for the server boots cleanly. If a key looks like a typo (no matching server field), the server emits a `WARNING` at startup listing every unrecognized `AWAITHUMANS_*` key — check that line if you suspect a misconfigured server var was silently dropped.
+
+Prior to v0.1.3 the server would crash on boot with a pydantic `extra_forbidden` error if any SDK-side key was present in `.env`. If you're hitting that, upgrade.
+
 ## Required
 
 | Variable | Description |

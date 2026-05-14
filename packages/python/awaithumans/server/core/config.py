@@ -8,9 +8,12 @@ All config is read from env vars with sensible defaults for development.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger("awaithumans.server.core.config")
 
 
 class Settings(BaseSettings):
@@ -149,6 +152,17 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
+        # Two namespaces share the `AWAITHUMANS_` prefix: server-side
+        # (this Settings class) and SDK-side (`AWAITHUMANS_URL`,
+        # `AWAITHUMANS_ADMIN_API_TOKEN` when used purely as a client
+        # bearer, etc.). Without `extra="ignore"`, pydantic-settings'
+        # dotenv source treats any unknown prefixed key as a
+        # validation error and crashes Settings() at boot — so a
+        # shared `.env` with an SDK-only key like `AWAITHUMANS_URL`
+        # would kill `awaithumans dev`. We ignore unknown keys here
+        # and emit a startup WARNING via `unknown_env_keys()` so the
+        # operator still gets a heads-up if a key is actually a typo.
+        "extra": "ignore",
     }
 
     @property
@@ -190,3 +204,42 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def unknown_env_keys(env_path: Path | None = None) -> list[str]:
+    """Return AWAITHUMANS_* keys present in `.env` that this Settings ignores.
+
+    Pydantic-settings (with our `extra="ignore"`) silently drops keys it
+    doesn't recognize. That's the right default — keeps a shared `.env`
+    with SDK vars like `AWAITHUMANS_URL` from crashing the server — but
+    silent ignore can hide typos. This helper scans the `.env` file and
+    returns every `AWAITHUMANS_*` key that didn't map to a declared
+    server field, so the caller can WARN at boot.
+
+    Returns `[]` when the env file is absent or has no unknown keys.
+    """
+    if env_path is None:
+        # Mirror the Settings model_config value. Hardcoded to `.env`
+        # because pydantic types `env_file` broadly enough (Path |
+        # Sequence[Path | str]) that the .get() chain isn't worth
+        # narrowing — we only ever set a single relative-cwd path.
+        env_path = Path(".env")
+
+    if not env_path.is_file():
+        return []
+
+    known = {f"AWAITHUMANS_{name.upper()}" for name in Settings.model_fields}
+    unknown: list[str] = []
+    try:
+        contents = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    for raw_line in contents.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key = line.split("=", 1)[0].strip().upper()
+        if key.startswith("AWAITHUMANS_") and key not in known:
+            unknown.append(key)
+    return unknown
