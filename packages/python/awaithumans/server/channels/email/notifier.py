@@ -35,6 +35,7 @@ from awaithumans.server.services.email_identity_service import (
     get_identity,
     list_identities,
 )
+from awaithumans.utils.time import to_utc_unix
 
 logger = logging.getLogger("awaithumans.server.channels.email.notifier")
 
@@ -69,7 +70,13 @@ async def notify_task(
             logger.warning("notify_task (email): task %s missing: %s", task_id, exc)
             return
 
-        handoff_exp_unix = int(task.timeout_at.timestamp()) if task.timeout_at else None
+        # `task.timeout_at` comes back from SQLite naive even though we
+        # wrote it tz-aware. `to_utc_unix` coerces; calling `.timestamp()`
+        # directly here would silently shift the URL's expiry by the
+        # local-UTC offset and kill links at birth for east-of-UTC users.
+        handoff_exp_unix = (
+            to_utc_unix(task.timeout_at) if task.timeout_at else None
+        )
 
         for route in routes:
             try:
