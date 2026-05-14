@@ -20,7 +20,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from awaithumans.server.core.auth import DashboardAuthMiddleware
-from awaithumans.server.core.config import settings
+from awaithumans.server.core.config import settings, unknown_env_keys
 from awaithumans.server.core.dashboard_static import DashboardStaticFiles
 from awaithumans.server.core.embed_auth import EmbedAuthMiddleware
 from awaithumans.server.core.exceptions import exception_handlers
@@ -169,6 +169,24 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     """
     # ── Logging ──────────────────────────────────────────────────────
     setup_logging(settings.LOG_LEVEL)
+
+    # ── .env hygiene ────────────────────────────────────────────────
+    # SDK-side vars (AWAITHUMANS_URL, etc.) live under the same prefix
+    # as server vars and used to crash the server on boot when present
+    # in a shared `.env`. We now silently ignore them — but a typo like
+    # `AWAITHUMANS_SLAK_BOT_TOKEN` would be ignored too, so we surface
+    # any unrecognized `AWAITHUMANS_*` keys as a WARNING. Cheap to scan,
+    # only runs once at app creation.
+    _unknown = unknown_env_keys()
+    if _unknown:
+        logger.warning(
+            "Found %d AWAITHUMANS_* key(s) in .env that the server does not "
+            "consume: %s. These are ignored. Likely cause: SDK-side vars in a "
+            "shared .env (see docs/self-hosting/configuration#two-namespaces). "
+            "If one is a typo of a real server var, fix it and restart.",
+            len(_unknown),
+            ", ".join(sorted(_unknown)),
+        )
 
     # ── Production safety checks ─────────────────────────────────────
     # HTTPS is required in production because the server handles Slack OAuth
