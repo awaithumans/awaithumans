@@ -3,18 +3,41 @@ title: "Python SDK"
 description: "Reference for the awaithumans Python package."
 ---
 
+## Install
+
+Pick one of two starting points based on what you're doing:
+
 ```bash
-pip install awaithumans                  # SDK only (httpx + pydantic)
-pip install "awaithumans[server]"        # SDK + server + CLI + dashboard
-pip install "awaithumans[temporal]"      # + Temporal adapter peer dep
-pip install "awaithumans[langgraph]"     # + LangGraph adapter peer dep
-pip install "awaithumans[verifier-claude]"   # + Anthropic SDK
-pip install "awaithumans[verifier-openai]"   # + OpenAI SDK
-pip install "awaithumans[verifier-gemini]"   # + Google SDK
-pip install "awaithumans[verifier-azure]"    # + Azure OpenAI
+pip install "awaithumans[server]"   # to RUN the server + dashboard locally
+pip install awaithumans              # to CALL a server (slim SDK, 2 deps)
 ```
 
-Python 3.10+. The base SDK (`pip install awaithumans`) has only two runtime deps: `httpx` and `pydantic`.
+Most people want the first. Use the bare SDK install only when your agent runs in a lambda, edge runtime, or container where you just need an HTTP client talking to a server hosted elsewhere — bare install is `httpx` + `pydantic` and nothing else.
+
+### Adapters and verifiers compose with either base
+
+Extras stack. Comma-separate them in one bracket to install in a single command:
+
+```bash
+pip install "awaithumans[server,temporal]"            # server + Temporal
+pip install "awaithumans[server,verifier-claude]"     # server + Claude verifier
+pip install "awaithumans[temporal,verifier-claude]"   # SDK + Temporal + Claude
+pip install "awaithumans[server,temporal,verifier-claude]"  # all three
+```
+
+### All extras
+
+| Extra              | Adds                                       |
+| ------------------ | ------------------------------------------ |
+| `server`           | FastAPI server, CLI, bundled dashboard     |
+| `temporal`         | Temporal workflow adapter                  |
+| `langgraph`        | LangGraph interrupt/resume adapter         |
+| `verifier-claude`  | Anthropic SDK (for Claude verification)    |
+| `verifier-openai`  | OpenAI SDK                                 |
+| `verifier-gemini`  | Google Generative AI SDK                   |
+| `verifier-azure`   | OpenAI SDK (used against Azure endpoints)  |
+
+Python 3.10+ required.
 
 ## await_human / await_human_sync
 

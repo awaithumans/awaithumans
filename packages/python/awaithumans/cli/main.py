@@ -9,8 +9,16 @@ try:
     import typer
 except ImportError:
     raise SystemExit(
-        "The awaithumans CLI requires the [server] extra.\n"
-        'Install with: pip install "awaithumans[server]"'
+        "awaithumans CLI: server extras not installed.\n"
+        "\n"
+        "You have the lightweight SDK (httpx + pydantic) installed — fine for\n"
+        "calling a remote awaithumans server, but the CLI (`awaithumans dev`,\n"
+        "`awaithumans add-user`, etc.) needs FastAPI, SQLModel, and other\n"
+        "server deps that ship in the [server] extra.\n"
+        "\n"
+        'Fix: pip install "awaithumans[server]"\n'
+        "\n"
+        "Docs: https://awaithumans.dev/docs/troubleshooting#cli-missing-server-extra"
     ) from None
 
 from awaithumans.cli.commands.add_user import add_user

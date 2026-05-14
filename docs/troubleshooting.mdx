@@ -230,6 +230,31 @@ Email action token was already used.
 
 **Fix:** This is by design — single-use prevents replay. Use the dashboard to update the response.
 
+## CLI errors
+
+### cli-missing-server-extra
+
+`awaithumans` (the CLI binary) exits immediately with a message like:
+
+```
+awaithumans CLI: server extras not installed.
+```
+
+**Why:** `pip install awaithumans` (no extras) installs only the lightweight SDK — `httpx` + `pydantic`. That's enough for a Python agent calling a remote awaithumans server, but the CLI commands (`awaithumans dev`, `awaithumans add-user`, etc.) need FastAPI, SQLModel, slack-sdk, etc., which ship behind the `[server]` extra.
+
+**Fix:** install the server extras and re-run the same command.
+
+```bash
+pip install "awaithumans[server]"
+awaithumans dev
+```
+
+If you also need adapters or verifiers, stack them in one install:
+
+```bash
+pip install "awaithumans[server,temporal,verifier-claude]"
+```
+
 ## Still stuck?
 
 - Check the [GitHub Discussions](https://github.com/awaithumans/awaithumans/discussions) — most issues have been seen before.
