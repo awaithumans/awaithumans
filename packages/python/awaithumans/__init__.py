@@ -21,7 +21,7 @@ Usage (sync):
 """
 from __future__ import annotations
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 from awaithumans.client import await_human, await_human_sync
 from awaithumans.embed import EmbedTokenResult, embed_token, embed_token_sync

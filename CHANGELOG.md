@@ -16,6 +16,58 @@ _Nothing yet — open the next change here._
 
 ---
 
+## [0.1.3] — 2026-05-14
+
+### Fixed
+
+- **Email-handoff URLs no longer expire instantly for East-of-UTC users.**
+  SQLite + SQLModel stores `task.timeout_at` tz-naive;
+  `int(task.timeout_at.timestamp())` was interpreting the naive value as
+  local time, shifting the URL's `e` parameter by the local-UTC offset.
+  For users east of UTC, a fresh 10-minute task was issued a link born
+  already expired by the offset (e.g. UTC+1 → 50 minutes past expiry at
+  creation time). Fix extracted to a shared
+  `awaithumans.utils.time.to_utc_unix` helper used by both the email
+  and Slack handoff paths. Regression tests run under
+  `TZ=Africa/Lagos`. ([#107](https://github.com/awaithumans/awaithumans/pull/107))
+
+- **Unknown `AWAITHUMANS_*` keys in `.env` are silently ignored**
+  (with a one-shot startup `WARNING` listing them) instead of crashing
+  `Settings()` on boot with a pydantic `extra_forbidden` error.
+  The `AWAITHUMANS_` prefix is shared by the SDK (`AWAITHUMANS_URL`,
+  etc.) and the server; pydantic-settings' dotenv source previously
+  enforced `extra="forbid"` by default, killing the server whenever a
+  shared `.env` carried any SDK-side key. Typos still surface via the
+  warning. ([#108](https://github.com/awaithumans/awaithumans/pull/108))
+
+- **CLI `awaithumans dev` error message rewritten** when the bare SDK
+  is installed without the `[server]` extras. Now follows the
+  what → why → fix → docs pattern with an actionable docs URL,
+  instead of a one-line `SystemExit`. ([#106](https://github.com/awaithumans/awaithumans/pull/106))
+
+### Docs
+
+- **`docs/sdk/python.mdx` install section restructured** to lead with
+  the two main install paths (run a server vs call a server) and
+  explain how to stack extras like `[server,temporal,verifier-claude]`.
+  ([#106](https://github.com/awaithumans/awaithumans/pull/106))
+- **`docs/troubleshooting.mdx`** gains a new
+  `### cli-missing-server-extra` section so the URL in the new CLI
+  error message resolves to a real anchor.
+  ([#106](https://github.com/awaithumans/awaithumans/pull/106))
+- **`docs/self-hosting/configuration.mdx`** opens with a new
+  "Two namespaces under one prefix" section documenting the
+  SDK/server split and the silent-ignore + warning policy.
+  ([#108](https://github.com/awaithumans/awaithumans/pull/108))
+
+### Versions
+
+- Python `awaithumans`: `0.1.2` → `0.1.3`
+- TypeScript `awaithumans`: `0.1.2` → `0.1.3` (mono-version sync; no
+  TypeScript SDK source changes this release)
+
+---
+
 ## [0.1.2] — 2026-05-12
 
 ### Fixed
