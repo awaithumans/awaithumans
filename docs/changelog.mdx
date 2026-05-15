@@ -33,6 +33,27 @@ After v1.0.0 ships, the SDK signature is stable for the v1.x line — a `^1.0.0`
 
 ## Releases
 
+### Week of May 11, 2026 — v0.1.1, v0.1.2, v0.1.3
+
+Three patch releases shipped this week. All are safe to upgrade — no SDK signature changes.
+
+**Updates**
+
+- **Three Walls renamed to Authorization / Reality / Presence.** The framing now matches the landing page and better captures why human review gets *more* important as agents get more capable, not less. See [the new write-up](/concepts/three-walls).
+- **Quickstart now leads with `pip install "awaithumans[server]"`.** The bare `awaithumans` package is the lightweight SDK; the `[server]` extra is what you need to run `awaithumans dev`. The CLI now prints a one-line hint instead of a stack trace if the extra is missing. See [Quickstart](/quickstart).
+- **Visual demos in the docs.** A short hero GIF and static dashboard screenshots are now embedded in the [README](https://github.com/awaithumans/awaithumans) and several docs pages so you can see the task lifecycle without running anything.
+
+**Fixes**
+
+- **Email handoff links no longer expire instantly for users outside UTC.** The "Open task" button in notification emails was returning `400 Sign-in link is invalid or expired` immediately after task creation for anyone in a non-UTC timezone. Fixed for both [email](/channels/email) and Slack channels.
+- **Project `.env` files with SDK keys no longer crash `awaithumans dev`.** Adding an SDK-side variable like `AWAITHUMANS_URL` to a `.env` file used to crash the server on boot with a validation error. Unknown `AWAITHUMANS_*` keys are now ignored (with a warning) instead of fatal.
+- **`notify=["email:someone@acme.com"]` now works with a single configured identity.** A bare email notify with one identity in the database silently dropped the message. It now resolves to the solo identity and sends. SMTP user aliases and port 465 implicit TLS are also handled correctly.
+- **Email identity listing survives stale encryption keys.** One row encrypted under a rotated `PAYLOAD_KEY` no longer takes down `GET /api/channels/email/identities` with a 500 — the dashboard's email-setup screen stays usable.
+- **Embed view bug fixes.** The [embedded dashboard](/embedding) now shows a proper "Submitted" view after completion, won't double-submit on rapid clicks, and drops the stale "You can close this window" line.
+- **Security patches.** Bumped Next.js (13 GHSA advisories) and `protobufjs` to clear Dependabot alerts. No action needed if you're on the latest Docker image or SDK.
+
+[v0.1.3 release notes →](https://github.com/awaithumans/awaithumans/releases/tag/v0.1.3)
+
 ### v0.1.0 — Public preview (May 2026)
 
 The first tagged release. Everything in the docs ships with this version: the core primitive, three channels (dashboard, Slack, email), two durable adapters (Temporal, LangGraph), AI verification across four providers, the dashboard, CLI, and Docker image.
