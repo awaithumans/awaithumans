@@ -20,7 +20,7 @@ packages = ["awaithumans"]
 
 [project]
 name = "awaithumans"
-version = "0.1.2"
+version = "0.1.3"
 description = "The human layer for AI agents. Your agents already await promises. Now they can await humans."
 readme = "README.md"
 license = "Apache-2.0"
