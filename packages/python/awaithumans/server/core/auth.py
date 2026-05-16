@@ -61,6 +61,7 @@ logger = logging.getLogger("awaithumans.server.core.auth")
 # - /api/auth/*        — login, logout, introspection
 # - /api/setup/*       — first-run bootstrap (gates itself on a token)
 # - /api/health        — readiness probes
+# - /api/version       — server version (ops + SDK compatibility probe)
 # - /api/docs, /api/redoc, /api/openapi.json — FastAPI's auto-generated
 #   API explorer + schema. Documenting the public API surface is the
 #   whole point; the endpoints themselves are still bearer-gated.
@@ -69,6 +70,7 @@ _PUBLIC_PREFIXES = (
     "/api/auth/",
     "/api/setup/",
     "/api/health",
+    "/api/version",  # ops + SDK compatibility probe; no secrets exposed
     "/api/docs",
     "/api/redoc",
     "/api/openapi.json",

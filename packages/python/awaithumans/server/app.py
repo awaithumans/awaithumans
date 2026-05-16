@@ -41,6 +41,7 @@ from awaithumans.server.routes import (
     status,
     tasks,
     users,
+    version,
     webhook_deliveries,
 )
 from awaithumans.server.routes import embed as embed_routes
@@ -307,6 +308,7 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     app.include_router(stats.router, prefix="/api")
     app.include_router(tasks.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
+    app.include_router(version.router, prefix="/api")
     app.include_router(slack.router, prefix="/api")
     app.include_router(email.router, prefix="/api")
     app.include_router(users.router, prefix="/api")
