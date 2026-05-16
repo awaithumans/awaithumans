@@ -19,6 +19,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from awaithumans import __version__
 from awaithumans.server.core.auth import DashboardAuthMiddleware
 from awaithumans.server.core.channel_config_validator import (
     validate_channel_config,
@@ -253,11 +254,25 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
     _validate_cors_origins(settings.cors_origin_list)
 
     # ── App ──────────────────────────────────────────────────────────
+    # Docs paths live under /api/* to match the rest of the URL surface
+    # (every other backend endpoint is /api/tasks, /api/auth, etc.).
+    # The docs page at docs/api/overview.mdx already promises /api/docs
+    # and /api/openapi.json — the FastAPI defaults of /docs were a
+    # framework leak we never overrode.
+    #
+    # Auth bypass for these paths is in `core/auth.py:_PUBLIC_PREFIXES`
+    # so the Swagger UI loads without a session — same posture as the
+    # previous /docs path. The API endpoints it documents are still
+    # bearer-gated; the schema itself is intentionally public for
+    # client-code-gen.
     app = FastAPI(
         title="awaithumans",
         description="The human layer for AI agents.",
-        version="0.1.1",
+        version=__version__,
         lifespan=lifespan,
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
     )
 
     # ── Exception handlers ───────────────────────────────────────────
