@@ -61,11 +61,17 @@ logger = logging.getLogger("awaithumans.server.core.auth")
 # - /api/auth/*        — login, logout, introspection
 # - /api/setup/*       — first-run bootstrap (gates itself on a token)
 # - /api/health        — readiness probes
+# - /api/docs, /api/redoc, /api/openapi.json — FastAPI's auto-generated
+#   API explorer + schema. Documenting the public API surface is the
+#   whole point; the endpoints themselves are still bearer-gated.
 # - slack/email action — signed by their own HMAC, no session needed
 _PUBLIC_PREFIXES = (
     "/api/auth/",
     "/api/setup/",
     "/api/health",
+    "/api/docs",
+    "/api/redoc",
+    "/api/openapi.json",
     "/api/channels/slack/oauth/",  # Slack-signed state gates these
     "/api/channels/slack/interactions",  # HMAC request signature gates this
     "/api/channels/slack/events",  # HMAC request signature gates this
