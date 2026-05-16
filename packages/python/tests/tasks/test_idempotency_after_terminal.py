@@ -48,7 +48,7 @@ async def session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def _make(session: AsyncSession, key: str) -> Task:
-    return await create_task(
+    task, _ = await create_task(
         session,
         task="Approve refund",
         payload={"amount": 100},
@@ -57,6 +57,7 @@ async def _make(session: AsyncSession, key: str) -> Task:
         timeout_seconds=900,
         idempotency_key=key,
     )
+    return task
 
 
 @pytest.mark.asyncio
@@ -147,3 +148,88 @@ async def test_distinct_keys_create_distinct_tasks(
     second = await _make(session, "shared-key:retry-1")
     assert second.id != first.id
     assert second.status == TaskStatus.CREATED
+
+
+# ─── was_newly_created signal ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_task_signals_new_creation_on_first_call(
+    session: AsyncSession,
+) -> None:
+    """First call with a fresh idempotency key returns was_newly_created=True
+    so the route knows to fire notify."""
+    _, was_newly_created = await create_task(
+        session,
+        task="Approve refund",
+        payload={"amount": 100},
+        payload_schema={},
+        response_schema={},
+        timeout_seconds=900,
+        idempotency_key="fresh-key-1",
+    )
+    assert was_newly_created is True
+
+
+@pytest.mark.asyncio
+async def test_create_task_signals_existing_on_duplicate_key(
+    session: AsyncSession,
+) -> None:
+    """Same key on a second call returns was_newly_created=False — this is
+    the gate the route uses to avoid re-sending notification emails /
+    Slack pings on every agent retry of the same logical task. Before
+    this signal existed, every `await_human()` retry re-emailed the
+    reviewer for an already-in-flight task. Bug reported by test user
+    who got a duplicate email on a retry attempt."""
+    _, first_was_new = await create_task(
+        session,
+        task="Approve refund",
+        payload={"amount": 100},
+        payload_schema={},
+        response_schema={},
+        timeout_seconds=900,
+        idempotency_key="duplicate-key-2",
+    )
+    _, second_was_new = await create_task(
+        session,
+        task="Approve refund",
+        payload={"amount": 100},
+        payload_schema={},
+        response_schema={},
+        timeout_seconds=900,
+        idempotency_key="duplicate-key-2",
+    )
+    assert first_was_new is True
+    assert second_was_new is False
+
+
+@pytest.mark.asyncio
+async def test_create_task_signals_existing_after_terminal(
+    session: AsyncSession,
+) -> None:
+    """A terminal task (timed_out/completed/cancelled) returned via
+    idempotency key still reports was_newly_created=False — the route
+    must not re-notify even when the agent is "resuming" against a
+    completed task."""
+    first, first_was_new = await create_task(
+        session,
+        task="Approve refund",
+        payload={"amount": 100},
+        payload_schema={},
+        response_schema={},
+        timeout_seconds=900,
+        idempotency_key="terminal-key-3",
+    )
+    await timeout_task(session, first.id)
+
+    _, second_was_new = await create_task(
+        session,
+        task="Approve refund",
+        payload={"amount": 100},
+        payload_schema={},
+        response_schema={},
+        timeout_seconds=900,
+        idempotency_key="terminal-key-3",
+    )
+    assert first_was_new is True
+    assert second_was_new is False

@@ -11,7 +11,7 @@ from awaithumans.server.services.user_service import create_user
 
 
 async def _create(session: AsyncSession, idempotency_key: str, **kwargs) -> object:
-    return await create_task(
+    task, _ = await create_task(
         session,
         task="review refund",
         payload={},
@@ -21,6 +21,7 @@ async def _create(session: AsyncSession, idempotency_key: str, **kwargs) -> obje
         idempotency_key=idempotency_key,
         **kwargs,
     )
+    return task
 
 
 @pytest.mark.asyncio

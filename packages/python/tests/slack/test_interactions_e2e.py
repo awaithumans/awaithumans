@@ -178,7 +178,7 @@ async def _seed_task(client: AsyncClient, *, form_definition: dict[str, Any] | N
     """Create a task directly in the overridden DB and return its id."""
     override = client._transport.app.dependency_overrides[get_session]  # type: ignore[attr-defined]
     async for s in override():
-        task = await create_task(
+        task, _ = await create_task(
             s,
             task="Approve refund",
             payload={"amount": 100},

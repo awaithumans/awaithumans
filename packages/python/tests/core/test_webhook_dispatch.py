@@ -192,7 +192,7 @@ async def test_enqueue_is_noop_when_callback_url_missing(
     """The dominant case — most tasks long-poll, no row should be
     written. The dispatcher can be invoked unconditionally on every
     terminal transition without polluting the queue."""
-    task = await create_task(
+    task, _ = await create_task(
         session,
         task="x",
         payload={},
@@ -214,7 +214,7 @@ async def test_enqueue_creates_pending_row_with_signed_body(
     against. Storing the body up-front means retries re-send the
     same payload — the signature stays valid through transient
     failures."""
-    task = await create_task(
+    task, _ = await create_task(
         session,
         task="Approve refund",
         payload={"amount": 100},
@@ -253,7 +253,7 @@ async def test_enqueue_creates_pending_row_with_signed_body(
 
 
 async def _enqueued_row(session: AsyncSession, *, callback_url: str) -> WebhookDelivery:
-    task = await create_task(
+    task, _ = await create_task(
         session,
         task="t",
         payload={},
