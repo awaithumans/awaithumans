@@ -24,6 +24,7 @@ import {
 import { CopyButton } from "@/components/copy-button";
 import { ErrorBanner } from "@/components/error-banner";
 import { Eyebrow } from "@/components/eyebrow";
+import { NotificationFailureBanner } from "@/components/notification-failure-banner";
 import { StatusBadge } from "@/components/status-badge";
 import { TerminalSpinner } from "@/components/terminal-spinner";
 import {
@@ -284,6 +285,8 @@ function TaskDetailPageInner() {
 
 			{error && <ErrorBanner message={error} />}
 
+			<NotificationFailureBanner audit={audit} />
+
 			<div className="grid grid-cols-3 gap-6">
 				{/* Left: Payload + Response Form */}
 				<div className="col-span-2 space-y-6">
@@ -487,8 +490,10 @@ function TimelineEntry({
 	onToggle: () => void;
 }) {
 	const hasDetails = entry.extra_data != null;
-	const dotClass =
-		entry.to_status === "completed"
+	const isNotificationFailure = entry.action === "notification_failed";
+	const dotClass = isNotificationFailure
+		? "bg-amber-500/20 border-amber-500"
+		: entry.to_status === "completed"
 			? "bg-brand/20 border-brand"
 			: entry.to_status === "timed_out" ||
 				  entry.to_status === "cancelled" ||
