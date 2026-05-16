@@ -148,6 +148,7 @@ async def _task_to_response_with_lookup(
 async def create_task_route(
     body: CreateTaskRequest,
     background_tasks: BackgroundTasks,
+    response: Response,
     session: AsyncSession = Depends(get_session),
     _admin: None = Depends(require_admin),
 ) -> TaskResponse:
@@ -162,6 +163,11 @@ async def create_task_route(
     Channel notifications fire in a FastAPI BackgroundTask *after* the
     response is sent, so a slow Slack API call never blocks task creation
     and a Slack outage never fails a successful task write.
+
+    Idempotency replay: on a duplicate idempotency_key the existing task
+    is returned with status 201 + an `Idempotent-Replayed: true` header,
+    matching Stripe's idempotency contract. Clients that need to
+    distinguish a fresh creation from a replay read the header.
     """
     task, was_newly_created = await create_task(
         session,
@@ -178,6 +184,16 @@ async def create_task_route(
         redact_payload=body.redact_payload,
         callback_url=body.callback_url,
     )
+
+    # Replay header: clients that care about distinguishing fresh
+    # creation from idempotency hit (e.g. test harnesses, retry-aware
+    # SDKs) read `Idempotent-Replayed: true`. Strict-HTTP-semantics
+    # advocates would flip the status code from 201 → 200 here, but
+    # Stripe (the model we cite for idempotency in task_service.py)
+    # keeps the original status and signals via header — that pattern
+    # breaks zero existing clients while still being informative.
+    if not was_newly_created:
+        response.headers["Idempotent-Replayed"] = "true"
 
     # Notifications fire only when this call actually CREATED the task.
     # An idempotency hit (same key as a previous task — common during
