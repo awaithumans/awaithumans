@@ -20,6 +20,7 @@ import {
 	TaskFilterBar,
 	type StatusOption,
 } from "@/components/filters/task-filter-bar";
+import { CopyButton } from "@/components/copy-button";
 import { ShellEmptyState } from "@/components/shell-empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { TerminalSpinner } from "@/components/terminal-spinner";
@@ -231,8 +232,11 @@ function AuditLogPageInner() {
 									>
 										<td className="px-4 py-3">
 											<div className="text-sm font-medium">{task.task}</div>
-											<div className="text-white/30 text-xs font-mono mt-0.5">
-												{task.id.slice(0, TASK_ID_TRUNCATE_LENGTH)}...
+											<div className="flex items-center gap-1 mt-0.5">
+												<span className="text-white/30 text-xs font-mono">
+													{task.id.slice(0, TASK_ID_TRUNCATE_LENGTH)}...
+												</span>
+												<CopyButton code={task.id} />
 											</div>
 										</td>
 										<td className="px-4 py-3">
