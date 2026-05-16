@@ -1,8 +1,16 @@
 # awaithumans
 
-**Your agents already await promises. Now they can await humans.**
+[![PyPI](https://img.shields.io/pypi/v/awaithumans?label=pypi&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/awaithumans/)
+[![npm](https://img.shields.io/npm/v/awaithumans?label=npm&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/awaithumans)
+[![License](https://img.shields.io/badge/license-Apache_2.0-blue)](https://github.com/awaithumans/awaithumans/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/Kewdh7vjdc)
+[![PyPI downloads](https://img.shields.io/pypi/dm/awaithumans?label=pypi%20installs&color=informational)](https://pypistats.org/packages/awaithumans)
+[![GitHub stars](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow)](https://github.com/awaithumans/awaithumans)
 
-The human layer for AI agents — open source, developer-native.
+**HITL infrastructure for AI agents — open source.**
+
+Your agents already await promises. Now they can await humans.
 
 ```python
 from awaithumans import await_human
@@ -25,7 +33,7 @@ if decision.approved:
 ```
 
 The agent waits on `decision` like it waits on any other Promise or Future.
-A human gets notified (Slack, email, dashboard), reviews the request, and
+A human gets notified ([Slack](https://slack.com), email, dashboard), reviews the request, and
 submits a typed response. The agent resumes with the typed answer.
 
 ![awaithumans demo — an agent creates a task, a human reviews it, the agent resumes with the typed response](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-demo.gif)
@@ -133,7 +141,7 @@ Works for direct messages too (`slack:@U01ABC234`) and email
 
 When your agent runs inside a workflow engine, you don't want a
 long-poll hanging on the orchestrator's thread for 15 minutes. The
-Temporal and LangGraph adapters hand the wait to the engine itself:
+[Temporal](https://temporal.io) and [LangGraph](https://langchain-ai.github.io/langgraph/) adapters hand the wait to the engine itself:
 
 **Temporal** — signal-based suspend + callback:
 
@@ -240,11 +248,11 @@ channels — from one image.
   atomic state transitions, audit trail.
 - **Channels:** Slack + email today. Plug in your own by implementing
   a small interface (`server/channels/`).
-- **Verifiers:** Claude today, any provider is a one-file adapter.
+- **Verifiers:** [Claude](https://www.anthropic.com/claude) today, [OpenAI](https://openai.com), [Gemini](https://gemini.google.com), and [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service) shipped; any provider is a one-file adapter.
 - **Router:** least-recently-assigned over a user directory with
   free-form `role`/`access_level`/`pool` labels.
-- **Task-type handlers:** forms auto-generated from your Pydantic /
-  Zod schema, rendered per channel (Slack Block Kit, email, web form).
+- **Task-type handlers:** forms auto-generated from your [Pydantic](https://pydantic.dev) /
+  [Zod](https://zod.dev) schema, rendered per channel (Slack Block Kit, email, web form).
 
 Every customization flows through one of these four buckets. That's
 the entire extension surface.
