@@ -90,6 +90,31 @@ curl http://localhost:3001/api/openapi.json > openapi.json
 
 No rate limit on task routes — the bearer token holder is implicitly trusted. If you need to rate-limit your own agent's task creation, do it in your code (Stripe-style outbox pattern recommended).
 
+## Idempotency
+
+Every `POST /api/tasks` carries a required `idempotency_key`. The contract is **Stripe-style** — same key returns the same task, regardless of status, for the lifetime of the row.
+
+- **First call with a fresh key:** the task is inserted and the response is `201 Created`.
+- **Subsequent calls with the same key:** the existing task is returned with `201 Created` **plus an `Idempotent-Replayed: true` response header**. Notifications (email / Slack) do NOT re-fire on replay — that would re-page the human for already-in-flight work.
+
+Clients that need to distinguish a fresh creation from a replay read the header:
+
+```bash
+curl -i -X POST http://localhost:3001/api/tasks \
+  -H "Authorization: Bearer $AWAITHUMANS_ADMIN_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"Approve refund","idempotency_key":"refund-A-4721", ...}'
+
+HTTP/1.1 201 Created
+content-type: application/json
+idempotent-replayed: true       ← present only on replay
+...
+```
+
+Why the status stays `201` (instead of flipping to `200` on replay): strict HTTP semantics reserve `201` for newly-created resources, but Stripe — the model this contract is named after — keeps the original status code on replay and signals replay-vs-fresh via header. That convention breaks zero clients that check `status == 201` for success while still being explicit for clients that care.
+
+To trigger a fresh task for the same logical event (e.g. retry a refund review after an earlier one was rejected), pass a distinct key — convention is to suffix: `"refund-A-4721:retry-1"`.
+
 ## Endpoints by resource
 
 ### Tasks (admin / operator / assignee)
