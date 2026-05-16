@@ -69,6 +69,7 @@ _PUBLIC_PREFIXES = (
     "/api/auth/",
     "/api/setup/",
     "/api/health",
+    "/api/version",  # ops + SDK compatibility probe; no secrets exposed
     "/api/docs",
     "/api/redoc",
     "/api/openapi.json",
