@@ -1,4 +1,17 @@
-# awaithumans
+# awaithumans — HITL infrastructure for AI agents
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/logo/dark.svg">
+  <img alt="awaithumans" src="https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/logo/light.svg" width="520">
+</picture>
+
+<br>
+
+**Your agents already await promises. Now they can await humans.**
+
+<br>
 
 [![PyPI](https://img.shields.io/pypi/v/awaithumans?label=pypi&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/awaithumans/)
 [![npm](https://img.shields.io/npm/v/awaithumans?label=npm&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/awaithumans)
@@ -8,9 +21,13 @@
 [![PyPI downloads](https://img.shields.io/pypi/dm/awaithumans?label=pypi%20installs&color=informational)](https://pypistats.org/packages/awaithumans)
 [![GitHub stars](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow)](https://github.com/awaithumans/awaithumans)
 
-**HITL infrastructure for AI agents — open source.**
+[**Docs**](https://docs.awaithumans.dev) · [**Quickstart**](https://docs.awaithumans.dev/quickstart) · [**Examples**](./examples) · [**Discord**](https://discord.gg/Kewdh7vjdc)
 
-Your agents already await promises. Now they can await humans.
+</div>
+
+<br>
+
+**HITL infrastructure for AI agents — open source.** A single primitive (`await_human()` / `awaitHuman()`) your agent calls when it needs a human. A real person reviews via Slack / email / a built-in dashboard, submits a typed response, and your agent resumes — like awaiting any other promise.
 
 ```python
 from awaithumans import await_human
@@ -61,6 +78,24 @@ proceed alone. Three distinct walls, each permanent:
 Better models don't solve walls 2 and 3. `awaithumans` makes the call
 to a human a first-class primitive instead of a pile of bespoke glue
 per project.
+
+---
+
+## Why awaithumans
+
+|  | **awaithumans** | humanlayer | DIY glue code |
+|---|---|---|---|
+| **Maintained** | ✅ Active development | ❌ Abandoned | — |
+| **Setup time** | One command (`awaithumans dev`) | Per-customer rebuild | Weeks |
+| **Channels** | Slack + email + built-in dashboard | Slack only | Build each yourself |
+| **Typed responses** | ✅ [Pydantic](https://pydantic.dev) (Python) / [Zod](https://zod.dev) (TS) — schema-validated end to end | Partial | Build each yourself |
+| **Restart-safe** | ✅ Stripe-style idempotency — agent resumes across restarts | ❌ | Build each yourself |
+| **AI pre-verification** | ✅ [Claude](https://www.anthropic.com/claude) / [OpenAI](https://openai.com) / [Gemini](https://gemini.google.com) / [Azure](https://azure.microsoft.com/en-us/products/ai-services/openai-service) — pre-check the human's answer before the agent trusts it | ❌ | Build each yourself |
+| **Workflow engines** | ✅ [Temporal](https://temporal.io) + [LangGraph](https://langchain-ai.github.io/langgraph/) adapters — hand the wait to the engine | ❌ | Build each yourself |
+| **Self-hostable** | ✅ Docker + Postgres in one command | SaaS-only | — |
+| **License** | Apache 2.0 (patent grant) | — | — |
+
+Built by engineers who hit the HITL wall three times in production fintech and ScaleBrick agent systems — and watched the only OSS alternative get abandoned by its founder over per-customer-fork creep. The architecture has exactly four extension points (channels, verifiers, routers, task-type handlers) so no single customer can push the core into the same trap.
 
 ---
 
