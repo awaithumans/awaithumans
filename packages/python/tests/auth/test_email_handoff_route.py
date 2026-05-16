@@ -271,7 +271,7 @@ def test_handoff_claims_unassigned_task_for_recipient(
     async def _make_task() -> str:
         factory = get_async_session_factory()
         async with factory() as session:
-            task = await create_task(
+            task, _ = await create_task(
                 session,
                 task="Approve refund",
                 payload={},
@@ -322,7 +322,7 @@ def test_handoff_does_not_steal_existing_assignee(
     async def _make_assigned_task() -> str:
         factory = get_async_session_factory()
         async with factory() as session:
-            task = await create_task(
+            task, _ = await create_task(
                 session,
                 task="Approve",
                 payload={},

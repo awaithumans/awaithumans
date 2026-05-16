@@ -80,7 +80,7 @@ async def test_redact_payload_skips_verifier_entirely(
     """With `redact_payload=True` the verifier MUST NOT be called — the
     operator's payload would otherwise be shipped to the third-party
     LLM via the prompt. Status goes straight to COMPLETED."""
-    task = await create_task(
+    task, _ = await create_task(
         session,
         task="Approve sensitive operation",
         payload={"ssn": "1234"},
@@ -120,7 +120,7 @@ async def test_max_attempts_one_collapses_to_single_shot(
     """`max_attempts=1` is the strictest setting — the operator gets
     one shot. The first rejection is immediately exhaustion (terminal),
     not REJECTED-with-zero-budget. Documents the off-by-one semantics."""
-    task = await create_task(
+    task, _ = await create_task(
         session,
         task="One-shot verify",
         payload={},
@@ -152,7 +152,7 @@ async def test_malformed_verifier_config_surfaces_typed_error(
     must NOT 500 with a raw Pydantic ValidationError. The central
     handler turns VerifierConfigInvalidError into a clean 422 with an
     error_code + docs URL the operator can act on."""
-    task = await create_task(
+    task, _ = await create_task(
         session,
         task="Bad config",
         payload={},
@@ -179,7 +179,7 @@ async def test_unknown_provider_raises_typed_error(
 ) -> None:
     """Operator typos ('clade', 'gpt') should fail loudly with the
     supported provider list in the message — not a generic 500."""
-    task = await create_task(
+    task, _ = await create_task(
         session,
         task="Bad provider",
         payload={},

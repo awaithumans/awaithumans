@@ -64,7 +64,7 @@ def _verifier_cfg(max_attempts: int = 3) -> dict:
 
 
 async def _make_task(session: AsyncSession, **overrides) -> Task:
-    return await create_task(
+    task, _ = await create_task(
         session,
         task="Approve refund",
         payload={"amount": 100},
@@ -74,6 +74,7 @@ async def _make_task(session: AsyncSession, **overrides) -> Task:
         idempotency_key=f"key-{id(overrides)}",
         **overrides,
     )
+    return task
 
 
 @pytest.mark.asyncio

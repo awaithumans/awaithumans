@@ -193,7 +193,7 @@ async def _seed_task_and_user(
             display_name="Alice",
             role="reviewer",
         )
-        task = await create_task(
+        task, _ = await create_task(
             s,
             task="Approve refund",
             payload={"amount": 100},
@@ -295,7 +295,7 @@ async def test_second_claim_is_ephemeral_error(
             display_name="Bob",
             role="reviewer",
         )
-        task = await create_task(
+        task, _ = await create_task(
             s,
             task="Approve refund",
             payload={},
@@ -364,7 +364,7 @@ async def test_claim_by_user_not_in_directory_ephemeral_error(
     # Seed a task but no matching user for the clicker below.
     override = client._transport.app.dependency_overrides[get_session]
     async for s in override():
-        task = await create_task(
+        task, _ = await create_task(
             s,
             task="Approve refund",
             payload={},

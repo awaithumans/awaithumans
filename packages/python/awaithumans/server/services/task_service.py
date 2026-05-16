@@ -52,7 +52,7 @@ async def create_task(
     verifier_config: dict | None = None,
     redact_payload: bool = False,
     callback_url: str | None = None,
-) -> Task:
+) -> tuple[Task, bool]:
     """Create a new task, or return the existing one if idempotency key matches.
 
     Stripe-style idempotency: same key always returns the same task,
@@ -62,13 +62,18 @@ async def create_task(
     stored response (or terminal-status error) instead of creating a
     duplicate. To re-trigger work for the same logical event, pass a
     distinct key (e.g. `f"refund:{order_id}:retry-1"`).
+
+    Returns `(task, was_newly_created)`. The bool lets the route decide
+    whether to fire notify background tasks — re-firing on an
+    idempotency hit would send a duplicate email/Slack ping for every
+    retry of an already-running or terminal task.
     """
     # Check for existing task with same idempotency key. Looking up
     # ANY status (including terminal) is what makes direct mode
     # resumable across agent restarts.
     existing = await _find_task_by_idempotency_key(session, idempotency_key)
     if existing is not None:
-        return existing
+        return existing, False
 
     # Route: resolve assign_to -> a specific user (or None for unassigned).
     # The router bumps last_assigned_at on the picked user within this
@@ -129,14 +134,14 @@ async def create_task(
         await session.rollback()
         existing = await _find_task_by_idempotency_key(session, idempotency_key)
         if existing is not None:
-            return existing
+            return existing, False
         # No task found despite IntegrityError — should be unreachable
         # now that the lookup covers all statuses. Re-raise to surface
         # the genuine constraint violation if it ever happens.
         raise
 
     await session.refresh(new_task)
-    return new_task
+    return new_task, True
 
 
 async def get_task(session: AsyncSession, task_id: str) -> Task:

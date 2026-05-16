@@ -183,7 +183,7 @@ async def test_action_get_renders_confirmation_page(client: AsyncClient) -> None
     """Valid token on a live task → 200 with a POST form (anti-prefetch)."""
     # Create a task directly in the DB so we have a real task_id to sign.
     async for session in _direct_session(client):
-        task = await create_task(
+        task, _ = await create_task(
             session,
             task="Approve wire",
             payload={"amount": 50000},
@@ -206,7 +206,7 @@ async def test_action_get_renders_confirmation_page(client: AsyncClient) -> None
 @pytest.mark.asyncio
 async def test_action_post_completes_task(client: AsyncClient) -> None:
     async for session in _direct_session(client):
-        task = await create_task(
+        task, _ = await create_task(
             session,
             task="Approve wire",
             payload={"amount": 50000},
@@ -255,7 +255,7 @@ async def test_action_post_pre_feature_token_leaves_completed_by_null(
     without the email attribution. Pre-feature in-flight tokens at
     deploy time would otherwise 500."""
     async for session in _direct_session(client):
-        task = await create_task(
+        task, _ = await create_task(
             session,
             task="Approve wire",
             payload={},
@@ -297,7 +297,7 @@ async def test_action_post_replay_rejected_with_410(
     proxies / mail clients the resource is permanently gone — they
     should not retry."""
     async for session in _direct_session(client):
-        task = await create_task(
+        task, _ = await create_task(
             session,
             task="Approve",
             payload={},
@@ -329,7 +329,7 @@ async def test_action_post_two_distinct_tokens_for_same_task_independent(
     should be able to consume EITHER one — once. This test pins that
     the consumed-token table doesn't accidentally over-block."""
     async for session in _direct_session(client):
-        task = await create_task(
+        task, _ = await create_task(
             session,
             task="Approve",
             payload={},

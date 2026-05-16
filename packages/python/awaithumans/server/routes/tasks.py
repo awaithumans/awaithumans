@@ -163,7 +163,7 @@ async def create_task_route(
     response is sent, so a slow Slack API call never blocks task creation
     and a Slack outage never fails a successful task write.
     """
-    task = await create_task(
+    task, was_newly_created = await create_task(
         session,
         task=body.task,
         payload=body.payload,
@@ -179,7 +179,12 @@ async def create_task_route(
         callback_url=body.callback_url,
     )
 
-    if body.notify:
+    # Notifications fire only when this call actually CREATED the task.
+    # An idempotency hit (same key as a previous task — common during
+    # retries / agent restarts) returns the existing task; re-emailing
+    # / re-Slacking on every retry was sending duplicate notifications
+    # for the same logical work.
+    if body.notify and was_newly_created:
         background_tasks.add_task(
             notify_task_slack,
             task_id=task.id,
