@@ -11,7 +11,7 @@ from awaithumans.types import TaskStatus
 # ─── Project Identity ────────────────────────────────────────────────────
 
 SERVICE_NAME = "awaithumans"
-DOCS_BASE_URL = "https://awaithumans.dev/docs"
+DOCS_BASE_URL = "https://docs.awaithumans.dev"
 DOCS_TROUBLESHOOTING_URL = f"{DOCS_BASE_URL}/troubleshooting"
 DOCS_ROADMAP_URL = f"{DOCS_BASE_URL}/community/roadmap"
 

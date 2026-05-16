@@ -76,8 +76,8 @@ node -e "console.log(require('awaithumans/package.json').version)"
 
 ## Links
 
-- 📚 [Documentation](https://awaithumans.dev/docs)
-- 🆕 [What's new](https://awaithumans.dev/docs/changelog)
+- 📚 [Documentation](https://docs.awaithumans.dev)
+- 🆕 [What's new](https://docs.awaithumans.dev/changelog)
 - 🔒 Security disclosures: **security@awaithumans.dev**
 - 💬 [Discord](https://discord.gg/Kewdh7vjdc) · [GitHub Discussions](https://github.com/awaithumans/awaithumans/discussions)
 - 🐛 [v0.1.0 → 0.1.1 full diff](https://github.com/awaithumans/awaithumans/compare/v0.1.0...v0.1.1)

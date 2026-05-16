@@ -166,7 +166,7 @@ You could have used `notify=["slack:@alice"]` to DM Alice directly (or `slack:al
 - The atomic-claim model is easy to demo and easy to reason about — first clicker wins, message updates so others stop trying.
 - It generalizes to any operations queue (`#oncall`, `#ops-reviews`, etc.) without requiring direct user assignment.
 
-For high-volume queues with specific assignees, mix the patterns: route by role / pool (see [`docs/routing/overview`](https://awaithumans.dev/docs/routing/overview)) and let `notify` broadcast. The router stamps the assignee; the broadcast notifies the whole channel; the claim path validates the clicker against the directory.
+For high-volume queues with specific assignees, mix the patterns: route by role / pool (see [`docs/routing/overview`](https://docs.awaithumans.dev/routing/overview)) and let `notify` broadcast. The router stamps the assignee; the broadcast notifies the whole channel; the claim path validates the clicker against the directory.
 
 ## Why have an NL fallback at all?
 
