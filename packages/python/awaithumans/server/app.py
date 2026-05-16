@@ -20,6 +20,9 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from awaithumans.server.core.auth import DashboardAuthMiddleware
+from awaithumans.server.core.channel_config_validator import (
+    validate_channel_config,
+)
 from awaithumans.server.core.config import settings, unknown_env_keys
 from awaithumans.server.core.dashboard_static import DashboardStaticFiles
 from awaithumans.server.core.embed_auth import EmbedAuthMiddleware
@@ -187,6 +190,13 @@ def create_app(*, serve_dashboard: bool = True) -> FastAPI:
             len(_unknown),
             ", ".join(sorted(_unknown)),
         )
+
+    # ── Channel-config hygiene ──────────────────────────────────────
+    # If a channel is partly configured (e.g. EMAIL_TRANSPORT=smtp set
+    # but no SMTP_HOST), warn at boot listing the missing env vars.
+    # Pre-banner-PR, operators only found out at first send when the
+    # task silently failed; this is the front-line check.
+    validate_channel_config(settings)
 
     # ── Production safety checks ─────────────────────────────────────
     # HTTPS is required in production because the server handles Slack OAuth
