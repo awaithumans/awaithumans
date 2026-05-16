@@ -35,6 +35,9 @@ from awaithumans.server.services.email_identity_service import (
     get_identity,
     list_identities,
 )
+from awaithumans.server.services.notification_audit import (
+    record_notification_failure,
+)
 from awaithumans.utils.time import to_utc_unix
 
 logger = logging.getLogger("awaithumans.server.channels.email.notifier")
@@ -78,12 +81,15 @@ async def notify_task(
             to_utc_unix(task.timeout_at) if task.timeout_at else None
         )
 
+        task_status = task.status.value if hasattr(task.status, "value") else str(task.status)
+
         for route in routes:
             try:
                 await _deliver_one(
                     session,
                     route,
                     task_id=task_id,
+                    task_status=task_status,
                     task_title=task_title,
                     task_payload=task_payload,
                     redact_payload=redact_payload,
@@ -97,12 +103,30 @@ async def notify_task(
                     route.target,
                     exc,
                 )
+                await record_notification_failure(
+                    session,
+                    task_id=task_id,
+                    task_status=task_status,
+                    channel="email",
+                    recipient=route.target,
+                    reason="transport_error",
+                    message=f"Email transport returned an error: {exc}",
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.exception(
                     "Unexpected email notifier error for task %s → %s: %s",
                     task_id,
                     route.target,
                     exc,
+                )
+                await record_notification_failure(
+                    session,
+                    task_id=task_id,
+                    task_status=task_status,
+                    channel="email",
+                    recipient=route.target,
+                    reason="internal_error",
+                    message=f"Unexpected error sending email: {exc}",
                 )
 
 
@@ -111,6 +135,7 @@ async def _deliver_one(
     route: ChannelRoute,
     *,
     task_id: str,
+    task_status: str,
     task_title: str,
     task_payload: dict[str, Any] | None,
     redact_payload: bool,
@@ -126,6 +151,19 @@ async def _deliver_one(
             route.identity,
             settings.EMAIL_TRANSPORT,
         )
+        await record_notification_failure(
+            session,
+            task_id=task_id,
+            task_status=task_status,
+            channel="email",
+            recipient=route.target,
+            reason="no_transport_configured",
+            message=(
+                "No email transport is configured. Set "
+                "AWAITHUMANS_EMAIL_TRANSPORT (and the matching credentials) "
+                "or create an email sender identity in Settings."
+            ),
+        )
         return
 
     from_email, from_name, reply_to = _resolve_from(identity)
@@ -134,6 +172,19 @@ async def _deliver_one(
             "Email route %s → no From: address configured (set EMAIL_FROM "
             "or create an identity); skipping.",
             route.target,
+        )
+        await record_notification_failure(
+            session,
+            task_id=task_id,
+            task_status=task_status,
+            channel="email",
+            recipient=route.target,
+            reason="no_from_address",
+            message=(
+                "Email transport is configured but no From: address is set. "
+                "Set AWAITHUMANS_EMAIL_FROM or configure a sender identity "
+                "with a From: address."
+            ),
         )
         return
 

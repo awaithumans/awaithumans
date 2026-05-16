@@ -36,6 +36,9 @@ from awaithumans.server.channels.slack.message_log import (
 )
 from awaithumans.server.channels.slack.resolution import resolve_slack_target
 from awaithumans.server.db.connection import get_async_session_factory
+from awaithumans.server.services.notification_audit import (
+    record_notification_failure,
+)
 from awaithumans.server.services.task_service import get_task
 from awaithumans.utils.constants import (
     SLACK_ACTION_CLAIM_TASK,
@@ -91,6 +94,8 @@ async def notify_task(
         )
         review_url = build_review_url(task_id=task_id, params=handoff)
 
+        task_status = task.status.value if hasattr(task.status, "value") else str(task.status)
+
         for route in routes:
             # Broadcast: route target starts with `#` → posting to a
             # channel where anyone could pick it up. Swap the "Open in
@@ -116,6 +121,20 @@ async def notify_task(
                     route.target,
                     route.identity,
                 )
+                await record_notification_failure(
+                    session,
+                    task_id=task_id,
+                    task_status=task_status,
+                    channel="slack",
+                    recipient=route.target,
+                    reason="no_client",
+                    message=(
+                        "No Slack client available for this workspace. "
+                        "Set AWAITHUMANS_SLACK_BOT_TOKEN, or install the "
+                        "Slack app via the OAuth flow, or attach an "
+                        "identity to the route (e.g. `slack+T123:#chan`)."
+                    ),
+                )
                 continue
 
             # Resolve `@handle` / `email` to a real user_id before
@@ -131,6 +150,19 @@ async def notify_task(
                     "Slack route %s → could not resolve to a user/channel; "
                     "skipping. Check the handle exists in this workspace.",
                     route.target,
+                )
+                await record_notification_failure(
+                    session,
+                    task_id=task_id,
+                    task_status=task_status,
+                    channel="slack",
+                    recipient=route.target,
+                    reason="target_not_found",
+                    message=(
+                        "Could not resolve this handle to a Slack user or "
+                        "channel. Check the spelling and that the user is a "
+                        "member of the workspace."
+                    ),
                 )
                 continue
             try:
@@ -163,6 +195,15 @@ async def notify_task(
                     task_id,
                     route.target,
                     exc,
+                )
+                await record_notification_failure(
+                    session,
+                    task_id=task_id,
+                    task_status=task_status,
+                    channel="slack",
+                    recipient=route.target,
+                    reason="post_message_error",
+                    message=f"Slack API returned an error: {exc}",
                 )
 
         await session.commit()
