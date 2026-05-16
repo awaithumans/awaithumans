@@ -46,7 +46,7 @@ export const TERMINAL_STATUSES: readonly TaskStatus[] = [
 ] as const;
 
 /** Docs base URLs. */
-export const DOCS_BASE_URL = "https://awaithumans.dev/docs";
+export const DOCS_BASE_URL = "https://docs.awaithumans.dev";
 export const DOCS_TROUBLESHOOTING_URL = `${DOCS_BASE_URL}/troubleshooting`;
 
 /** Project links. */

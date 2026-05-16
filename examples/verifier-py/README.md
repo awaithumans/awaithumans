@@ -15,7 +15,7 @@ Mirrors [`../verifier/`](../verifier/) (TypeScript).
 > Anthropic on your account at provider list price. The agent
 > process never sees the key. Forget to export it on the server and
 > the first submission returns `HTTP 500 VERIFIER_API_KEY_MISSING`
-> ([docs](https://awaithumans.dev/docs/troubleshooting#verifier-api-key-missing)) —
+> ([docs](https://docs.awaithumans.dev/troubleshooting#verifier-api-key-missing)) —
 > the human can resubmit once you've fixed it; the verifier didn't
 > burn an attempt.
 

@@ -94,7 +94,7 @@ your agent gets the typed `Decision` back. No JSON-twiddling.
   inside an async agent loop.
 - **Send to Slack or email:** add `notify=["slack:#ops"]` or
   `notify=["email:reviewer@company.com"]`. Needs the channel
-  configured on the server — see [docs](https://awaithumans.dev/docs).
+  configured on the server — see [docs](https://docs.awaithumans.dev).
 - **Durable workflows:** use the Temporal or LangGraph adapter so
   `await_human()` survives process restarts. Import from
   `awaithumans.adapters.temporal` or `awaithumans.adapters.langgraph`.

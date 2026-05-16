@@ -8,6 +8,10 @@ from __future__ import annotations
 try:
     import typer
 except ImportError:
+    # `utils.constants` lives in the base SDK (httpx + pydantic only) —
+    # importing it here is safe even when the [server] extras are missing.
+    from awaithumans.utils.constants import DOCS_TROUBLESHOOTING_URL
+
     raise SystemExit(
         "awaithumans CLI: server extras not installed.\n"
         "\n"
@@ -18,7 +22,7 @@ except ImportError:
         "\n"
         'Fix: pip install "awaithumans[server]"\n'
         "\n"
-        "Docs: https://awaithumans.dev/docs/troubleshooting#cli-missing-server-extra"
+        f"Docs: {DOCS_TROUBLESHOOTING_URL}#cli-missing-server-extra"
     ) from None
 
 from awaithumans.cli.commands.add_user import add_user

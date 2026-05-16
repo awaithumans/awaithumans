@@ -4,10 +4,10 @@ The first tagged release of `awaithumans` — the human layer for AI agents. One
 
 ## Highlights
 
-- 🧠 **One primitive** in [Python](https://awaithumans.dev/docs/sdk/python) and [TypeScript](https://awaithumans.dev/docs/sdk/typescript): `await_human()` / `awaitHuman()`.
-- 📬 **Three channels:** [Slack](https://awaithumans.dev/docs/channels/slack) (broadcast + DM + NL replies), [email](https://awaithumans.dev/docs/channels/email) (Resend + SMTP), built-in [dashboard](https://awaithumans.dev/docs/channels/overview#dashboard).
-- 🔁 **Durable adapters:** [Temporal](https://awaithumans.dev/docs/adapters/temporal) (signal-based) and [LangGraph](https://awaithumans.dev/docs/adapters/langgraph) (interrupt/resume).
-- 🤖 **AI verification** server-side: Claude / OpenAI / Gemini / Azure OpenAI ([docs](https://awaithumans.dev/docs/adapters/verifier)).
+- 🧠 **One primitive** in [Python](https://docs.awaithumans.dev/sdk/python) and [TypeScript](https://docs.awaithumans.dev/sdk/typescript): `await_human()` / `awaitHuman()`.
+- 📬 **Three channels:** [Slack](https://docs.awaithumans.dev/channels/slack) (broadcast + DM + NL replies), [email](https://docs.awaithumans.dev/channels/email) (Resend + SMTP), built-in [dashboard](https://docs.awaithumans.dev/channels/overview#dashboard).
+- 🔁 **Durable adapters:** [Temporal](https://docs.awaithumans.dev/adapters/temporal) (signal-based) and [LangGraph](https://docs.awaithumans.dev/adapters/langgraph) (interrupt/resume).
+- 🤖 **AI verification** server-side: Claude / OpenAI / Gemini / Azure OpenAI ([docs](https://docs.awaithumans.dev/adapters/verifier)).
 - 🪪 **User directory + routing** by email, list, pool, or role with least-recently-assigned fairness.
 - 🛡️ **Self-host in one command:** `awaithumans dev` for development, `docker compose up` for production.
 - 📦 **Apache 2.0** across the whole stack — SDK, server, dashboard, adapters, channels. Free forever for self-hosted use, with an explicit patent grant.
@@ -23,7 +23,7 @@ awaithumans dev
 npm install awaithumans
 ```
 
-Then [walk the quickstart](https://awaithumans.dev/docs/quickstart) — first task in five minutes.
+Then [walk the quickstart](https://docs.awaithumans.dev/quickstart) — first task in five minutes.
 
 ## What's in this release
 
@@ -34,15 +34,15 @@ Then [walk the quickstart](https://awaithumans.dev/docs/quickstart) — first ta
 - Pydantic schema validation (Python), Zod schema validation (TypeScript)
 - Cross-platform idempotency-key generation (Node, Bun, Deno, edge runtimes)
 - Error classes follow the **what → why → fix → docs** pattern in both SDKs — every error message includes a link to a docs page that explains the fix
-- Strict Stripe-style idempotency: same key, same task, always — direct-mode `await_human()` is now resumable across agent restarts ([details](https://awaithumans.dev/docs/concepts/idempotency))
+- Strict Stripe-style idempotency: same key, same task, always — direct-mode `await_human()` is now resumable across agent restarts ([details](https://docs.awaithumans.dev/concepts/idempotency))
 
 ### Server
 
 - FastAPI app with SQLModel + Alembic migrations, runs on SQLite (dev) or Postgres (prod)
-- Task CRUD + a state machine covering 10 statuses ([lifecycle](https://awaithumans.dev/docs/concepts/task-lifecycle))
+- Task CRUD + a state machine covering 10 statuses ([lifecycle](https://docs.awaithumans.dev/concepts/task-lifecycle))
 - Long-poll endpoint for direct-mode SDK clients
 - Timeout scheduler using an indexed `timeout_at` column
-- HMAC-signed completion webhooks with at-least-once retry over 3 days ([webhooks](https://awaithumans.dev/docs/webhooks))
+- HMAC-signed completion webhooks with at-least-once retry over 3 days ([webhooks](https://docs.awaithumans.dev/webhooks))
 - Audit trail for every state transition
 
 ### Channels
@@ -94,8 +94,8 @@ These are documented and on the post-launch roadmap:
 - No session invalidation on password change (outstanding sessions survive to expiry — `session_version` field planned)
 - Production `PUBLIC_URL` must be HTTPS — currently a logged error, not a boot failure
 - Multi-replica deployments need a shared rate-limiter store (Redis) — planned post-launch
-- In-memory `createTestClient()` is stubbed but not yet implemented — see the [Testing docs](https://awaithumans.dev/docs/testing) for the patterns that work today
-- Workforce marketplace (`assign_to={"marketplace": True}`) raises `MarketplaceNotAvailableError` — reserved for [Phase 3](https://awaithumans.dev/docs/community/roadmap#marketplace)
+- In-memory `createTestClient()` is stubbed but not yet implemented — see the [Testing docs](https://docs.awaithumans.dev/testing) for the patterns that work today
+- Workforce marketplace (`assign_to={"marketplace": True}`) raises `MarketplaceNotAvailableError` — reserved for [Phase 3](https://docs.awaithumans.dev/community/roadmap#marketplace)
 
 ## Migration from pre-release
 
@@ -103,12 +103,12 @@ If you were running off `main` before tagging:
 
 - The strict-Stripe idempotency change is the single behavioral break. Pre-tag, a terminal task's key was released, allowing a fresh task with the same key. Now the same key always returns the same task.
 - To request a fresh task for the same logical event (e.g. yesterday's task timed out, you want a new review today), pass a distinct key — convention is to suffix with `:retry-N`.
-- See [Idempotency → Re-triggering a review](https://awaithumans.dev/docs/concepts/idempotency#re-triggering-a-review).
+- See [Idempotency → Re-triggering a review](https://docs.awaithumans.dev/concepts/idempotency#re-triggering-a-review).
 
 ## Links
 
-- 📚 [Documentation](https://awaithumans.dev/docs)
-- 🚀 [Quickstart](https://awaithumans.dev/docs/quickstart)
+- 📚 [Documentation](https://docs.awaithumans.dev)
+- 🚀 [Quickstart](https://docs.awaithumans.dev/quickstart)
 - 🐛 [Report an issue](https://github.com/awaithumans/awaithumans/issues)
 - 💬 [Discord](https://discord.gg/Kewdh7vjdc)
 - 🔒 Security disclosures: **security@awaithumans.dev**
