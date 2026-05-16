@@ -16,30 +16,33 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from awaithumans.server.channels.email.templates.renderers import (
+    handoff_error_page_html,
+)
 from awaithumans.server.core.auth import (
     InvalidSessionError,
     sign_session,
     verify_session,
 )
+from awaithumans.server.core.config import settings
 from awaithumans.server.core.email_handoff import (
     InvalidHandoffError as InvalidEmailHandoffError,
 )
 from awaithumans.server.core.email_handoff import (
     verify_handoff as verify_email_handoff,
 )
-from awaithumans.server.core.slack_handoff import (
-    InvalidHandoffError,
-    verify_handoff,
-)
-from awaithumans.server.core.config import settings
 from awaithumans.server.core.password import dummy_verify, verify_password
 from awaithumans.server.core.rate_limit import (
     LOGIN_PER_EMAIL,
     LOGIN_PER_IP,
     client_ip,
+)
+from awaithumans.server.core.slack_handoff import (
+    InvalidHandoffError,
+    verify_handoff,
 )
 from awaithumans.server.db.connection import get_session
 from awaithumans.server.schemas.auth import LoginRequest, MeResponse
@@ -190,11 +193,23 @@ async def slack_handoff(
         verify_handoff(user_id=u, task_id=t, exp_unix=e, signature=s)
     except InvalidHandoffError as exc:
         logger.info("Rejected Slack handoff: %s", exc)
-        raise HTTPException(
+        # Recipients of Slack DMs click these in a browser — they're
+        # not developers and should never see raw FastAPI JSON.
+        # Render the same explanation as a brand-styled page.
+        return HTMLResponse(
+            content=handoff_error_page_html(
+                heading="Sign-in link expired",
+                message=(
+                    "This link is invalid or expired. Open the latest "
+                    "Slack notification for this task to get a fresh one."
+                ),
+                hint=(
+                    "If the task has already been completed or has timed "
+                    "out, check the dashboard for its final status."
+                ),
+            ),
             status_code=400,
-            detail="Sign-in link is invalid or expired. Open the latest "
-            "Slack notification for this task to get a fresh one.",
-        ) from exc
+        )
 
     user = await get_user(session, u)
     if user is None or not user.active:
@@ -254,11 +269,23 @@ async def email_handoff(
         verify_email_handoff(recipient=to, task_id=t, exp_unix=e, signature=s)
     except InvalidEmailHandoffError as exc:
         logger.info("Rejected email handoff: %s", exc)
-        raise HTTPException(
+        # Recipients of notification emails click these in a browser —
+        # they're not developers and should never see raw FastAPI JSON.
+        # Render the same explanation as a brand-styled page.
+        return HTMLResponse(
+            content=handoff_error_page_html(
+                heading="Sign-in link expired",
+                message=(
+                    "This link is invalid or expired. Open the latest "
+                    "notification email for this task to get a fresh one."
+                ),
+                hint=(
+                    "If the task has already been completed or has timed "
+                    "out, check the dashboard for its final status."
+                ),
+            ),
             status_code=400,
-            detail="Sign-in link is invalid or expired. Open the latest "
-            "notification email for this task to get a fresh one.",
-        ) from exc
+        )
 
     normalized_email = to.lower()
     user = await get_user_by_email(session, normalized_email)

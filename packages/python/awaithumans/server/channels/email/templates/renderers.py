@@ -130,6 +130,36 @@ def completed_page_html(*, message: str) -> str:
     )
 
 
+def handoff_error_page_html(
+    *,
+    heading: str,
+    message: str,
+    hint: str = "",
+    icon: str = "⏱",
+) -> str:
+    """Browser-friendly page shown when an email- or Slack-handoff URL
+    fails verification (expired, tampered with, etc.).
+
+    Recipients of notification emails / Slack DMs aren't developers
+    and don't read raw FastAPI JSON error responses. This page renders
+    the same human-readable message in the same brand surface as the
+    confirmation / completed pages so a non-technical reviewer who
+    clicks a stale link sees a real explanation, not a code block.
+
+    `heading` is the short title; `message` is the primary explanation;
+    `hint` is the secondary "what to do next" sentence; `icon` is a
+    single character (emoji or text) shown above the heading.
+    """
+    return _load("handoff_error_page.html").substitute(
+        heading=escape(heading),
+        message=escape(message),
+        hint=escape(hint),
+        icon=escape(icon),
+        font_stack=FONT_STACK,
+        **DARK_PALETTE,
+    )
+
+
 # ─── Internal fragment builders ─────────────────────────────────────────
 
 

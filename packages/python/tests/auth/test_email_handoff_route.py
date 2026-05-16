@@ -357,3 +357,38 @@ def test_handoff_does_not_steal_existing_assignee(
 
     user_id = asyncio.new_event_loop().run_until_complete(_read())
     assert user_id == operator_user.id  # original assignee untouched
+
+
+# ─── Friendly HTML on failure ─────────────────────────────────────────
+
+
+def test_expired_link_returns_html_not_json(client: TestClient) -> None:
+    """A non-developer clicking a stale email link in their browser must
+    not see raw FastAPI JSON. Recipients aren't API consumers; the
+    handoff route is browser-only. Returns a brand-styled HTML page
+    instead, carrying the same human-readable message."""
+    expired = int(time.time()) - 1
+    sig = sign_handoff(
+        recipient="alice@example.com",
+        task_id="task_expired_html",
+        exp_unix=expired,
+    )
+
+    resp = client.get(
+        "/api/auth/email-handoff",
+        params={
+            "to": "alice@example.com",
+            "t": "task_expired_html",
+            "e": expired,
+            "s": sig,
+        },
+    )
+
+    assert resp.status_code == 400
+    assert resp.headers["content-type"].startswith("text/html"), (
+        f"Expected HTML response, got {resp.headers.get('content-type')}"
+    )
+    body = resp.text
+    assert "Sign-in link expired" in body
+    assert "notification email" in body  # the actionable guidance
+    assert "<html" in body.lower()  # actually HTML, not stringified JSON

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>$heading</title>
+  <style>
+    body { margin:0; background:$bg_dark; color:$text_light; font-family:$font_stack;
+           min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { background:$bg_card_dark; border:1px solid $border_dark; border-radius:12px;
+            padding:36px; max-width:480px; text-align:center; }
+    .icon { font-size:36px; line-height:1; margin-bottom:16px; }
+    h1 { margin:0 0 14px; font-size:22px; font-weight:600; }
+    p { margin:0 0 12px; color:$text_muted_dark; font-size:14px; line-height:1.55; }
+    p:last-child { margin-bottom:0; }
+    .footer { margin-top:24px; font-size:11px; color:$text_muted_dark; opacity:0.6;
+              text-transform:uppercase; letter-spacing:0.06em; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon" aria-hidden="true">$icon</div>
+    <h1>$heading</h1>
+    <p>$message</p>
+    <p>$hint</p>
+    <div class="footer">awaithumans</div>
+  </div>
+</body>
+</html>
