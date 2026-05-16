@@ -1,11 +1,19 @@
 # awaithumans
 
-**Your agents already await promises. Now they can await humans.**
+[![npm](https://img.shields.io/npm/v/awaithumans?label=npm&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/awaithumans)
+[![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/license-Apache_2.0-blue)](https://github.com/awaithumans/awaithumans/blob/main/LICENSE)
+[![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/Kewdh7vjdc)
+[![npm downloads](https://img.shields.io/npm/dm/awaithumans?label=installs&color=informational)](https://www.npmjs.com/package/awaithumans)
+[![GitHub](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow&label=github)](https://github.com/awaithumans/awaithumans)
 
-The human layer for AI agents — open source, developer-native. A single
-primitive (`awaitHuman`) your agent can call when the model can't or
-shouldn't proceed alone. A human gets notified (Slack, email, or
-dashboard), reviews the request, submits a typed response, and your
+**HITL infrastructure for AI agents — open source.**
+
+Your agents already await promises. Now they can await humans.
+
+A single primitive (`awaitHuman`) your agent can call when the model
+can't or shouldn't proceed alone. A human gets notified ([Slack](https://slack.com), email,
+or dashboard), reviews the request, submits a typed response, and your
 agent resumes.
 
 ```ts
@@ -34,6 +42,10 @@ if (decision.approved) {
   await processRefund(...);
 }
 ```
+
+![awaithumans demo — an agent creates a task, a human reviews it, the agent resumes with the typed response](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-demo.gif)
+
+![The awaithumans dashboard — pending tasks queued for human review](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-dashboard.png)
 
 ---
 
@@ -76,11 +88,15 @@ you're in. The dashboard is at `http://localhost:3001`.
 
 Prefer Docker? `docker run -p 3001:3001 ghcr.io/awaithumans/awaithumans:latest`.
 
+Tasks can be delivered to Slack channels with a "Claim this task" button — first clicker atomically wins, response form opens as a modal, agent unblocks when they submit. Add `notify: ["slack:#ops"]` to the `awaitHuman()` call:
+
+![Slack broadcast — a task posted to a channel with a Claim button](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/slack-broadcast.png)
+
 ---
 
 ## Durable workflows
 
-When your agent runs inside Temporal or LangGraph, you don't want the
+When your agent runs inside [Temporal](https://temporal.io) or [LangGraph](https://langchain-ai.github.io/langgraph/), you don't want the
 wait sitting on an orchestrator thread for 15 minutes:
 
 ```ts
