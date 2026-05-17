@@ -101,21 +101,20 @@ Built by engineers who hit the HITL wall three times in production fintech and S
 
 ## Quick start
 
-**One terminal:**
+**60 seconds. Two terminals.** First-time setup needs a browser click; everything else is paste-and-run.
+
+**Terminal 1** — server + dashboard:
 
 ```bash
-pip install "awaithumans[server]"
-awaithumans dev
+pip install "awaithumans[server]" && awaithumans dev
 ```
 
-You get the API server + dashboard on `http://localhost:3001`. On first
-run it prints a setup URL; open it, create the initial operator
-account, you're in.
+Click the setup URL it prints, create your operator account. The dashboard is now at `http://localhost:3001`.
 
-**Another terminal:**
+**Terminal 2** — paste this whole block:
 
-```python
-# refund.py
+```bash
+pip install awaithumans pydantic && cat > /tmp/refund.py <<'PY'
 from awaithumans import await_human_sync
 from pydantic import BaseModel
 
@@ -126,24 +125,38 @@ class RefundRequest(BaseModel):
 class Decision(BaseModel):
     approved: bool
 
-decision = await_human_sync(
-    task="Approve refund",
+d = await_human_sync(
+    task="Approve refund of $180?",
     payload_schema=RefundRequest,
     payload=RefundRequest(order_id="A-4721", amount_usd=180),
     response_schema=Decision,
-    timeout_seconds=900,
+    timeout_seconds=300,
 )
-print("approved" if decision.approved else "rejected")
+print("approved" if d.approved else "rejected")
+PY
+python /tmp/refund.py
 ```
 
-```bash
-python refund.py
-```
+The script blocks. Open the dashboard, click the pending task, hit **Approve**. The script unblocks with the typed `Decision`.
 
-Open the dashboard, click the task, approve it. The Python script
-unblocks with `decision.approved == True`.
+That's the full loop. From here, swap the schema for your own, add `notify=["slack:#ops", "email:ops@yourco.com"]` to route the task elsewhere, or wrap the call in a Temporal / LangGraph workflow.
 
-Full walkthrough: [`examples/quickstart/`](./examples/quickstart/).
+More examples — refund, KYC, content moderation, Slack-native, Temporal, LangGraph — in [`examples/`](./examples/).
+
+---
+
+## What you can build with it
+
+Real production patterns this primitive collapses into a single function call:
+
+- **High-value approvals** — refunds above a threshold, wire transfers, plan upgrades, contract renewals. Agent prepares the case (Pydantic payload), human signs off with a typed decision (approved + reason).
+- **KYC / identity review** — agent flags borderline documents, human inspects, sends back `verified: bool` with notes. Pair with `verifier=verify_with_claude(...)` to pre-check the reviewer's reasoning.
+- **Content moderation escalation** — AI tags a borderline post; instead of hard-deciding, it calls `await_human()` with the content + AI's reasoning + a Switch for keep/remove. Reviewer's decision flows back into the moderation pipeline.
+- **Agent-generated code review** — your LLM drafts a pull request; before merge, the agent waits for a human to approve via Slack. The "Claim this task" button assigns it to whoever's on rotation.
+- **Customer-success escalation** — support agent answers FAQs; on a complex thread, it escalates to a human with the full transcript as the payload. Human writes the reply, agent posts it.
+- **Scrape-and-CAPTCHA fallback** — automation hits a CAPTCHA wall, calls `await_human()` with the screenshot, a human solves it, agent resumes the scrape.
+
+Anything where an LLM's confidence is too low, the liability too high, or the source of truth lives outside the model's reach — it's HITL-shaped, and this primitive fits.
 
 ---
 
