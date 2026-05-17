@@ -13,14 +13,15 @@
 
 <br>
 
+[![PyPI installs](https://img.shields.io/pepy/dt/awaithumans?style=for-the-badge&label=PyPI%20installs&color=3775A9&logo=pypi&logoColor=white)](https://pepy.tech/project/awaithumans)
+[![npm installs](https://img.shields.io/npm/dt/awaithumans?style=for-the-badge&label=npm%20installs&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/awaithumans)
+[![GitHub stars](https://img.shields.io/github/stars/awaithumans/awaithumans?style=for-the-badge&color=FBBF24&logo=github&logoColor=white&label=GitHub%20stars)](https://github.com/awaithumans/awaithumans)
+
 [![PyPI](https://img.shields.io/pypi/v/awaithumans?label=pypi&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/awaithumans/)
 [![npm](https://img.shields.io/npm/v/awaithumans?label=npm&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/awaithumans)
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue)](https://github.com/awaithumans/awaithumans/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/Kewdh7vjdc)
-[![PyPI installs](https://img.shields.io/pepy/dt/awaithumans?label=pypi%20installs&color=informational)](https://pepy.tech/project/awaithumans)
-[![npm installs](https://img.shields.io/npm/dt/awaithumans?label=npm%20installs&color=informational)](https://www.npmjs.com/package/awaithumans)
-[![GitHub stars](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow)](https://github.com/awaithumans/awaithumans)
 
 [**Docs**](https://docs.awaithumans.dev) · [**Quickstart**](https://docs.awaithumans.dev/quickstart) · [**Examples**](./examples) · [**Discord**](https://discord.gg/Kewdh7vjdc)
 
