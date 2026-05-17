@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img alt="awaithumans" src="https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/logo/light.svg" width="520">
+<img alt="awaithumans" src="https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/logo/light.svg" width="520">
 
 <br>
 
@@ -53,9 +53,9 @@ if (decision.approved) {
 }
 ```
 
-![awaithumans demo — an agent creates a task, a human reviews it, the agent resumes with the typed response](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-demo.gif)
+![awaithumans demo — an agent creates a task, a human reviews it, the agent resumes with the typed response](https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/images/hero-demo.gif)
 
-![The awaithumans dashboard — pending tasks queued for human review](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-dashboard.png)
+![The awaithumans dashboard — pending tasks queued for human review](https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/images/hero-dashboard.png)
 
 ---
 
@@ -100,7 +100,7 @@ Prefer Docker? `docker run -p 3001:3001 ghcr.io/awaithumans/awaithumans:latest`.
 
 Tasks can be delivered to Slack channels with a "Claim this task" button — first clicker atomically wins, response form opens as a modal, agent unblocks when they submit. Add `notify: ["slack:#ops"]` to the `awaitHuman()` call:
 
-![Slack broadcast — a task posted to a channel with a Claim button](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/slack-broadcast.png)
+![Slack broadcast — a task posted to a channel with a Claim button](https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/images/slack-broadcast.png)
 
 ---
 
