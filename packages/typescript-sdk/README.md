@@ -1,4 +1,14 @@
-# awaithumans
+# awaithumans — HITL infrastructure for AI agents
+
+<div align="center">
+
+<img alt="awaithumans" src="https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/logo/light.svg" width="520">
+
+<br>
+
+**Your agents already await promises. Now they can await humans.**
+
+<br>
 
 [![npm](https://img.shields.io/npm/v/awaithumans?label=npm&color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/awaithumans)
 [![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -7,14 +17,13 @@
 [![npm downloads](https://img.shields.io/npm/dm/awaithumans?label=installs&color=informational)](https://www.npmjs.com/package/awaithumans)
 [![GitHub](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow&label=github)](https://github.com/awaithumans/awaithumans)
 
-**HITL infrastructure for AI agents — open source.**
+[**Docs**](https://docs.awaithumans.dev) · [**Quickstart**](https://docs.awaithumans.dev/quickstart) · [**Examples**](https://github.com/awaithumans/awaithumans/tree/main/examples/quickstart-ts) · [**Discord**](https://discord.gg/Kewdh7vjdc)
 
-Your agents already await promises. Now they can await humans.
+</div>
 
-A single primitive (`awaitHuman`) your agent can call when the model
-can't or shouldn't proceed alone. A human gets notified ([Slack](https://slack.com), email,
-or dashboard), reviews the request, submits a typed response, and your
-agent resumes.
+<br>
+
+**HITL infrastructure for AI agents — open source.** A single primitive (`awaitHuman()`) your agent calls when the model can't or shouldn't proceed alone. A human gets notified ([Slack](https://slack.com), email, or dashboard), reviews the request, submits a typed response, and your agent resumes — like awaiting any other promise.
 
 ```ts
 import { awaitHuman } from "awaithumans";

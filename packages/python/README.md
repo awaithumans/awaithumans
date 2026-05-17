@@ -1,4 +1,14 @@
-# awaithumans
+# awaithumans — HITL infrastructure for AI agents
+
+<div align="center">
+
+<img alt="awaithumans" src="https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/logo/light.svg" width="520">
+
+<br>
+
+**Your agents already await promises. Now they can await humans.**
+
+<br>
 
 [![PyPI](https://img.shields.io/pypi/v/awaithumans?label=pypi&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/awaithumans/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -7,14 +17,13 @@
 [![PyPI downloads](https://img.shields.io/pypi/dm/awaithumans?label=installs&color=informational)](https://pypistats.org/packages/awaithumans)
 [![GitHub](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow&label=github)](https://github.com/awaithumans/awaithumans)
 
-**HITL infrastructure for AI agents — open source.**
+[**Docs**](https://docs.awaithumans.dev) · [**Quickstart**](https://docs.awaithumans.dev/quickstart) · [**Examples**](https://github.com/awaithumans/awaithumans/tree/main/examples) · [**Discord**](https://discord.gg/Kewdh7vjdc)
 
-Your agents already await promises. Now they can await humans.
+</div>
 
-A single primitive (`await_human`) your agent can call when the model
-can't or shouldn't proceed alone. A human gets notified ([Slack](https://slack.com), email,
-or dashboard), reviews the request, submits a typed response, and your
-agent resumes.
+<br>
+
+**HITL infrastructure for AI agents — open source.** A single primitive (`await_human()`) your agent calls when the model can't or shouldn't proceed alone. A human gets notified ([Slack](https://slack.com), email, or dashboard), reviews the request, submits a typed response, and your agent resumes — like awaiting any other coroutine.
 
 ```python
 from awaithumans import await_human
