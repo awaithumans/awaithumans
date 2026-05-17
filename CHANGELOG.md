@@ -16,6 +16,113 @@ _Nothing yet — open the next change here._
 
 ---
 
+## [0.1.4] — 2026-05-17
+
+Eight PRs of bug fixes and DX improvements caught by beta-tester
+feedback over the 0.1.3 → 0.1.4 window, plus the full marketing
+README refresh.
+
+### Added
+
+- **`GET /api/version`** — public endpoint returning `{"name":
+  "awaithumans", "version": "..."}`. Useful for ops monitoring,
+  pre-auth SDK compatibility probes, and reverse-proxy
+  misconfig debugging. Auth-bypass entry added so it works without
+  a session. ([#117](https://github.com/awaithumans/awaithumans/pull/117))
+- **`Idempotent-Replayed: true` response header** on
+  `POST /api/tasks` when the call returns an existing task via the
+  idempotency key. Status stays `201` (matches Stripe's
+  contract — flipping to `200` would break clients that check
+  the specific code). Documented in `docs/api/overview.mdx`.
+  ([#118](https://github.com/awaithumans/awaithumans/pull/118))
+- **`notification_failed` audit entries + banner** on the task
+  detail page when an email or Slack send couldn't deliver. The
+  previous silent-drop behaviour left operators wondering why
+  a human never got pinged. Email surfaces all four failure
+  modes (no transport configured, no From: address, transport
+  error, internal error); Slack surfaces three (no client, target
+  not found, post-message error). ([#111](https://github.com/awaithumans/awaithumans/pull/111))
+- **Startup channel-config validator** warns at boot if a channel
+  is half-configured (e.g. `EMAIL_TRANSPORT=smtp` set but
+  `SMTP_HOST` missing). Catches the misconfig before the first
+  send silently fails. ([#112](https://github.com/awaithumans/awaithumans/pull/112))
+- **Brand-styled HTML page** on email- / Slack-handoff link
+  failure. Recipients clicking a stale link in a browser used to
+  see raw FastAPI JSON; now they get a friendly card on the same
+  dark surface as the existing confirmation / completed pages.
+  ([#116](https://github.com/awaithumans/awaithumans/pull/116))
+
+### Fixed
+
+- **Email-handoff URL no longer expires instantly for east-of-UTC
+  users.** SQLite stores `task.timeout_at` tz-naive; the email
+  notifier was calling `.timestamp()` on it which treats the
+  value as local time. For UTC+1 users a fresh 10-minute task
+  issued a link born 3,000 seconds expired. Fix extracted to a
+  shared `awaithumans.utils.time.to_utc_unix` helper used by both
+  the email and Slack handoff paths. ([#113](https://github.com/awaithumans/awaithumans/pull/113))
+- **Duplicate notifications on idempotent retries.** The
+  `POST /api/tasks` route was firing `notify_task_*` background
+  tasks unconditionally; a retry with the same idempotency key
+  re-emailed / re-Slacked the reviewer for already-in-flight
+  work. `create_task` now returns `(task, was_newly_created)` and
+  the route gates notify on the flag. ([#114](https://github.com/awaithumans/awaithumans/pull/114))
+- **OpenAPI docs now at `/api/docs`** to match the docs page
+  contract (which had been promising that path while the actual
+  routes lived at `/docs`). Auth-bypass updated; `version=` in
+  the FastAPI constructor reads from `awaithumans.__version__`
+  instead of the hardcoded `0.1.1`. ([#115](https://github.com/awaithumans/awaithumans/pull/115))
+- **CopyButton on the dashboard** works in all contexts now —
+  previously, a parent row's `onClick` could preempt the
+  clipboard write, and the `navigator.clipboard` failure path
+  was silent. Adds `stopPropagation`, a legacy
+  `document.execCommand("copy")` fallback, and `console.warn`
+  on hard failure. Plus copy buttons added to the audit-log list
+  rows next to each task ID. ([#112](https://github.com/awaithumans/awaithumans/pull/112))
+- **All docs URLs** point at the real subdomain
+  `docs.awaithumans.dev` instead of the dead `awaithumans.dev/docs`
+  path. 13 files updated; verified each previously-broken URL
+  returns 200. ([#113](https://github.com/awaithumans/awaithumans/pull/113))
+
+### Docs / Marketing
+
+- **Hero structure + brand logo + comparison table** on the
+  GitHub README, plus matching hero blocks on the PyPI and npm
+  package READMEs. New "Why awaithumans" comparison table
+  positioned between the problem statement and the quick start
+  — captures "humanlayer alternative" search traffic, the
+  strongest single positioning lever. ([#119](https://github.com/awaithumans/awaithumans/pull/119)
+  / [#120](https://github.com/awaithumans/awaithumans/pull/120))
+- **Copy-pasteable Quick start** rewritten as a single bash
+  heredoc block. New "What you can build with it" section with
+  six concrete production patterns (high-value approvals, KYC,
+  content moderation, agent-PR review, customer-success
+  escalation, scrape-and-CAPTCHA fallback). ([#121](https://github.com/awaithumans/awaithumans/pull/121))
+- **Adoption badges** (PyPI installs, npm installs, GitHub stars)
+  promoted to a prominent for-the-badge row in the hero, above
+  the small flat metadata row. PyPI install badge switched to
+  pepy.tech to fix the "rate limited by upstream service" error
+  that was showing in production. ([#122](https://github.com/awaithumans/awaithumans/pull/122))
+- **Keyword expansion** on both PyPI (10 → 33) and npm (8 → 32),
+  covering problem terms, framework names (LangChain / LangGraph /
+  CrewAI / AutoGen / Pydantic AI / Temporal / MCP), model
+  provider names (Claude / Anthropic / OpenAI / GPT / Gemini),
+  use cases (KYC / content-moderation / agent-safety), and
+  competitor-capture (`human-layer` for the abandoned humanlayer
+  package).
+- **GitHub repo topics** expanded to the full 20-slot maximum
+  with the same strategic mix.
+
+### Versions
+
+- Python `awaithumans`: `0.1.3` → `0.1.4`
+- TypeScript `awaithumans`: `0.1.3` → `0.1.4` (mono-version sync;
+  the package source is unchanged this release — the SDK is a
+  thin HTTP client and all the new server endpoints / behaviour
+  ride on the existing wire protocol)
+
+---
+
 ## [0.1.3] — 2026-05-14
 
 ### Fixed
