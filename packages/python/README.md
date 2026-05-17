@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img alt="awaithumans" src="https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/logo/light.svg" width="520">
+<img alt="awaithumans" src="https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/logo/light.svg" width="520">
 
 <br>
 
@@ -46,9 +46,9 @@ if decision.approved:
     process_refund(...)
 ```
 
-![awaithumans demo — an agent creates a task, a human reviews it, the agent resumes with the typed response](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-demo.gif)
+![awaithumans demo — an agent creates a task, a human reviews it, the agent resumes with the typed response](https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/images/hero-demo.gif)
 
-![The awaithumans dashboard — pending tasks queued for human review](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/hero-dashboard.png)
+![The awaithumans dashboard — pending tasks queued for human review](https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/images/hero-dashboard.png)
 
 ---
 
@@ -147,7 +147,7 @@ Slack channel broadcasts post a "Claim this task" button; first
 clicker atomically wins. Direct messages and emails go straight to
 the recipient.
 
-![Slack broadcast — a task posted to a channel with a Claim button](https://raw.githubusercontent.com/awaithumans/awaithumans/main/docs/images/slack-broadcast.png)
+![Slack broadcast — a task posted to a channel with a Claim button](https://cdn.jsdelivr.net/gh/awaithumans/awaithumans@main/docs/images/slack-broadcast.png)
 
 ---
 
