@@ -1,0 +1,112 @@
+name: tests
+
+# Runs the test suite for each package on PRs and pushes to main.
+# Three independent jobs run in parallel — Python tests, TypeScript SDK
+# tests, dashboard tests — so a failure in one package surfaces
+# immediately without waiting for the others.
+#
+# Security note: every ${{ ... }} expansion below is a trusted context
+# value (github.workflow, github.ref, matrix.python-version). No
+# user-controlled fields (issue titles, PR bodies, commit messages) are
+# interpolated into `run:` blocks — nothing to inject.
+#
+# What this does NOT run (yet):
+#   - mypy (strict) — pyproject opts in but no CI enforcement yet; add
+#     as a separate job once the codebase is clean against the target
+#     ruleset.
+#   - Postgres-backed tests — the suite uses SQLite via
+#     AWAITHUMANS_DB_PATH. The `migrations.yml` workflow exercises
+#     Alembic separately.
+#   - Slow tests (Temporal harness, etc.) are kept in by default since
+#     the pyproject `slow` marker documents CI as the place they should
+#     run.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel older runs for the same PR/branch when a new commit lands —
+# saves minutes and keeps the queue honest.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: python (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
+    strategy:
+      fail-fast: false
+      # 3.10 is the floor declared in pyproject (PEP 604 union syntax
+      # requires it); 3.13 is the current released line. Running both
+      # catches both "drift past the floor" and "broke on latest"
+      # without a 4-way matrix.
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package with all extras
+        # `dev` brings in pytest + ruff. `server` is required because
+        # most tests import server-side modules (routes, services,
+        # channels). `temporal` + `langgraph` cover the adapter test
+        # files.
+        run: pip install -e '.[server,dev,temporal,langgraph]'
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Pytest
+        env:
+          AWAITHUMANS_DB_PATH: /tmp/aw-ci.db
+        run: pytest -q
+
+  typescript-sdk:
+    name: typescript-sdk
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/typescript-sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: packages/typescript-sdk/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  dashboard:
+    name: dashboard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: packages/dashboard/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
