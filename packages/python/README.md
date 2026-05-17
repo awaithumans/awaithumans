@@ -14,7 +14,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue)](https://github.com/awaithumans/awaithumans/blob/main/LICENSE)
 [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/Kewdh7vjdc)
-[![PyPI downloads](https://img.shields.io/pypi/dm/awaithumans?label=installs&color=informational)](https://pypistats.org/packages/awaithumans)
+[![PyPI installs](https://img.shields.io/pepy/dt/awaithumans?label=installs&color=informational)](https://pepy.tech/project/awaithumans)
 [![GitHub](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow&label=github)](https://github.com/awaithumans/awaithumans)
 
 [**Docs**](https://docs.awaithumans.dev) · [**Quickstart**](https://docs.awaithumans.dev/quickstart) · [**Examples**](https://github.com/awaithumans/awaithumans/tree/main/examples) · [**Discord**](https://discord.gg/Kewdh7vjdc)

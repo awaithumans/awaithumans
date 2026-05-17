@@ -14,7 +14,7 @@
 [![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue)](https://github.com/awaithumans/awaithumans/blob/main/LICENSE)
 [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/Kewdh7vjdc)
-[![npm downloads](https://img.shields.io/npm/dm/awaithumans?label=installs&color=informational)](https://www.npmjs.com/package/awaithumans)
+[![npm installs](https://img.shields.io/npm/dt/awaithumans?label=installs&color=informational)](https://www.npmjs.com/package/awaithumans)
 [![GitHub](https://img.shields.io/github/stars/awaithumans/awaithumans?style=flat&color=yellow&label=github)](https://github.com/awaithumans/awaithumans)
 
 [**Docs**](https://docs.awaithumans.dev) · [**Quickstart**](https://docs.awaithumans.dev/quickstart) · [**Examples**](https://github.com/awaithumans/awaithumans/tree/main/examples/quickstart-ts) · [**Discord**](https://discord.gg/Kewdh7vjdc)
