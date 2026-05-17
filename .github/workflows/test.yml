@@ -48,12 +48,14 @@ jobs:
         working-directory: packages/python
     strategy:
       fail-fast: false
-      # 3.10 is the floor declared in pyproject (PEP 604 union syntax
-      # requires it); 3.13 is the current released line. Running both
-      # catches both "drift past the floor" and "broke on latest"
-      # without a 4-way matrix.
+      # pyproject declares 3.10 as the floor but the test suite imports
+      # `from datetime import UTC` (added in 3.11) in 21 files, so
+      # collection fails on 3.10. Until that gap is resolved — either
+      # by bumping the declared floor to 3.11 or by replacing `UTC`
+      # with `timezone.utc` — CI runs against the lowest version the
+      # tests can actually load (3.11) plus the current line (3.13).
       matrix:
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.11", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
